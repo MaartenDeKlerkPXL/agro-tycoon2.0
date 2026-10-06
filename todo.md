@@ -57,7 +57,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [ ] Werknemer-chauffeur die met de aanhanger naast de maaidorser meerijdt en zelf wegbrengt
 - [ ] Graan naar een fabriek brengen (bonus voor directe levering)
 - [ ] **Cultivator** (sneller dan ploegen)
-- [ ] **Spuitmachine**: onkruid/herbicide
+- [x] **Spuitmachine** en **kalkstrooier** (zie Fase 3)
 - [ ] Rol, egalisatie en stenen rapen
 - [ ] Machineslijtage + onderhoud/reparatie in de schuur
 - [ ] Brandstoftank: tank leeg = bijtanken op het erf
