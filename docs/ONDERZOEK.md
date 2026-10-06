@@ -36,20 +36,18 @@
 
 ## 3. Conclusie: wat moet erin zitten?
 
-**Kern (MVP, staat er nu in):**
-1. Velden met een duidelijke cyclus: stoppel → ploegen → zaaien → groeien → oogsten
-2. Machines die je **ziet werken** op het veld en die één taak tegelijk doen. Een extra tractor betekent dus echt meer capaciteit
-3. Gewassen met verschillende groeitijd, zaaikosten en opbrengst
-4. Silo met beperkte capaciteit plus een markt met schommelende prijzen, zodat het uitmaakt wanneer je verkoopt
-5. Uitbreiden: velden kopen, machines kopen en verkopen, silo upgraden
-6. Doelen als tutorial en motivatie
-7. Automatisch opslaan, pauze en snelheid 1×/2×/4×
+Uitgangspunt: een singleplayer spel voor in de desktopbrowser.
 
-**Waarmee wij ons onderscheiden van Agro Tycoon:**
-- **Direct speelbaar in de browser**, ook op mobiel, zonder installatie
-- Later **multiplayer / co-op** en gedeelde markten (dat heeft Agro Tycoon niet)
-- **Contracten en orders** (FS25/Hay Day) bovenop de vrije markt
-- Een rustiger instap (doelen/tutorial) met diepgang voor wie dat wil
+**Kern (staat er nu in):**
+1. **Zelf rijden** met tractor of maaidorser over een grote kaart (zoals in Agro Tycoon en Farming Simulator)
+2. Velden waarvan de grond verandert precies waar je werktuig komt (ploegen → zaaien → groeien → oogsten)
+3. Loonwerkers voor velden die je niet zelf wilt doen (een eerste stap naar de NPC-automatisering van Agro Tycoon)
+4. Gewassen met verschillende groeitijd, zaaikosten en opbrengst
+5. Silo met beperkte capaciteit plus een markt met schommelende prijzen, zodat het uitmaakt wanneer je verkoopt
+6. Uitbreiden: velden kopen, machines kopen en verkopen, silo upgraden
+7. Doelen als tutorial, automatisch opslaan, pauze en snelheid
+
+**Wat we van de concurrenten overnemen (later):** graanbunker en aanhangers (Agro Tycoon), contracten en productieketens (FS25), personeel met skills (Farm Manager), leningen (Farm Tycoon).
 
 Zie [`../todo.md`](../todo.md) voor de volledige lijst met extra's.
 

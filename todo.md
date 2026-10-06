@@ -1,49 +1,54 @@
 # TODO — Agro Tycoon 2.0
 
 Legenda: `[x]` klaar · `[ ]` te doen. Bovenaan staat wat eerst moet. Achtergrond staat in [`docs/ONDERZOEK.md`](docs/ONDERZOEK.md).
+Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 
-## ✅ Fase 0: Basisspel (MVP)
-- [x] Kaart met 8 velden, erf, schuur, silo en graanhandel (canvas)
+## ✅ Fase 0: Basisspel
+- [x] Grote kaart (2400×1600) met 19 velden, wegen, erf, schuur, silo's en graanhandel
+- [x] **Zelf rijden** over de hele kaart (WASD/pijltjes), camera volgt je
+- [x] Werktuig omlaag/omhoog met spatie, E = in-/uitstappen, C = zaaigoed wisselen
+- [x] Velden bestaan uit cellen: de grond verandert precies waar je rijdt
 - [x] Veldcyclus: stoppel → ploegen → zaaien → groeien → rijp → oogsten
-- [x] Machines rijden zichtbaar in banen over het veld (bewerkt deel verandert mee)
+- [x] Loonwerker inhuren die een heel veld automatisch doet (met jouw vrije machines)
 - [x] 3 gewassen: tarwe, gerst, maïs
-- [x] Machines: 3 tractoren, 2 ploegen, 2 zaaimachines, 3 maaidorsers
-- [x] Machine kan maar 1 taak tegelijk doen, dus een extra tractor = meer capaciteit
-- [x] Sterkere tractor = sneller werken; zwaar werktuig vereist 150+ pk
-- [x] Dieselkosten en zaaikosten
+- [x] Machines: 3 tractoren, 2 ploegen, 2 zaaimachines, 3 maaidorsers (elk met eigen werkbreedte en snelheid)
+- [x] Diesel-, zaai- en loonkosten
 - [x] Silo met capaciteit en 5 upgrade-niveaus
 - [x] Markt met dagelijkse prijsschommeling, trendpijl en grafiekje
-- [x] Velden kopen, machines kopen en verkopen (60% restwaarde)
+- [x] Velden kopen, machines kopen en verkopen
+- [x] Minimap, zoomen (scroll) en kaart verschuiven (slepen)
 - [x] Doelen/tutorial met beloningen + statistieken
-- [x] Dag/nacht, pauze, snelheid 1×/2×/4× (spatie, 1, 2, 3)
+- [x] Dag/nacht, pauze (P) en snelheid 1×/2×/4×
 - [x] Automatisch opslaan (localStorage)
-- [x] Werkt op mobiel
+- [x] Live link via GitHub Pages
 
 ## 🚜 Fase 1: Meer machines en vervoer
-- [ ] **Extra tractormerken/-modellen** (bijv. 50 pk oldtimer, 200 pk, 400 pk rupstrekker)
-- [ ] **Aanhangers / overlaadwagens**: graan moet naar de silo gereden worden
-- [ ] Maaidorser met eigen bunker die vol raakt (overladen tijdens het rijden, zoals Agro Tycoon v0.3.16)
-- [ ] **Cultivator** (sneller dan ploegen, minder opbrengstbonus)
+- [ ] **Extra tractormodellen** (50 pk oldtimer, 200 pk, 400 pk rupstrekker)
+- [ ] **Graanbunker in de maaidorser**: als hij vol is, moet je lossen
+- [ ] **Aanhangers / overlaadwagens**: graan zelf naar de silo of graanhandel rijden
+- [ ] Werktuigen los in de schuur aan- en afkoppelen (achteruit tegen het werktuig rijden)
+- [ ] Machines laten staan waar je uitstapt (niet terug naar de schuur)
+- [ ] **Cultivator** (sneller dan ploegen)
 - [ ] **Spuitmachine**: onkruid/herbicide
-- [ ] **Kunstmeststrooier / mestinjecteur**: hogere opbrengst
+- [ ] **Kunstmeststrooier**: hogere opbrengst
 - [ ] Rol, egalisatie en stenen rapen
 - [ ] Machineslijtage + onderhoud/reparatie in de schuur
-- [ ] Brandstoftank op het erf (diesel inkopen tegen dagprijs)
-- [ ] Machines leasen/huren i.p.v. kopen
-- [ ] Machines zichtbaar over de wegen laten rijden (pathfinding erf → veld)
-- [ ] Machine-upgrades (bredere werkbreedte, GPS = sneller)
+- [ ] Brandstoftank: tank leeg = bijtanken op het erf
+- [ ] Machines huren in plaats van kopen
+- [ ] Botsen met gebouwen en hekken; sneller rijden op de weg dan op het veld
+- [ ] Machine-upgrades (GPS = automatisch recht rijden)
 
 ## 👷 Fase 2: Personeel en automatisering
-- [ ] Personeel aannemen (salaris per dag, skills: snelheid, zuinigheid)
+- [ ] Vaste werknemers aannemen (salaris per dag, skills: snelheid, zuinigheid)
+- [ ] Loonwerkers rijden echt van de schuur naar het veld over de weg
 - [ ] Taken in een wachtrij zetten ("ploeg veld 3, daarna zaaien met maïs")
 - [ ] Automatische veldcyclus per veld (herhaal gewas X)
-- [ ] Personeelstevredenheid en training (zoals Farm Manager)
 
 ## 🌦️ Fase 3: Seizoenen, weer en bodem
 - [ ] Seizoenen: zaaien alleen in bepaalde maanden per gewas
 - [ ] Weer: regen (niet ploegen), droogte (lagere opbrengst), hagel/storm (schade)
 - [ ] Weersvoorspelling van 3 dagen
-- [ ] Bodemkwaliteit per veld (pH, voedingsstoffen, vruchtwisseling-bonus)
+- [ ] Bodemkwaliteit per veld (voedingsstoffen, bonus bij vruchtwisseling)
 - [ ] Irrigatie
 - [ ] Onkruid, ziektes en plagen
 - [ ] Rijp gewas verwelkt als je te lang wacht
@@ -62,39 +67,24 @@ Legenda: `[x]` klaar · `[ ]` te doen. Bovenaan staat wat eerst moet. Achtergron
 
 ## 🏭 Fase 6: Productie en economie
 - [ ] Fabrieken: bakkerij (meel → brood), molen, oliepers, zuivel
-- [ ] Contracten/orders met deadline en bonus (zoals FS25/Hay Day)
-- [ ] Meerdere verkooppunten met verschillende prijzen
+- [ ] Contracten/orders met deadline en bonus
+- [ ] Meerdere verkooppunten op de kaart met verschillende prijzen
 - [ ] Leningen bij de bank + rente
 - [ ] Financieel overzicht (grafiek inkomsten/uitgaven per dag)
-- [ ] Eigen boerderijwinkel
-- [ ] Graan opslaan en speculeren (vaste prijs vooruit verkopen)
 
 ## 🗺️ Fase 7: Wereld en progressie
-- [ ] Grotere kaart met scrollen/zoomen
-- [ ] Meerdere kaarten/regio's (bijv. Vlaanderen, Nederland, VS-prairie)
+- [ ] Nog grotere kaart / meerdere kaarten
 - [ ] Gebouwen zelf plaatsen (silo's, schuren, stallen)
-- [ ] Campagne/scenario's + sandbox-modus
+- [ ] Sandbox-modus + moeilijkheidsgraden
 - [ ] Prestaties (achievements)
-- [ ] Moeilijkheidsgraden (startgeld, prijzen)
 
 ## 🎨 Fase 8: Presentatie
 - [ ] Pixel-art sprites (isometrisch?)
 - [ ] Geluid: motoren, ambient, muziek
-- [ ] Animaties: graanstroom, bandensporen, stof, vogels
-- [ ] Tutorial met pijlen/highlights
-- [ ] Meerdere talen (NL/EN)
-- [ ] Opslaan export/import (bestand) + meerdere saves
-
-## 🌐 Fase 9: Online (onderscheidend t.o.v. Agro Tycoon)
-- [ ] Account + cloud save (bijv. Supabase)
-- [ ] Leaderboard (rijkste boer, grootste oogst)
-- [ ] Gedeelde markt tussen spelers
-- [ ] Co-op: samen één boerderij
-- [ ] Loonwerk: elkaars velden bewerken voor geld
+- [ ] Animaties: graanstroom, bandensporen, vogels
+- [ ] Opslaan exporteren/importeren (bestand) + meerdere saves
 
 ## 🛠️ Techniek
 - [ ] Unit tests voor `game.js` (economie, cycli)
 - [ ] Balans-spreadsheet (verdienen per uur per gewas/machine)
-- [ ] GitHub Pages deploy
 - [ ] Overstappen op ES-modules + Vite wanneer het project groter wordt
-- [ ] PWA (offline spelen, installeerbaar op telefoon)

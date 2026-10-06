@@ -1,9 +1,12 @@
 // Agro Tycoon 2.0 — spellogica (geen tekenwerk, geen DOM)
+// Velden bestaan uit cellen; zowel jij (zelf rijden) als loonwerkers bewerken die cellen.
 window.AT = window.AT || {};
 
 (function () {
   const D = AT.data;
   const SAVE_KEY = 'agro-tycoon-2-save';
+  const CROP_KEYS = Object.keys(D.crops);           // index+1 = gewas-id in cellen (0 = geen)
+  const ST = { STUBBLE: 0, PLOWED: 1, SOWN: 2 };    // celtoestanden
 
   // ---------- kleine event-bus zodat UI kan reageren ----------
   const listeners = {};
@@ -14,12 +17,14 @@ window.AT = window.AT || {};
   const newUid = () => uidCounter++;
 
   // ---------- nieuw spel ----------
-  function createState() {
-    const market = {};
-    for (const key of Object.keys(D.crops)) market[key] = { factor: 1, history: [1] };
+  function newCells(def) {
+    const n = def.cols * def.rows;
+    return { state: new Uint8Array(n), crop: new Uint8Array(n), planted: new Float32Array(n) };
+  }
 
-    const silo = {};
-    for (const key of Object.keys(D.crops)) silo[key] = 0;
+  function createState() {
+    const market = {}, silo = {};
+    for (const key of CROP_KEYS) { market[key] = { factor: 1, history: [1] }; silo[key] = 0; }
 
     return {
       version: D.version,
@@ -30,11 +35,11 @@ window.AT = window.AT || {};
       siloLevel: D.start.siloLevel,
       silo,
       market,
-      fields: D.fields.map(f => ({
-        id: f.id, owned: !!f.owned, state: 'stubble', crop: null, growth: 0, job: null,
-      })),
+      fields: D.fields.map(f => ({ id: f.id, owned: !!f.owned, cells: newCells(f), job: null, readyNotified: false })),
       machines: D.start.machines.map(type => ({ uid: newUid(), type, busy: null })),
-      stats: { plowed: 0, sown: 0, harvested: 0, tonsHarvested: 0, earned: 0, spent: 0 },
+      player: null,     // { uid, implUid, x, y, angle, speed, lowered, crop }
+      lastRig: null,
+      stats: { drove: false, plowedHa: 0, sownHa: 0, harvestedHa: 0, tonsHarvested: 0, earned: 0, spent: 0, workerJobs: 0 },
       goalsDone: {},
       log: [],
     };
@@ -47,6 +52,8 @@ window.AT = window.AT || {};
   const machineDef = m => D.machines[m.type];
   const day = () => Math.floor(S().time / 24) + 1;
   const hour = () => S().time % 24;
+  const growHours = cropIdx => D.crops[CROP_KEYS[cropIdx - 1]].growDays * 24;
+  const cellHa = def => def.ha / (def.cols * def.rows);
 
   function log(text, type = 'info') {
     const s = S();
@@ -55,11 +62,7 @@ window.AT = window.AT || {};
     AT.emit('log');
   }
 
-  function spend(amount) {
-    S().money -= amount;
-    S().stats.spent += amount;
-  }
-
+  function spend(amount) { S().money -= amount; S().stats.spent += amount; }
   function earn(amount, countAsEarned = true) {
     S().money += amount;
     if (countAsEarned) S().stats.earned += amount;
@@ -67,27 +70,99 @@ window.AT = window.AT || {};
 
   function siloCapacity() { return D.silo[S().siloLevel].capacity; }
   function siloUsed() { return Object.values(S().silo).reduce((a, b) => a + b, 0); }
-
-  // ruimte die al "gereserveerd" is door lopende oogsten
-  function siloReserved() {
-    return S().fields.reduce((sum, f) => {
-      if (f.job && f.job.type === 'harvest') return sum + expectedYield(f);
-      return sum;
-    }, 0);
-  }
-
-  function expectedYield(f) {
-    return fieldDef(f.id).ha * D.crops[f.crop].yieldPerHa;
-  }
-
-  function cropPrice(crop) {
-    return Math.round(D.crops[crop].basePrice * S().market[crop].factor);
-  }
-
+  function siloRoom() { return siloCapacity() - siloUsed(); }
+  function cropPrice(crop) { return Math.round(D.crops[crop].basePrice * S().market[crop].factor); }
   function fieldPrice(id) { return fieldDef(id).ha * D.landPricePerHa; }
 
-  // ---------- machines kiezen voor een taak ----------
+  // ---------- cellen ----------
+  function isReady(f, i) {
+    const c = f.cells;
+    return c.state[i] === ST.SOWN && S().time >= c.planted[i] + growHours(c.crop[i]);
+  }
+
+  // 0..1 groei van een ingezaaide cel
+  function cellGrowth(f, i) {
+    const c = f.cells;
+    if (c.state[i] !== ST.SOWN) return 0;
+    return Math.min(1, (S().time - c.planted[i]) / growHours(c.crop[i]));
+  }
+
+  function cellAt(x, y) {
+    const def = D.fields.find(f => x >= f.x && x < f.x + f.w && y >= f.y && y < f.y + f.h);
+    if (!def) return null;
+    const col = Math.floor((x - def.x) / D.CELL), row = Math.floor((y - def.y) / D.CELL);
+    return { def, f: field(def.id), i: row * def.cols + col };
+  }
+
+  // Telling per toestand (voor UI, minimap en loonwerkers)
+  function summary(f) {
+    const c = f.cells, n = c.state.length;
+    const out = { total: n, stubble: 0, plowed: 0, growing: 0, ready: 0, crops: {}, readyTons: 0, minGrowth: 1 };
+    const def = fieldDef(f.id), ha = cellHa(def);
+    for (let i = 0; i < n; i++) {
+      const s = c.state[i];
+      if (s === ST.STUBBLE) out.stubble++;
+      else if (s === ST.PLOWED) out.plowed++;
+      else {
+        const key = CROP_KEYS[c.crop[i] - 1];
+        out.crops[key] = (out.crops[key] || 0) + 1;
+        if (isReady(f, i)) { out.ready++; out.readyTons += ha * D.crops[key].yieldPerHa; }
+        else { out.growing++; out.minGrowth = Math.min(out.minGrowth, cellGrowth(f, i)); }
+      }
+    }
+    return out;
+  }
+
+  function mainCrop(sum) {
+    let best = null;
+    for (const k in sum.crops) if (!best || sum.crops[k] > sum.crops[best]) best = k;
+    return best;
+  }
+
+  // Bewerk één cel. mode = 'player' (betaal direct) of 'worker' (vooruitbetaald).
+  // Geeft 'ok', 'skip', 'nomoney' of 'full' terug.
+  function workCell(f, i, op, cropKey, mode) {
+    const c = f.cells, def = fieldDef(f.id), s = S();
+    if (!f.owned) return 'skip';
+    const ha = cellHa(def);
+
+    if (op === 'plow') {
+      if (c.state[i] !== ST.STUBBLE) return 'skip';
+      c.state[i] = ST.PLOWED;
+      s.stats.plowedHa += ha;
+    } else if (op === 'sow') {
+      if (c.state[i] !== ST.PLOWED) return 'skip';
+      if (mode === 'player') {
+        const cost = D.crops[cropKey].seedCostPerHa * ha;
+        if (s.money < cost) return 'nomoney';
+        spend(cost);
+      }
+      c.state[i] = ST.SOWN;
+      c.crop[i] = CROP_KEYS.indexOf(cropKey) + 1;
+      c.planted[i] = s.time;
+      s.stats.sownHa += ha;
+    } else if (op === 'harvest') {
+      if (!isReady(f, i)) return 'skip';
+      const key = CROP_KEYS[c.crop[i] - 1];
+      const tons = ha * D.crops[key].yieldPerHa * (0.9 + Math.random() * 0.2);
+      if (siloRoom() < tons) {
+        if (mode === 'player') return 'full';
+        if (f.job) f.job.lost += tons; // loonwerker: overschot gaat verloren
+      } else {
+        s.silo[key] += tons;
+        s.stats.tonsHarvested += tons;
+      }
+      c.state[i] = ST.STUBBLE;
+      c.crop[i] = 0;
+      s.stats.harvestedHa += ha;
+    }
+    if (AT.cellChanged) AT.cellChanged(f.id, i);
+    return 'ok';
+  }
+
+  // ---------- loonwerkers (automatische taken) ----------
   const TASK_IMPLEMENT = { plow: 'plow', sow: 'seeder' };
+  const TASK_OP = { plow: 'plow', sow: 'sow', harvest: 'harvest' };
 
   // snelheidsbonus als de tractor sterker is dan het werktuig nodig heeft
   function speedFactor(tractorDef, implDef) {
@@ -95,27 +170,24 @@ window.AT = window.AT || {};
     return Math.min(1 + extra * 0.5, 1.75);
   }
 
-  // Geeft de snelste vrije combinatie voor een taak, of null.
-  // Resultaat: { machines: [m...], hours, cost }
+  // Snelste vrije combinatie voor een taak: { machines, hours, cost, width } of null
   function bestRig(task, fieldId) {
     const ha = fieldDef(fieldId).ha;
     const free = S().machines.filter(m => !m.busy);
+    const wage = D.workerWagePerHour;
+    let best = null;
 
     if (task === 'harvest') {
-      let best = null;
       for (const m of free) {
         const d = machineDef(m);
         if (d.kind !== 'harvester') continue;
         const hours = ha / d.rate;
-        if (!best || hours < best.hours) {
-          best = { machines: [m], hours, cost: hours * d.fuelPerHour * D.fuelPrice };
-        }
+        if (!best || hours < best.hours) best = { machines: [m], hours, width: d.width, cost: hours * (d.fuelPerHour * D.fuelPrice + wage) };
       }
       return best;
     }
 
     const implKind = TASK_IMPLEMENT[task];
-    let best = null;
     for (const t of free) {
       const td = machineDef(t);
       if (td.kind !== 'tractor') continue;
@@ -123,15 +195,12 @@ window.AT = window.AT || {};
         const id = machineDef(i);
         if (id.kind !== implKind || td.power < id.minPower) continue;
         const hours = ha / (id.rate * speedFactor(td, id));
-        if (!best || hours < best.hours) {
-          best = { machines: [t, i], hours, cost: hours * td.fuelPerHour * D.fuelPrice };
-        }
+        if (!best || hours < best.hours) best = { machines: [t, i], hours, width: id.width, cost: hours * (td.fuelPerHour * D.fuelPrice + wage) };
       }
     }
     return best;
   }
 
-  // Waarom kan een taak niet? (voor duidelijke meldingen)
   function missingFor(task) {
     const all = S().machines;
     const has = kind => all.some(m => machineDef(m).kind === kind);
@@ -143,82 +212,132 @@ window.AT = window.AT || {};
     return `Geen vrije tractor + ${implName} (of tractor te zwak).`;
   }
 
-  // ---------- acties ----------
+  // Volgorde waarin een loonwerker de cellen afrijdt: banen (slangpatroon)
+  function jobCell(def, laneCols, k) {
+    const perLane = def.rows * laneCols;
+    const lane = Math.floor(k / perLane);
+    const within = k % perLane;
+    let row = Math.floor(within / laneCols);
+    const col = lane * laneCols + (within % laneCols);
+    if (lane % 2 === 1) row = def.rows - 1 - row;
+    if (col >= def.cols) return -1;
+    return row * def.cols + col;
+  }
+
+  function jobLength(def, laneCols) { return Math.ceil(def.cols / laneCols) * def.rows * laneCols; }
+
+  // Positie van de loonwerker-machine (voor tekenen)
+  function jobPosition(def, job) {
+    const N = jobLength(def, job.laneCols);
+    const k = Math.min(N - 1, Math.floor(job.progress * N));
+    const perLane = def.rows * job.laneCols;
+    const lane = Math.floor(k / perLane);
+    const rowF = (k % perLane) / perLane * def.rows;
+    const down = lane % 2 === 0;
+    const x = def.x + Math.min(def.w, (lane + 0.5) * job.laneCols * D.CELL);
+    const y = down ? def.y + rowF * D.CELL : def.y + def.h - rowF * D.CELL;
+    return { x, y, angle: down ? Math.PI / 2 : -Math.PI / 2 };
+  }
+
   function startJob(fieldId, task, crop) {
     const f = field(fieldId);
     if (!f || !f.owned || f.job) return false;
-
-    const needed = { plow: 'stubble', sow: 'plowed', harvest: 'ready' }[task];
-    if (f.state !== needed) return false;
+    const sum = summary(f);
+    const eligible = { plow: sum.stubble, sow: sum.plowed, harvest: sum.ready }[task];
+    if (!eligible) return false;
 
     const rig = bestRig(task, fieldId);
     if (!rig) { log(missingFor(task), 'warn'); return false; }
 
+    const def = fieldDef(fieldId);
     let cost = rig.cost;
     if (task === 'sow') {
       if (!D.crops[crop]) return false;
-      cost += D.crops[crop].seedCostPerHa * fieldDef(fieldId).ha;
+      cost += D.crops[crop].seedCostPerHa * cellHa(def) * eligible;
     }
-    if (task === 'harvest') {
-      const room = siloCapacity() - siloUsed() - siloReserved();
-      if (room < expectedYield(f)) {
-        log(`Silo te vol om Veld ${fieldId} te oogsten. Verkoop graan of vergroot de silo.`, 'warn');
-        return false;
-      }
+    if (task === 'harvest' && siloRoom() < sum.readyTons) {
+      log(`Silo te vol om Veld ${fieldId} te oogsten. Verkoop graan of vergroot de silo.`, 'warn');
+      return false;
     }
     if (S().money < cost) { log(`Niet genoeg geld (nodig: ${AT.fmtMoney(cost)}).`, 'warn'); return false; }
 
     spend(cost);
     rig.machines.forEach(m => { m.busy = fieldId; });
     f.job = {
-      type: task,
-      crop: task === 'sow' ? crop : f.crop,
-      machines: rig.machines.map(m => m.uid),
-      hours: rig.hours,
-      progress: 0,
+      type: task, crop, machines: rig.machines.map(m => m.uid), hours: rig.hours,
+      progress: 0, idx: 0, laneCols: Math.max(1, Math.round(rig.width / D.CELL)), lost: 0,
     };
     const names = rig.machines.map(m => machineDef(m).name).join(' + ');
     const verb = { plow: 'ploegt', sow: 'zaait', harvest: 'oogst' }[task];
-    log(`${names} ${verb} Veld ${fieldId} (${rig.hours.toFixed(1).replace('.', ',')} u, ${AT.fmtMoney(cost)}).`);
+    log(`Loonwerker ${verb} Veld ${fieldId} met ${names} (${AT.fmtHours(rig.hours)}, ${AT.fmtMoney(cost)}).`);
     AT.emit('change');
     return true;
   }
 
-  function finishJob(f) {
-    const job = f.job;
-    const s = S();
-    s.machines.forEach(m => { if (job.machines.includes(m.uid)) m.busy = null; });
-
-    if (job.type === 'plow') {
-      f.state = 'plowed';
-      s.stats.plowed++;
-      log(`Veld ${f.id} is geploegd.`, 'good');
-    } else if (job.type === 'sow') {
-      f.state = 'growing';
-      f.crop = job.crop;
-      f.growth = 0;
-      s.stats.sown++;
-      log(`Veld ${f.id} is ingezaaid met ${D.crops[job.crop].name.toLowerCase()}.`, 'good');
-    } else if (job.type === 'harvest') {
-      const variation = 0.9 + Math.random() * 0.2;
-      let tons = expectedYield(f) * variation;
-      const room = siloCapacity() - siloUsed();
-      if (tons > room) {
-        log(`Silo vol! ${AT.fmtTons(tons - room)} ${D.crops[f.crop].name.toLowerCase()} ging verloren.`, 'warn');
-        tons = room;
-      }
-      s.silo[f.crop] += tons;
-      s.stats.harvested++;
-      s.stats.tonsHarvested += tons;
-      log(`Veld ${f.id} geoogst: ${AT.fmtTons(tons)} ${D.crops[f.crop].name.toLowerCase()}.`, 'good');
-      f.state = 'stubble';
-      f.crop = null;
-      f.growth = 0;
+  function advanceJob(f, dtHours) {
+    const job = f.job, def = fieldDef(f.id);
+    job.progress = Math.min(1, job.progress + dtHours / job.hours);
+    const N = jobLength(def, job.laneCols);
+    const target = job.progress >= 1 ? N : Math.floor(job.progress * N);
+    for (; job.idx < target; job.idx++) {
+      const i = jobCell(def, job.laneCols, job.idx);
+      if (i >= 0) workCell(f, i, TASK_OP[job.type], job.crop, 'worker');
     }
+    if (job.progress >= 1) finishJob(f);
+  }
+
+  function finishJob(f) {
+    const job = f.job, s = S();
+    s.machines.forEach(m => { if (job.machines.includes(m.uid)) m.busy = null; });
+    s.stats.workerJobs++;
+    const done = { plow: 'geploegd', sow: 'ingezaaid', harvest: 'geoogst' }[job.type];
+    log(`Loonwerker klaar: Veld ${f.id} is ${done}.`, 'good');
+    if (job.lost > 0) log(`Silo vol! ${AT.fmtTons(job.lost)} ging verloren.`, 'warn');
     f.job = null;
     AT.emit('change');
   }
 
+  // ---------- zelf rijden: in- en uitstappen ----------
+  function canPull(tractor, impl) {
+    return machineDef(tractor).kind === 'tractor' && ['plow', 'seeder'].includes(machineDef(impl).kind) &&
+      machineDef(tractor).power >= machineDef(impl).minPower;
+  }
+
+  function enterVehicle(uid, implUid) {
+    const s = S();
+    if (s.player) exitVehicle();
+    const m = s.machines.find(x => x.uid === uid);
+    if (!m || m.busy) return false;
+    const impl = implUid ? s.machines.find(x => x.uid === implUid) : null;
+    if (impl && (impl.busy || !canPull(m, impl))) return false;
+    if (machineDef(m).kind !== 'tractor' && machineDef(m).kind !== 'harvester') return false;
+
+    m.busy = 'player';
+    if (impl) impl.busy = 'player';
+    const firstCrop = CROP_KEYS[0];
+    s.player = {
+      uid, implUid: impl ? impl.uid : null,
+      x: D.shedExit.x, y: D.shedExit.y, angle: D.shedExit.angle,
+      speed: 0, lowered: false, crop: (s.player && s.player.crop) || firstCrop,
+    };
+    s.lastRig = { uid, implUid: s.player.implUid };
+    s.stats.drove = true;
+    log(`Je stapt in de ${machineDef(m).name}${impl ? ' met ' + machineDef(impl).name : ''}.`);
+    AT.emit('enter');
+    AT.emit('change');
+    return true;
+  }
+
+  function exitVehicle() {
+    const s = S();
+    if (!s.player) return;
+    s.machines.forEach(m => { if (m.busy === 'player') m.busy = null; });
+    s.player = null;
+    log('Machine teruggezet in de schuur.');
+    AT.emit('change');
+  }
+
+  // ---------- acties ----------
   function sell(crop, tons) {
     const s = S();
     tons = Math.min(tons ?? s.silo[crop], s.silo[crop]);
@@ -238,7 +357,7 @@ window.AT = window.AT || {};
     if (S().money < price) { log('Niet genoeg geld voor dit veld.', 'warn'); return; }
     spend(price);
     f.owned = true;
-    log(`Veld ${id} gekocht (${fieldDef(id).ha} ha) voor ${AT.fmtMoney(price)}.`, 'money');
+    log(`Veld ${id} gekocht (${AT.fmtHa(fieldDef(id).ha)}) voor ${AT.fmtMoney(price)}.`, 'money');
     AT.emit('change');
   }
 
@@ -277,10 +396,9 @@ window.AT = window.AT || {};
   // ---------- tijd ----------
   function updateMarket() {
     const { minFactor, maxFactor, volatility } = D.market;
-    for (const key of Object.keys(S().market)) {
+    for (const key of CROP_KEYS) {
       const m = S().market[key];
-      // random walk met lichte trek terug naar 1.0
-      const drift = (1 - m.factor) * 0.1;
+      const drift = (1 - m.factor) * 0.1; // lichte trek terug naar 1.0
       m.factor = Math.min(maxFactor, Math.max(minFactor, m.factor + drift + (Math.random() * 2 - 1) * volatility));
       m.history.push(m.factor);
       if (m.history.length > 30) m.history.shift();
@@ -298,6 +416,21 @@ window.AT = window.AT || {};
     }
   }
 
+  // melding als een veld helemaal rijp is
+  function checkReady() {
+    for (const f of S().fields) {
+      if (!f.owned) continue;
+      const sum = summary(f);
+      if (sum.ready > 0 && sum.growing === 0 && !f.readyNotified) {
+        f.readyNotified = true;
+        log(`${D.crops[mainCrop(sum)].name} op Veld ${f.id} is klaar om te oogsten!`, 'good');
+        AT.emit('change');
+      }
+      if (sum.ready === 0) f.readyNotified = false;
+    }
+  }
+
+  let readyTimer = 0;
   // dtSeconds = echte seconden sinds vorige frame
   function tick(dtSeconds) {
     const s = S();
@@ -306,20 +439,11 @@ window.AT = window.AT || {};
     const prevDay = day();
     s.time += dtHours;
 
-    for (const f of s.fields) {
-      if (f.job) {
-        f.job.progress += dtHours / f.job.hours;
-        if (f.job.progress >= 1) finishJob(f);
-      } else if (f.state === 'growing') {
-        f.growth += dtHours / (D.crops[f.crop].growDays * 24);
-        if (f.growth >= 1) {
-          f.growth = 1;
-          f.state = 'ready';
-          log(`${D.crops[f.crop].name} op Veld ${f.id} is klaar om te oogsten!`, 'good');
-          AT.emit('change');
-        }
-      }
-    }
+    for (const f of s.fields) if (f.job) advanceJob(f, dtHours);
+    if (s.player && AT.vehicle) AT.vehicle.update(dtSeconds, dtHours);
+
+    readyTimer += dtSeconds;
+    if (readyTimer > 0.5) { readyTimer = 0; checkReady(); }
 
     if (day() !== prevDay) {
       updateMarket();
@@ -330,8 +454,19 @@ window.AT = window.AT || {};
   }
 
   // ---------- opslaan / laden ----------
+  const packBytes = arr => Array.from(arr, v => String.fromCharCode(48 + v)).join('');
+  const unpackBytes = (str, n) => { const a = new Uint8Array(n); for (let i = 0; i < n && i < str.length; i++) a[i] = str.charCodeAt(i) - 48; return a; };
+
   function save() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(S())); } catch (e) { /* geen opslag beschikbaar */ }
+    const s = S();
+    const out = Object.assign({}, s, {
+      fields: s.fields.map(f => ({
+        id: f.id, owned: f.owned, job: f.job, readyNotified: f.readyNotified,
+        state: packBytes(f.cells.state), crop: packBytes(f.cells.crop),
+        planted: Array.from(f.cells.planted, (v, i) => f.cells.state[i] === ST.SOWN ? Math.round(v * 10) / 10 : 0),
+      })),
+    });
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(out)); } catch (e) { /* geen opslag beschikbaar */ }
   }
 
   function load() {
@@ -340,12 +475,22 @@ window.AT = window.AT || {};
     const fresh = createState();
     if (!saved || saved.version !== D.version) return fresh;
 
-    // samenvoegen zodat nieuwe velden/gewassen uit data.js ook in oude saves werken
     const state = Object.assign(fresh, saved);
-    state.fields = fresh.fields.map(f => Object.assign(f, (saved.fields || []).find(sf => sf.id === f.id) || {}));
-    state.silo = Object.assign(createState().silo, saved.silo);
-    state.market = Object.assign(createState().market, saved.market);
-    state.stats = Object.assign(createState().stats, saved.stats);
+    state.fields = D.fields.map(def => {
+      const sf = (saved.fields || []).find(x => x.id === def.id);
+      const f = { id: def.id, owned: !!def.owned, cells: newCells(def), job: null, readyNotified: false };
+      if (!sf) return f;
+      const n = def.cols * def.rows;
+      f.owned = sf.owned; f.job = sf.job; f.readyNotified = sf.readyNotified;
+      f.cells.state = unpackBytes(sf.state || '', n);
+      f.cells.crop = unpackBytes(sf.crop || '', n);
+      f.cells.planted = Float32Array.from({ length: n }, (_, i) => (sf.planted || [])[i] || 0);
+      return f;
+    });
+    const base = createState();
+    state.silo = Object.assign(base.silo, saved.silo);
+    state.market = Object.assign(base.market, saved.market);
+    state.stats = Object.assign(base.stats, saved.stats);
     state.machines = (saved.machines || []).filter(m => D.machines[m.type]);
     uidCounter = state.machines.reduce((max, m) => Math.max(max, m.uid), 0) + 1;
     return state;
@@ -355,17 +500,22 @@ window.AT = window.AT || {};
     try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ok */ }
     uidCounter = 1;
     AT.state = createState();
-    log('Welkom bij Agro Tycoon 2.0! Klik op Veld 1 om te beginnen met ploegen.', 'goal');
+    log('Welkom bij Agro Tycoon 2.0! Ga naar Garage en stap in je tractor met ploeg.', 'goal');
+    AT.emit('reset');
     AT.emit('change');
   }
 
   // ---------- formatters ----------
   AT.fmtMoney = n => '€' + Math.round(n).toLocaleString('nl-NL');
   AT.fmtTons = n => n.toFixed(1).replace('.', ',') + ' t';
+  AT.fmtHa = n => String(n).replace('.', ',') + ' ha';
+  AT.fmtHours = n => n.toFixed(1).replace('.', ',') + ' u';
 
   AT.game = {
-    tick, startJob, sell, buyField, buyMachine, sellMachine, upgradeSilo,
-    save, load, reset, bestRig, missingFor,
-    day, hour, siloCapacity, siloUsed, siloReserved, cropPrice, fieldPrice, fieldDef, expectedYield,
+    ST, CROP_KEYS,
+    tick, startJob, sell, buyField, buyMachine, sellMachine, upgradeSilo, enterVehicle, exitVehicle,
+    save, load, reset, bestRig, missingFor, canPull, workCell, cellAt, summary, mainCrop,
+    isReady, cellGrowth, jobPosition, log,
+    day, hour, siloCapacity, siloUsed, siloRoom, cropPrice, fieldPrice, fieldDef, field,
   };
 })();

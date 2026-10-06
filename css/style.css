@@ -57,22 +57,28 @@ body {
 }
 .speed button.active { background: var(--gold); color: #2b2b2b; }
 
-/* ---------- layout ---------- */
+/* ---------- layout (desktop, schermvullend) ---------- */
+body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; min-width: 900px; }
 .layout {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) 380px;
   gap: 12px;
   padding: 12px;
-  max-width: 1440px;
-  margin: 0 auto;
-}
-.map-wrap { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-#map {
   width: 100%;
-  aspect-ratio: 1000 / 560;
+}
+.map-wrap { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.canvas-box { flex: 1; min-height: 0; position: relative; }
+#map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   border-radius: var(--radius);
   display: block;
   box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  cursor: grab;
 }
 .goal-banner {
   background: var(--panel);
@@ -87,7 +93,8 @@ body {
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 13px;
-  height: 120px;
+  height: 110px;
+  flex: none;
   overflow-y: auto;
 }
 .log > div { padding: 2px 0; }
@@ -103,9 +110,7 @@ body {
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 90px);
-  position: sticky;
-  top: 12px;
+  min-height: 0;
   overflow: hidden;
 }
 .tabs { display: flex; background: var(--panel-2); border-bottom: 1px solid var(--line); }
@@ -194,12 +199,13 @@ body {
 .goals li.done { color: var(--muted); text-decoration: line-through; }
 .goals li span:first-child { display: inline-block; width: 18px; color: var(--green); }
 
-@media (max-width: 960px) {
-  .layout { grid-template-columns: 1fr; padding: 8px 16px; }
-  .panel { position: static; max-height: none; }
-  .topbar { padding: 8px 16px; }
-  .stats { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, 1fr); order: 3; }
-  .stat { min-width: 0; padding: 4px 8px; }
-  .stat b { font-size: 14px; }
-  .speed { margin-left: auto; }
-}
+/* veldoverzicht */
+.stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--panel-2); margin: 6px 0; }
+.stack span { display: block; height: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.right { float: right; margin-top: 2px; }
+.row.wrap { flex-wrap: wrap; margin-top: 8px; }
+.crop-row { margin-top: 6px; }
+.card.driving { border-color: var(--green); background: #f1f8ec; }
+.crop-pick { margin: 8px 0 2px; flex-wrap: wrap; }

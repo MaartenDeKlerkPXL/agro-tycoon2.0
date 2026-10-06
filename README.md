@@ -3,30 +3,37 @@
 Een farming tycoon die je in de browser speelt. Hij is geïnspireerd op [Agro Tycoon](https://store.steampowered.com/app/4660350/Agro_Tycoon/) (Steam, 2027). Ploeg, zaai en oogst je velden met je eigen machinepark, verkoop op het juiste moment en groei uit tot landbouwmagnaat.
 
 ## Spelen
-Open `index.html` in je browser. Een server of installatie is niet nodig.
+**Live:** https://maartendeklerkpxl.github.io/agro-tycoon2.0/
 
-Of start een lokale server:
-```bash
-npx serve .
-```
+Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 
 **Besturing**
-- Klik op een veld om het te selecteren en een taak te starten
-- Spatie = pauze, `1` / `2` / `3` = snelheid 1×, 2× en 4×
-- De voortgang wordt automatisch opgeslagen in je browser
+| Toets | Actie |
+|---|---|
+| WASD / pijltjes | Rijden (of de camera verschuiven als je niet rijdt) |
+| Spatie | Werktuig omlaag/omhoog (ploeg, zaaimachine, maaibord) |
+| C | Zaaigoed wisselen |
+| E | In-/uitstappen |
+| Scroll / slepen | Zoomen / kaart verschuiven |
+| P | Pauze |
+| 1 / 2 / 3 | Snelheid 1×, 2×, 4× |
 
 ## Hoe het werkt
-1. **Ploegen** (tractor + ploeg) → **Zaaien** (tractor + zaaimachine, kies een gewas) → **Groeien** → **Oogsten** (maaidorser)
-2. Het graan gaat naar de **silo**. Verkoop het in de **Markt**, waar de prijzen elke dag veranderen
-3. Koop **extra velden, tractoren en werktuigen**. Elke machine doet één taak tegelijk, dus met meer machines werk je meerdere velden tegelijk
+1. Ga naar **Garage** en stap in je tractor met de ploeg. Rij naar Veld 1 en druk op **spatie** om te ploegen
+2. Koppel daarna de **zaaimachine**, kies een gewas (C) en zaai
+3. Is het gewas rijp, dan oogst je met de **maaidorser**. Het graan gaat naar de silo
+4. Verkoop in de **Markt**, waar de prijzen elke dag veranderen
+5. Geen zin om alles zelf te doen? Huur in de tab **Veld** een **loonwerker** in
+6. Koop extra velden, tractoren en werktuigen
 
 ## Projectstructuur
 ```
 index.html        pagina + layout
 css/style.css     opmaak
 js/data.js        ALLE content: gewassen, machines, velden, silo, doelen
-js/game.js        spellogica (tijd, taken, economie, opslaan)
-js/render.js      tekenen van de kaart op het canvas
+js/game.js        spellogica (cellen, loonwerkers, economie, opslaan)
+js/vehicle.js     zelf rijden: besturing + werken onder het werktuig
+js/render.js      tekenen: camera, velden, machines, minimap, HUD
 js/ui.js          zijpaneel, topbalk, logboek
 js/main.js        opstarten + game loop
 docs/ONDERZOEK.md onderzoek naar Agro Tycoon en concurrenten

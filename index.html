@@ -15,7 +15,7 @@
       <div class="stat"><small>Silo</small><b id="silo">0 t</b></div>
     </div>
     <div class="speed" role="group" aria-label="Spelsnelheid">
-      <button data-speed="pause" title="Pauze (spatie)">⏸</button>
+      <button data-speed="pause" title="Pauze (P)">⏸</button>
       <button data-speed="1" title="Normaal (1)">1×</button>
       <button data-speed="2" title="Snel (2)">2×</button>
       <button data-speed="4" title="Supersnel (3)">4×</button>
@@ -25,7 +25,7 @@
   <main class="layout">
     <section class="map-wrap">
       <div id="goal" class="goal-banner"></div>
-      <canvas id="map" aria-label="Kaart van de boerderij"></canvas>
+      <div class="canvas-box"><canvas id="map" aria-label="Kaart van de boerderij"></canvas></div>
       <div id="log" class="log" aria-live="polite"></div>
     </section>
 
@@ -43,6 +43,7 @@
 
   <script src="js/data.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/vehicle.js"></script>
   <script src="js/render.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>
