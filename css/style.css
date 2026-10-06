@@ -1,0 +1,205 @@
+:root {
+  --bg: #1f2a1c;
+  --panel: #fbf8f1;
+  --panel-2: #f1ebdd;
+  --ink: #2b2b2b;
+  --muted: #7a7466;
+  --line: #ddd4c2;
+  --green: #3f8f3a;
+  --green-dark: #2f6e2b;
+  --gold: #e0b84c;
+  --red: #c0392b;
+  --blue: #2c7fb8;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+/* ---------- topbalk ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: #2f3d2a;
+  color: #fff;
+  flex-wrap: wrap;
+}
+.brand { font-weight: 800; font-size: 18px; letter-spacing: .3px; }
+.brand span { color: var(--gold); }
+.stats { display: flex; gap: 10px; flex: 1; flex-wrap: wrap; }
+.stat {
+  background: rgba(255,255,255,.08);
+  border-radius: 8px;
+  padding: 4px 12px;
+  min-width: 110px;
+}
+.stat small { display: block; font-size: 11px; opacity: .7; }
+.stat b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.speed { display: flex; gap: 4px; }
+.speed button {
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+.speed button.active { background: var(--gold); color: #2b2b2b; }
+
+/* ---------- layout ---------- */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 12px;
+  padding: 12px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.map-wrap { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#map {
+  width: 100%;
+  aspect-ratio: 1000 / 560;
+  border-radius: var(--radius);
+  display: block;
+  box-shadow: 0 6px 20px rgba(0,0,0,.35);
+}
+.goal-banner {
+  background: var(--panel);
+  border-left: 4px solid var(--gold);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 600;
+}
+.log {
+  background: rgba(0,0,0,.35);
+  color: #e8e4d8;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  height: 120px;
+  overflow-y: auto;
+}
+.log > div { padding: 2px 0; }
+.log .muted { color: #9a9585; margin-right: 6px; font-variant-numeric: tabular-nums; }
+.log-good { color: #b9e89a; }
+.log-warn { color: #ffb38a; }
+.log-money { color: #ffe08a; }
+.log-goal { color: #9ad3ff; }
+
+/* ---------- zijpaneel ---------- */
+.panel {
+  background: var(--panel);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 90px);
+  position: sticky;
+  top: 12px;
+  overflow: hidden;
+}
+.tabs { display: flex; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.tabs button {
+  flex: 1;
+  border: 0;
+  background: none;
+  padding: 10px 4px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+}
+.tabs button.active { color: var(--ink); border-bottom-color: var(--green); }
+.tab-content { padding: 12px 14px 16px; overflow-y: auto; }
+.tab-content h2 { margin: 2px 0 8px; font-size: 20px; }
+.tab-content h3 { margin: 16px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.tab-content p { margin: 6px 0; }
+.status { font-weight: 600; }
+.muted { color: var(--muted); font-size: 13px; }
+.warn { color: var(--red); font-weight: 600; }
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 6px 0;
+}
+.card.row, .row { display: flex; align-items: center; gap: 8px; }
+.card .row + .row { margin-top: 6px; }
+.grow { flex: 1; min-width: 0; }
+.card.soon { color: var(--muted); font-size: 13px; background: var(--panel-2); }
+.crops .card .btn { margin-top: 8px; width: 100%; }
+.crop-head { display: flex; align-items: center; gap: 6px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+.swatch { width: 10px; align-self: stretch; border-radius: 3px; flex: none; }
+.badge { background: var(--panel-2); border-radius: 10px; padding: 0 6px; font-size: 12px; }
+.price { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.up { color: var(--green); }
+.down { color: var(--red); }
+.spark { color: var(--muted); flex: none; }
+
+.btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+}
+.btn.small { padding: 5px 10px; font-size: 13px; margin: 0; white-space: nowrap; }
+.btn.primary { background: var(--green); border-color: var(--green-dark); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--green-dark); }
+.btn.danger { color: var(--red); margin-top: 16px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.bar { height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden; margin: 8px 0 4px; }
+.bar .fill { height: 100%; width: 0; }
+.bar .fill.job { background: var(--blue); }
+.bar .fill.grow { background: #7fb24a; }
+
+.field-list { display: flex; flex-direction: column; gap: 4px; }
+.field-row {
+  display: flex;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.field-row.active { border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
+.field-row.ready { background: #fff4d6; }
+.field-row.forsale { color: var(--muted); }
+
+.goals { list-style: none; padding: 0; margin: 0; }
+.goals li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.goals li.done { color: var(--muted); text-decoration: line-through; }
+.goals li span:first-child { display: inline-block; width: 18px; color: var(--green); }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; padding: 8px 16px; }
+  .panel { position: static; max-height: none; }
+  .topbar { padding: 8px 16px; }
+  .stats { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, 1fr); order: 3; }
+  .stat { min-width: 0; padding: 4px 8px; }
+  .stat b { font-size: 14px; }
+  .speed { margin-left: auto; }
+}

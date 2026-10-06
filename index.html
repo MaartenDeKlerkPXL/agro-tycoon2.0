@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agro Tycoon 2.0</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🚜 Agro Tycoon <span>2.0</span></div>
+    <div class="stats">
+      <div class="stat"><small>Geld</small><b id="money">€0</b></div>
+      <div class="stat"><small>Tijd</small><b id="clock">Dag 1</b></div>
+      <div class="stat"><small>Silo</small><b id="silo">0 t</b></div>
+    </div>
+    <div class="speed" role="group" aria-label="Spelsnelheid">
+      <button data-speed="pause" title="Pauze (spatie)">⏸</button>
+      <button data-speed="1" title="Normaal (1)">1×</button>
+      <button data-speed="2" title="Snel (2)">2×</button>
+      <button data-speed="4" title="Supersnel (3)">4×</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="map-wrap">
+      <div id="goal" class="goal-banner"></div>
+      <canvas id="map" aria-label="Kaart van de boerderij"></canvas>
+      <div id="log" class="log" aria-live="polite"></div>
+    </section>
+
+    <aside class="panel">
+      <nav class="tabs">
+        <button data-tab="field">Veld</button>
+        <button data-tab="garage">Garage</button>
+        <button data-tab="shop">Winkel</button>
+        <button data-tab="market">Markt</button>
+        <button data-tab="goals">Doelen</button>
+      </nav>
+      <div id="tab-content" class="tab-content"></div>
+    </aside>
+  </main>
+
+  <script src="js/data.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
