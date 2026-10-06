@@ -209,3 +209,9 @@ body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; m
 .crop-row { margin-top: 6px; }
 .card.driving { border-color: var(--green); background: #f1f8ec; }
 .crop-pick { margin: 8px 0 2px; flex-wrap: wrap; }
+.thumb { width: 56px; height: 36px; object-fit: contain; flex: none; background: #e9efe2; border-radius: 6px; }
+.col { display: flex; flex-direction: column; gap: 4px; }
+.card.self { border-color: #e0b84c; background: #fff9e8; }
+.card.self p { margin: 4px 0; font-size: 14px; }
+.card.howto ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.card.howto li { margin: 2px 0; }

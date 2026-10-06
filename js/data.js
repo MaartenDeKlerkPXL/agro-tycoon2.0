@@ -4,7 +4,7 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 2,
+  version: 3,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
   world: { w: 2400, h: 1600 },
@@ -13,7 +13,13 @@ AT.data = {
   start: {
     money: 20000,
     hour: 6,
-    machines: ['tractor_small', 'plow_small', 'seeder_small', 'harvester_old'],
+    // machines met startplek op de parkeerplaats (slot) en wat er aangekoppeld is
+    machines: [
+      { type: 'tractor_small', slot: 0, impl: 'plow_small' },
+      { type: 'seeder_small', slot: 1 },
+      { type: 'harvester_old', slot: 4 },
+    ],
+    farmer: { x: 338, y: 812 },
     siloLevel: 0,
   },
 
@@ -54,9 +60,18 @@ AT.data = {
   fuelPrice: 1.6,          // € per liter diesel
   workerWagePerHour: 20,   // € per speluur voor een loonwerker
 
-  // Erf met boerderij, silo's en schuur
-  yard: { x: 40, y: 600, w: 320, h: 424 },
-  shedExit: { x: 372, y: 820, angle: 0 },
+  // Erf: boerderij, silo's, machinehal en parkeerplaats voor machines
+  yard: { x: 40, y: 600, w: 320, h: 424, gate: { y: 812, h: 52 } },
+  house: { x: 56, y: 616, w: 120, h: 84 },
+  silos: { x: 226, y: 636, dx: 36, dy: 42, perRow: 4, r: 15 },
+  hall: { x: 56, y: 722, w: 294, h: 72 },
+  parking: { x: 52, y: 806, w: 300, h: 210 },
+  // parkeerplekken (oostwaarts gericht), van de poort af gevuld
+  slots: [300, 236, 172, 108].flatMap(x => [834, 884, 934, 984].map(y => ({ x, y }))).sort((a, b) => a.y - b.y || b.x - a.x),
+  pond: { x: 200, y: 1118, rx: 120, ry: 36 },
+
+  // lopen
+  walkSpeed: 55, runSpeed: 110,
 
   // Wegen (rechthoeken)
   roads: [
@@ -68,7 +83,6 @@ AT.data = {
     { x: 624, y: 584, w: 16, h: 456 },
     { x: 872, y: 584, w: 16, h: 456 },
     { x: 808, y: 0, w: 24, h: 560 },
-    { x: 360, y: 280, w: 20, h: 16 },
   ],
 
   // Velden (veelvouden van CELL). ha wordt berekend uit de oppervlakte.
@@ -84,7 +98,7 @@ AT.data = {
     { id: 9,  x: 896,  y: 600,  w: 336, h: 424 },
     { id: 10, x: 832,  y: 48,   w: 400, h: 232 },
     { id: 11, x: 832,  y: 296,  w: 400, h: 248 },
-    { id: 12, x: 48,   y: 1080, w: 312, h: 472 },
+    { id: 12, x: 48,   y: 1176, w: 312, h: 376 },
     { id: 13, x: 424,  y: 1080, w: 800, h: 472 },
     { id: 14, x: 1280, y: 48,   w: 584, h: 496 },
     { id: 15, x: 1280, y: 600,  w: 584, h: 424 },
@@ -109,10 +123,10 @@ AT.data = {
 
   // Doelen / tutorial. check(state) => true als behaald.
   goals: [
-    { id: 'drive',    text: 'Stap in je tractor (tab Garage → Instappen)', reward: 0, check: s => s.stats.drove },
-    { id: 'plow1',    text: 'Ploeg 1 ha (spatie = ploeg omlaag)',  reward: 0,     check: s => s.stats.plowedHa >= 1 },
-    { id: 'sow1',     text: 'Zaai 1 ha',                            reward: 0,     check: s => s.stats.sownHa >= 1 },
-    { id: 'harvest1', text: 'Oogst 1 ha',                           reward: 2000,  check: s => s.stats.harvestedHa >= 1 },
+    { id: 'drive',    text: 'Loop naar je tractor en druk E om in te stappen', reward: 0, check: s => s.stats.drove },
+    { id: 'plow1',    text: 'Rij naar Veld 1 en ploeg 1 ha (spatie = ploeg omlaag)',  reward: 0,     check: s => s.stats.plowedHa >= 1 },
+    { id: 'sow1',     text: 'Koppel de zaaimachine (F) en zaai 1 ha',                            reward: 0,     check: s => s.stats.sownHa >= 1 },
+    { id: 'harvest1', text: 'Oogst 1 ha met de maaidorser',                           reward: 2000,  check: s => s.stats.harvestedHa >= 1 },
     { id: 'sell1',    text: 'Verkoop graan op de markt',            reward: 1000,  check: s => s.stats.earned > 0 },
     { id: 'worker',   text: 'Laat een loonwerker een veld doen',    reward: 1000,  check: s => s.stats.workerJobs >= 1 },
     { id: 'field3',   text: 'Koop een extra veld',                  reward: 5000,  check: s => s.fields.filter(f => f.owned).length >= 3 },

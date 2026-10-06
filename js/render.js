@@ -1,47 +1,58 @@
-// Agro Tycoon 2.0 — tekenen: wereld met camera, velden per cel, machines, minimap, HUD
+// Agro Tycoon 2.0 — tekenen: wereld, camera, velden per cel, machines, licht, minimap, HUD
 window.AT = window.AT || {};
 
 (function () {
   const D = AT.data;
   const C = D.CELL;
   const WW = D.world.w, WH = D.world.h;
+  const FS = 2; // resolutie van de veldlagen (pixels per wereld-eenheid)
+  const SP = () => AT.sprites;
+  const G = () => AT.game;
 
-  let canvas, ctx, grassPattern, vw = 0, vh = 0, dpr = 1;
+  let canvas, ctx, bg, vw = 0, vh = 0, dpr = 1, time = 0;
+  let lightCanvas, lctx;
   const view = { selected: 1, hover: null };
-  const cam = { x: 640, y: 780, zoom: 1.4 };
+  const cam = { x: 340, y: 820, zoom: 2, free: false };
   const MINI = { w: 210, scale: 210 / WW };
-
-  // per veld een offscreen canvas + cache van wat er per cel getekend is
   const layers = {};
+  let trees = [];
 
   function init(el) {
     canvas = el;
     ctx = canvas.getContext('2d');
-    grassPattern = makeGrassPattern();
+    lightCanvas = document.createElement('canvas');
+    lctx = lightCanvas.getContext('2d');
     for (const def of D.fields) {
       const c = document.createElement('canvas');
-      c.width = def.w; c.height = def.h;
-      layers[def.id] = { canvas: c, ctx: c.getContext('2d'), vis: new Uint8Array(def.cols * def.rows).fill(255) };
+      c.width = def.w * FS; c.height = def.h * FS;
+      const g = c.getContext('2d');
+      g.setTransform(FS, 0, 0, FS, 0, 0);
+      layers[def.id] = { canvas: c, ctx: g, vis: new Uint8Array(def.cols * def.rows).fill(255) };
     }
+    trees = placeTrees();
+    bg = paintBackground();
+    AT.fx.init();
     AT.cellChanged = (id, i) => drawCell(id, i);
-    AT.on('reset', () => { for (const id in layers) layers[id].vis.fill(255); refreshAll(); });
+    AT.on('reset', () => { for (const id in layers) layers[id].vis.fill(255); refreshAll(); AT.fx.reset(); cam.free = false; });
     new ResizeObserver(resize).observe(canvas);
     resize();
     refreshAll();
+    const p = AT.state.player;
+    cam.x = p.x; cam.y = p.y;
   }
 
   function resize() {
     dpr = window.devicePixelRatio || 1;
     vw = canvas.clientWidth; vh = canvas.clientHeight;
-    canvas.width = Math.round(vw * dpr);
-    canvas.height = Math.round(vh * dpr);
+    canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
+    lightCanvas.width = canvas.width; lightCanvas.height = canvas.height;
     clampCam();
   }
 
   // ---------- camera ----------
   function minZoom() { return Math.max(vw / WW, vh / WH, 0.35); }
   function clampCam() {
-    cam.zoom = Math.max(minZoom(), Math.min(3, cam.zoom));
+    cam.zoom = Math.max(minZoom(), Math.min(4, cam.zoom));
     const hw = vw / 2 / cam.zoom, hh = vh / 2 / cam.zoom;
     cam.x = Math.max(hw, Math.min(WW - hw, cam.x));
     cam.y = Math.max(hh, Math.min(WH - hh, cam.y));
@@ -51,13 +62,13 @@ window.AT = window.AT || {};
   function eventPos(evt) { const r = canvas.getBoundingClientRect(); return { x: evt.clientX - r.left, y: evt.clientY - r.top }; }
   function zoomAt(sx, sy, factor) {
     const before = screenToWorld(sx, sy);
-    cam.zoom *= factor;
-    clampCam();
+    cam.zoom *= factor; clampCam();
     const after = screenToWorld(sx, sy);
     cam.x += before.x - after.x; cam.y += before.y - after.y;
     clampCam();
   }
-  function centerOn(x, y) { cam.x = x; cam.y = y; clampCam(); }
+  // camera los van de speler zetten (slepen, minimap, "zoek op kaart")
+  function centerOn(x, y) { cam.x = x; cam.y = y; cam.free = true; clampCam(); }
 
   function fieldAt(x, y) {
     const f = D.fields.find(f => x >= f.x && x <= f.x + f.w && y >= f.y && y <= f.y + f.h);
@@ -68,70 +79,284 @@ window.AT = window.AT || {};
   function inMinimap(sx, sy) { const m = miniRect(); return sx >= m.x && sx <= m.x + m.w && sy >= m.y && sy <= m.y + m.h; }
   function minimapToWorld(sx, sy) { const m = miniRect(); return { x: (sx - m.x) / MINI.scale, y: (sy - m.y) / MINI.scale }; }
 
-  // camera volgen / verschuiven per frame
   function updateCamera(dt) {
     const p = AT.state.player;
-    if (p) {
+    if (AT.input.moved) { cam.free = false; AT.input.moved = 0; }
+    if (!cam.free) {
       const t = Math.min(1, dt * 5);
       cam.x += (p.x - cam.x) * t; cam.y += (p.y - cam.y) * t;
-    } else if (AT.vehicle) {
-      const pr = AT.vehicle.pressed, sp = 600 / cam.zoom * dt;
-      if (pr('KeyW', 'ArrowUp')) cam.y -= sp;
-      if (pr('KeyS', 'ArrowDown')) cam.y += sp;
-      if (pr('KeyA', 'ArrowLeft')) cam.x -= sp;
-      if (pr('KeyD', 'ArrowRight')) cam.x += sp;
     }
     clampCam();
   }
 
-  // ---------- cellen tekenen (offscreen) ----------
-  const G = () => AT.game;
+  // ---------- willekeur met vaste uitkomst ----------
+  function hash(n) { n = (n ^ 61) ^ (n >>> 16); n = n + (n << 3); n = n ^ (n >>> 4); n = Math.imul(n, 0x27d4eb2d); return (n ^ (n >>> 15)) >>> 0; }
+  function rng(seed) { let s = seed % 2147483647 || 1; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 
-  function visKey(f, i) {
-    const st = f.cells.state[i];
-    if (st !== G().ST.SOWN) return st;
-    const stage = G().isReady(f, i) ? 5 : Math.min(4, Math.floor(G().cellGrowth(f, i) * 5));
-    return 10 + f.cells.crop[i] * 8 + stage;
+  // ---------- achtergrond (één keer getekend) ----------
+  function inRect(x, y, r, m) { return x > r.x - m && x < r.x + r.w + m && y > r.y - m && y < r.y + r.h + m; }
+  function inPond(x, y, m) { const p = D.pond; return ((x - p.x) / (p.rx + m)) ** 2 + ((y - p.y) / (p.ry + m)) ** 2 < 1; }
+
+  function placeTrees() {
+    const rnd = rng(4242), list = [];
+    for (let k = 0; k < 14000 && list.length < 700; k++) {
+      const x = rnd() * WW, y = rnd() * WH;
+      const variant = Math.floor(rnd() * 9);
+      const R = SP().treeSprite(variant).R;
+      if (D.fields.some(f => inRect(x, y, f, R * 0.55))) continue;
+      if (D.roads.some(r => inRect(x, y, r, R * 0.3))) continue;
+      if (inRect(x, y, D.yard, R + 4) || inPond(x, y, R + 6)) continue;
+      if (x < 395 && y > D.yard.y + D.yard.gate.y - D.yard.y - 30 && y < D.yard.gate.y + D.yard.gate.h + 30) continue; // inrit vrijhouden
+      if (list.some(t => Math.hypot(t.x - x, t.y - y) < (t.R + R) * 0.75)) continue;
+      list.push({ x, y, variant, R, seed: k });
+    }
+    return list;
   }
+
+  function paintBackground() {
+    const c = document.createElement('canvas');
+    c.width = WW; c.height = WH;
+    const g = c.getContext('2d');
+    const rnd = rng(777);
+    // gras met vlekken en sprietjes
+    g.fillStyle = '#6dab4b'; g.fillRect(0, 0, WW, WH);
+    const blot = ['#5f9d40', '#7bb957', '#68a646', '#86c060', '#5a963f'];
+    for (let i = 0; i < 3500; i++) {
+      g.globalAlpha = 0.12 + rnd() * 0.1;
+      g.fillStyle = blot[Math.floor(rnd() * blot.length)];
+      g.beginPath(); g.ellipse(rnd() * WW, rnd() * WH, 8 + rnd() * 45, 6 + rnd() * 30, rnd() * 3, 0, Math.PI * 2); g.fill();
+    }
+    g.globalAlpha = 0.55;
+    const blade = ['#5a963d', '#8cc764', '#79b553', '#4f8a36'];
+    for (let i = 0; i < 90000; i++) { g.fillStyle = blade[i & 3]; g.fillRect(rnd() * WW, rnd() * WH, 1, 2); }
+    g.globalAlpha = 1;
+    const flowers = ['#f4f1e6', '#f2d84b', '#d86ca5', '#9db7f0', '#ffffff'];
+    for (let i = 0; i < 2500; i++) { g.fillStyle = flowers[i % 5]; g.fillRect(rnd() * WW, rnd() * WH, 1.2, 1.2); }
+
+    // vijver
+    const P = D.pond;
+    g.fillStyle = '#c8b682'; g.beginPath(); g.ellipse(P.x, P.y, P.rx + 6, P.ry + 5, 0, 0, Math.PI * 2); g.fill();
+    const wg = g.createRadialGradient(P.x - 20, P.y - 8, 5, P.x, P.y, P.rx);
+    wg.addColorStop(0, '#5aa6d1'); wg.addColorStop(0.7, '#3a7fb0'); wg.addColorStop(1, '#2b6590');
+    g.fillStyle = wg; g.beginPath(); g.ellipse(P.x, P.y, P.rx, P.ry, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 1;
+    for (let i = 0; i < 6; i++) { g.beginPath(); g.ellipse(P.x - 30 + i * 14, P.y - 10 + (i % 2) * 14, 10, 2, 0, 0, Math.PI); g.stroke(); }
+    for (let i = 0; i < 9; i++) {
+      const a = rnd() * Math.PI * 2, d = 0.4 + rnd() * 0.45;
+      g.fillStyle = '#4c8f3a'; g.beginPath(); g.arc(P.x + Math.cos(a) * P.rx * d, P.y + Math.sin(a) * P.ry * d, 3 + rnd() * 2, 0.3, Math.PI * 2); g.fill();
+      if (rnd() < 0.4) { g.fillStyle = '#f7c6d9'; g.fillRect(P.x + Math.cos(a) * P.rx * d - 0.8, P.y + Math.sin(a) * P.ry * d - 0.8, 1.6, 1.6); }
+    }
+    g.strokeStyle = '#3d6b2a'; g.lineWidth = 0.8;
+    for (let i = 0; i < 70; i++) {
+      const a = rnd() * Math.PI * 2, x = P.x + Math.cos(a) * (P.rx + 1), y = P.y + Math.sin(a) * (P.ry + 1);
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rnd() - 0.5) * 3, y - 4 - rnd() * 4); g.stroke();
+    }
+
+    // erf: bestrating met tegels
+    const Y = D.yard;
+    g.fillStyle = '#bdb6a7'; g.fillRect(Y.x, Y.y, Y.w, Y.h);
+    g.fillRect(Y.x + Y.w - 2, Y.gate.y, 24, Y.gate.h); // inrit naar de weg
+    g.strokeStyle = 'rgba(0,0,0,0.07)'; g.lineWidth = 0.8;
+    for (let x = Y.x; x <= Y.x + Y.w; x += 16) { g.beginPath(); g.moveTo(x, Y.y); g.lineTo(x, Y.y + Y.h); g.stroke(); }
+    for (let y = Y.y; y <= Y.y + Y.h; y += 16) { g.beginPath(); g.moveTo(Y.x, y); g.lineTo(Y.x + Y.w, y); g.stroke(); }
+    for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(80,70,50,${0.05 + rnd() * 0.06})`; g.beginPath(); g.ellipse(Y.x + rnd() * Y.w, Y.y + rnd() * Y.h, 3 + rnd() * 10, 2 + rnd() * 6, rnd() * 3, 0, Math.PI * 2); g.fill(); }
+    // parkeerplaats
+    const PK = D.parking;
+    g.fillStyle = '#8e8d87'; g.fillRect(PK.x, PK.y, PK.w, PK.h);
+    for (let i = 0; i < 400; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'; g.fillRect(PK.x + rnd() * PK.w, PK.y + rnd() * PK.h, 2, 2); }
+    g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 1;
+    for (const y of [859, 909, 959]) { g.setLineDash([8, 6]); g.beginPath(); g.moveTo(PK.x + 6, y); g.lineTo(PK.x + PK.w - 6, y); g.stroke(); }
+    g.setLineDash([]);
+    // tuintje bij het huis
+    const H = D.house;
+    g.fillStyle = '#5f9e44'; g.fillRect(H.x - 4, H.y + H.h + 6, H.w + 8, 10);
+    for (let i = 0; i < 40; i++) { g.fillStyle = flowers[i % 4]; g.fillRect(H.x + rnd() * H.w, H.y + H.h + 7 + rnd() * 8, 1.6, 1.6); }
+    return c;
+  }
+
+  // ---------- wegen ----------
+  const isMain = r => Math.min(r.w, r.h) >= 24;
+  function drawRoads() {
+    for (const r of D.roads) {
+      if (isMain(r)) continue;
+      ctx.fillStyle = '#b49a6e'; ctx.fillRect(r.x, r.y, r.w, r.h);
+      const horiz = r.w > r.h;
+      ctx.fillStyle = 'rgba(90,70,40,0.32)';
+      if (horiz) { ctx.fillRect(r.x, r.y + r.h * 0.22, r.w, 2.2); ctx.fillRect(r.x, r.y + r.h * 0.68, r.w, 2.2); }
+      else { ctx.fillRect(r.x + r.w * 0.22, r.y, 2.2, r.h); ctx.fillRect(r.x + r.w * 0.68, r.y, 2.2, r.h); }
+      ctx.fillStyle = 'rgba(95,150,60,0.55)';
+      if (horiz) ctx.fillRect(r.x, r.y + r.h / 2 - 0.8, r.w, 1.6); else ctx.fillRect(r.x + r.w / 2 - 0.8, r.y, 1.6, r.h);
+    }
+    for (const r of D.roads) {
+      if (!isMain(r)) continue;
+      ctx.fillStyle = '#c3ad84'; ctx.fillRect(r.x - 1.5, r.y - 1.5, r.w + 3, r.h + 3);
+      ctx.fillStyle = '#5a5e62'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1;
+    for (const r of D.roads) {
+      if (!isMain(r)) continue;
+      const horiz = r.w > r.h;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      if (horiz) { ctx.moveTo(r.x, r.y + 2); ctx.lineTo(r.x + r.w, r.y + 2); ctx.moveTo(r.x, r.y + r.h - 2); ctx.lineTo(r.x + r.w, r.y + r.h - 2); }
+      else { ctx.moveTo(r.x + 2, r.y); ctx.lineTo(r.x + 2, r.y + r.h); ctx.moveTo(r.x + r.w - 2, r.y); ctx.lineTo(r.x + r.w - 2, r.y + r.h); }
+      ctx.stroke();
+      ctx.setLineDash([10, 9]);
+      ctx.beginPath();
+      if (horiz) { ctx.moveTo(r.x, r.y + r.h / 2); ctx.lineTo(r.x + r.w, r.y + r.h / 2); }
+      else { ctx.moveTo(r.x + r.w / 2, r.y); ctx.lineTo(r.x + r.w / 2, r.y + r.h); }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // kruispunten zonder strepen
+    ctx.fillStyle = '#5a5e62';
+    for (const a of D.roads) for (const b of D.roads) {
+      if (!isMain(a) || !isMain(b) || !(a.w > a.h) || b.w > b.h) continue;
+      const x0 = Math.max(a.x, b.x), y0 = Math.max(a.y, b.y), x1 = Math.min(a.x + a.w, b.x + b.w), y1 = Math.min(a.y + a.h, b.y + b.h);
+      if (x1 > x0 && y1 > y0) ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
+  }
+
+  // ---------- erf ----------
+  const LAMPS = [{ x: 200, y: 712 }, { x: 345, y: 800 }, { x: 345, y: 1000 }, { x: 60, y: 1000 }];
+  function drawYard(state) {
+    const Y = D.yard;
+    // hek rondom (met opening bij de poort)
+    ctx.strokeStyle = '#7a5a3a'; ctx.lineWidth = 1.2;
+    const gy0 = Y.gate.y, gy1 = Y.gate.y + Y.gate.h;
+    const segs = [[Y.x, Y.y, Y.x + Y.w, Y.y], [Y.x, Y.y, Y.x, Y.y + Y.h], [Y.x, Y.y + Y.h, Y.x + Y.w, Y.y + Y.h],
+      [Y.x + Y.w, Y.y, Y.x + Y.w, gy0], [Y.x + Y.w, gy1, Y.x + Y.w, Y.y + Y.h]];
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    for (const [x0, y0, x1, y1] of segs) { ctx.beginPath(); ctx.moveTo(x0 + 1.5, y0 + 2); ctx.lineTo(x1 + 1.5, y1 + 2); ctx.stroke(); }
+    ctx.strokeStyle = '#8b6a45';
+    for (const [x0, y0, x1, y1] of segs) {
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      const len = Math.hypot(x1 - x0, y1 - y0);
+      ctx.fillStyle = '#5e4129';
+      for (let s = 0; s <= len; s += 12) ctx.fillRect(x0 + (x1 - x0) * s / len - 1, y0 + (y1 - y0) * s / len - 1, 2, 2);
+    }
+    SP().house(ctx, D.house.x, D.house.y, D.house.w, D.house.h);
+    SP().hall(ctx, D.hall.x, D.hall.y, D.hall.w, D.hall.h);
+    const S = D.silos, fill = G().siloCapacity() ? G().siloUsed() / G().siloCapacity() : 0;
+    for (let i = 0; i <= state.siloLevel; i++) {
+      SP().silo(ctx, S.x + (i % S.perRow) * S.dx, S.y + Math.floor(i / S.perRow) * S.dy, S.r, fill);
+    }
+    for (const L of LAMPS) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; SP().circle(ctx, L.x + 2, L.y + 3, 2);
+      ctx.fillStyle = '#3b3f42'; SP().circle(ctx, L.x, L.y, 2);
+      ctx.fillStyle = '#f6e7a8'; SP().circle(ctx, L.x, L.y, 1);
+    }
+  }
+
+  // ---------- velden: cellen tekenen (offscreen) ----------
+  function visKey(f, i) {
+    const st = f.cells.state[i], dir = f.cells.dir[i];
+    if (st !== G().ST.SOWN) return st * 2 + dir;
+    const stage = G().isReady(f, i) ? 5 : Math.min(4, Math.floor(G().cellGrowth(f, i) * 5));
+    return 10 + (f.cells.crop[i] * 8 + stage) * 2 + dir;
+  }
+
+  const STUBBLE = ['#c9ae6b', '#c3a764', '#cfb576', '#c6aa69'];
+  const SOIL = ['#7b5233', '#75502f', '#80573a', '#7a5535'];
+  const READY = {
+    wheat: { base: ['#dcb44c', '#d6ad45', '#e2bc55', '#d9b24a'], dark: '#b38a2c', light: '#f4da86' },
+    barley: { base: ['#d9c98d', '#d3c283', '#dfd096', '#d6c689'], dark: '#b4a266', light: '#f4e9bf' },
+  };
 
   function drawCell(id, i) {
-    const def = G().fieldDef(id), f = G().field(id), L = layers[id];
+    const def = G().fieldDef(id), f = G().field(id), L = layers[id], g = L.ctx;
     const key = visKey(f, i);
     L.vis[i] = key;
-    const g = L.ctx;
     const x = (i % def.cols) * C, y = Math.floor(i / def.cols) * C;
     const h = hash(id * 100003 + i);
+    const dir = key & 1;
+    // rechthoek langs (a) en dwars op (c) de rijrichting
+    const R = (a, c, len, w) => dir ? g.fillRect(x + a, y + c, len, w) : g.fillRect(x + c, y + a, w, len);
 
-    if (key === 0) { // stoppel
-      g.fillStyle = '#c8ad6a'; g.fillRect(x, y, C, C);
-      g.fillStyle = '#a88d4a';
-      g.fillRect(x + 1 + (h & 1), y + 1, 1, 2);
-      g.fillRect(x + 5 - (h & 1), y + 4, 1, 2);
+    if (key < 2) { // stoppel
+      g.fillStyle = STUBBLE[h & 3]; g.fillRect(x, y, C, C);
+      for (const c of [1.5, 5.5]) {
+        for (let a = 0.3; a < C; a += 1.5) {
+          g.fillStyle = (h >> Math.round(a)) & 1 ? '#a8893f' : '#e3cd8f';
+          R(a, c + ((h >> (Math.round(a) + 3)) & 1) * 0.5, 0.8, 0.6);
+        }
+      }
+      g.fillStyle = '#ead7a0'; R((h >> 4) & 7, (h >> 7) & 7, 2.2, 0.5);
       return;
     }
-    // geploegde ondergrond met voren
-    g.fillStyle = '#7a5232'; g.fillRect(x, y, C, C);
-    g.fillStyle = '#5e3d24'; g.fillRect(x + 1, y, 1, C); g.fillRect(x + 5, y, 1, C);
-    if (key === 1) return;
+    // ondergrond (geploegd)
+    const sown = key >= 10;
+    g.fillStyle = sown ? '#6f4a2e' : SOIL[h & 3]; g.fillRect(x, y, C, C);
+    if (!sown) {
+      for (const c of [0.5, 3.2, 5.9]) {
+        g.fillStyle = '#5b3a22'; R(0, c, C, 1.1);
+        g.fillStyle = '#94694a'; R(0, c + 1.1, C, 0.5);
+      }
+      g.fillStyle = '#9a7050'; R((h >> 3) & 7, (h >> 6) & 7, 1, 1);
+      g.fillStyle = '#4f321d'; R((h >> 9) & 7, (h >> 12) & 7, 1, 0.8);
+      return;
+    }
 
-    const cropIdx = Math.floor((key - 10) / 8), stage = (key - 10) % 8;
-    const crop = D.crops[G().CROP_KEYS[cropIdx - 1]];
+    const v = (key - 10) >> 1;
+    const cropIdx = Math.floor(v / 8), stage = v % 8;
+    const cropKey = G().CROP_KEYS[cropIdx - 1], crop = D.crops[cropKey];
+    // fijne zaairijen
+    g.fillStyle = '#5f3f26'; R(0, 2, C, 0.6); R(0, 6, C, 0.6);
+
+    if (cropKey === 'corn') {
+      g.save(); g.beginPath(); g.rect(x, y, C, C); g.clip();
+      if (stage === 5) { g.fillStyle = '#7b6a3c'; g.fillRect(x, y, C, C); }
+      const size = [0.6, 1.3, 2.2, 3.1, 3.8, 4][stage];
+      g.lineCap = 'round';
+      for (const a of [2, 6]) {
+        const px = dir ? x + a : x + 4, py = dir ? y + 4 : y + a;
+        if (stage === 0) { g.fillStyle = crop.growColor; g.fillRect(px - 0.4, py - 0.4, 0.8, 0.8); continue; }
+        g.strokeStyle = stage === 5 ? '#9aa04e' : SP().shade(crop.growColor, ((h >> a) & 1) ? 0.1 : -0.1);
+        g.lineWidth = 0.9;
+        // bladeren in een willekeurige richting per plant
+        const rotA = ((h >> (a * 2)) & 15) / 16 * Math.PI;
+        g.beginPath();
+        for (let leaf = 0; leaf < 3; leaf++) {
+          const la = rotA + leaf * Math.PI / 3, ls = size * (leaf === 1 ? 0.8 : 1);
+          g.moveTo(px - Math.cos(la) * ls, py - Math.sin(la) * ls);
+          g.lineTo(px + Math.cos(la) * ls, py + Math.sin(la) * ls);
+        }
+        g.stroke();
+        if (stage >= 4) { g.fillStyle = stage === 5 ? '#f0d98a' : '#d7e08a'; g.fillRect(px - 0.6, py - 0.6, 1.2, 1.2); }
+        if (stage === 5) { g.fillStyle = '#d4b04a'; g.fillRect(px + 1, py + 0.5, 1.4, 0.8); }
+      }
+      g.restore();
+      return;
+    }
+
+    // graan (tarwe/gerst)
     if (stage === 5) {
-      g.fillStyle = crop.color; g.fillRect(x, y, C, C);
-      g.fillStyle = 'rgba(120,80,20,0.35)';
-      g.fillRect(x + (h & 7), y + ((h >> 3) & 7), 1, 2);
-      g.fillRect(x + ((h >> 6) & 7), y + ((h >> 9) & 7), 1, 2);
-      g.fillStyle = 'rgba(255,255,255,0.3)'; g.fillRect(x + ((h >> 12) & 7), y + ((h >> 15) & 7), 1, 1);
-      if (crop === D.crops.corn) { g.fillStyle = '#4f9a3a'; g.fillRect(x + 1 + (h & 3), y + 1, 2, 3); }
+      const look = READY[cropKey] || READY.wheat;
+      g.fillStyle = look.base[h & 3]; g.fillRect(x, y, C, C);
+      for (const c of [1, 3, 5, 7]) {
+        for (let a = (c % 4 === 1 ? 0 : 1.2); a < C; a += 2.5) {
+          g.fillStyle = look.dark; R(a, c - 0.4, cropKey === 'barley' ? 1.8 : 1.3, cropKey === 'barley' ? 0.4 : 0.8);
+          g.fillStyle = look.light; R(a + 0.4, c + 0.4, 0.6, 0.5);
+        }
+      }
       return;
     }
-    const size = 1 + stage;
-    g.fillStyle = stage >= 4 ? mix(crop.growColor, crop.color, 0.5) : crop.growColor;
-    g.fillRect(x + 3.5 - size / 2, y + 2 - size / 2 + 1, size, size);
-    if (stage >= 2) g.fillRect(x + 3.5 - size / 2, y + 6 - size / 2, size, size - 1);
+    if (stage === 0) {
+      g.fillStyle = crop.growColor;
+      for (let a = 0.5; a < C; a += 2) { R(a, 1.75, 0.5, 0.5); R(a + 1, 5.75, 0.5, 0.5); }
+      return;
+    }
+    const w = [0, 1, 1.8, 2.8, 3.7][stage];
+    const col = stage === 4 ? SP().mix(crop.growColor, crop.color, 0.35) : crop.growColor;
+    for (const c of [2, 6]) {
+      g.fillStyle = col; R(0, c - w / 2, C, w);
+      g.fillStyle = 'rgba(255,255,220,0.25)';
+      for (let a = (h >> c) & 1; a < C; a += 2) R(a, c - w / 2 + ((h >> (a + 2)) & 1) * w * 0.5, 0.6, 0.6);
+      g.fillStyle = 'rgba(0,40,0,0.18)'; R(((h >> 5) & 7), c + w / 2 - 0.6, 1, 0.6);
+    }
   }
 
-  // groei-stadia veranderen met de tijd: elk frame een stuk van de velden controleren
+  // groei-stadia veranderen met de tijd: elk frame een paar velden controleren
   let scanField = 0;
   function refreshSome(count) {
     for (let k = 0; k < count; k++) {
@@ -143,218 +368,271 @@ window.AT = window.AT || {};
   }
   function refreshAll() { refreshSome(D.fields.length); }
 
-  // ---------- achtergrond, wegen, erf ----------
-  function makeGrassPattern() {
-    const c = document.createElement('canvas');
-    c.width = c.height = 64;
-    const g = c.getContext('2d');
-    g.fillStyle = '#7cb95a'; g.fillRect(0, 0, 64, 64);
-    for (let i = 0; i < 140; i++) {
-      g.fillStyle = Math.random() < 0.5 ? '#6faa4e' : '#8bc566';
-      g.fillRect(Math.floor(Math.random() * 64), Math.floor(Math.random() * 64), 2, 2);
-    }
-    return ctx.createPattern(c, 'repeat');
-  }
-
-  function drawWorldBase() {
-    ctx.fillStyle = grassPattern;
-    ctx.fillRect(0, 0, WW, WH);
-    ctx.fillStyle = '#c9b08a';
-    for (const r of D.roads) ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = 'rgba(0,0,0,0.06)';
-    for (const r of D.roads) {
-      if (r.w > r.h) ctx.fillRect(r.x, r.y + r.h / 2 - 1, r.w, 2);
-      else ctx.fillRect(r.x + r.w / 2 - 1, r.y, 2, r.h);
-    }
-  }
-
-  function drawYard(state) {
-    const Y = D.yard;
-    ctx.fillStyle = '#b9b3a4';
-    roundRect(Y.x, Y.y, Y.w, Y.h, 8); ctx.fill();
-    // inrit naar de weg
-    ctx.fillStyle = '#b9b3a4';
-    ctx.fillRect(Y.x + Y.w - 4, 800, 28, 44);
-
-    // boerderij
-    ctx.fillStyle = '#efe6d2'; ctx.fillRect(60, 640, 110, 80);
-    ctx.fillStyle = '#8e3b2e';
-    ctx.beginPath(); ctx.moveTo(52, 646); ctx.lineTo(115, 612); ctx.lineTo(178, 646); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#5b3a29'; ctx.fillRect(106, 686, 18, 34);
-    ctx.fillStyle = '#9fd3f0'; ctx.fillRect(72, 658, 18, 14); ctx.fillRect(140, 658, 18, 14);
-
-    // silo's (aantal = niveau + 1) met vulling
-    const fill = G().siloCapacity() ? G().siloUsed() / G().siloCapacity() : 0;
-    for (let i = 0; i <= state.siloLevel; i++) {
-      const cx = 210 + (i % 4) * 34, cy = 624 + Math.floor(i / 4) * 70;
-      ctx.fillStyle = '#9aa4ad'; ctx.fillRect(cx - 14, cy, 28, 64);
-      ctx.fillStyle = '#e0b84c'; ctx.fillRect(cx - 14, cy + 64 - 64 * fill, 28, 64 * fill);
-      ctx.strokeStyle = '#5f6a73'; ctx.lineWidth = 1.5; ctx.strokeRect(cx - 14, cy, 28, 64);
-      ctx.fillStyle = '#7d8790'; ctx.beginPath(); ctx.ellipse(cx, cy, 14, 6, 0, Math.PI, 0); ctx.fill();
-    }
-
-    // schuur met open deur naar de weg
-    ctx.fillStyle = '#a0522d'; ctx.fillRect(60, 760, 290, 140);
-    ctx.fillStyle = '#6e3a20'; ctx.fillRect(60, 752, 290, 12);
-    ctx.fillStyle = '#d7c7a8'; ctx.fillRect(72, 776, 266, 112);
-    ctx.fillStyle = '#d7c7a8'; ctx.fillRect(340, 804, 10, 36);
-
-    const free = state.machines.filter(m => !m.busy);
-    free.slice(0, 15).forEach((m, i) => drawMachine(m.type, 96 + (i % 5) * 50, 798 + Math.floor(i / 5) * 34, 0));
-
-    // graanhandel
-    ctx.fillStyle = '#ece6d6'; roundRect(60, 920, 290, 90, 8); ctx.fill();
-    ctx.fillStyle = '#3d5a80'; ctx.fillRect(110, 950, 110, 38);
-    ctx.fillStyle = '#98c1d9'; ctx.fillRect(220, 958, 32, 30);
-    ctx.fillStyle = '#222';
-    [126, 194, 236].forEach(x => { ctx.beginPath(); ctx.arc(x, 990, 7, 0, Math.PI * 2); ctx.fill(); });
-  }
-
-  // ---------- velden ----------
-  function drawFields(state) {
-    ctx.imageSmoothingEnabled = false;
+  function drawFields(state, sums) {
     for (const def of D.fields) {
-      const f = state.fields.find(x => x.id === def.id);
-      ctx.drawImage(layers[def.id].canvas, def.x, def.y);
-      if (!f.owned) {
-        ctx.fillStyle = 'rgba(110,165,80,0.82)';
-        ctx.fillRect(def.x, def.y, def.w, def.h);
-        ctx.strokeStyle = 'rgba(40,80,30,0.3)'; ctx.lineWidth = 1.5;
-        ctx.save(); ctx.beginPath(); ctx.rect(def.x, def.y, def.w, def.h); ctx.clip();
-        for (let i = -def.h; i < def.w; i += 18) { ctx.beginPath(); ctx.moveTo(def.x + i, def.y + def.h); ctx.lineTo(def.x + i + def.h, def.y); ctx.stroke(); }
-        ctx.restore();
+      const f = G().field(def.id);
+      if (f.owned) {
+        ctx.imageSmoothingEnabled = cam.zoom < FS;
+        ctx.drawImage(layers[def.id].canvas, def.x, def.y, def.w, def.h);
+        ctx.imageSmoothingEnabled = true;
+        // rand: smalle grasstrook / akkerrand
+        ctx.strokeStyle = 'rgba(60,40,20,0.35)'; ctx.lineWidth = 1;
+        ctx.strokeRect(def.x + 0.5, def.y + 0.5, def.w - 1, def.h - 1);
+      } else {
+        // weiland te koop: gras met paaltjes in de hoeken
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([6, 6]); ctx.lineWidth = 1;
+        ctx.strokeRect(def.x + 2, def.y + 2, def.w - 4, def.h - 4); ctx.setLineDash([]);
+        ctx.fillStyle = '#7a5a3a';
+        for (const [px, py] of [[def.x + 2, def.y + 2], [def.x + def.w - 2, def.y + 2], [def.x + 2, def.y + def.h - 2], [def.x + def.w - 2, def.y + def.h - 2]]) ctx.fillRect(px - 1.5, py - 1.5, 3, 3);
       }
       const sel = view.selected === def.id, hov = view.hover === def.id;
-      ctx.lineWidth = (sel ? 3 : 1.5) / cam.zoom * 1.5;
-      ctx.strokeStyle = sel ? '#ffffff' : hov ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.25)';
-      ctx.strokeRect(def.x, def.y, def.w, def.h);
-    }
-  }
-
-  // labels in schermcoördinaten zodat ze leesbaar blijven bij elke zoom
-  function drawFieldLabels(state, sums) {
-    for (const def of D.fields) {
-      const f = state.fields.find(x => x.id === def.id);
-      const tl = worldToScreen(def.x, def.y), br = worldToScreen(def.x + def.w, def.y + def.h);
-      if (br.x < 0 || br.y < 0 || tl.x > vw || tl.y > vh) continue;
-      if (br.x - tl.x < 110 || br.y - tl.y < 70) continue; // te klein om leesbaar te labelen
-      pill(`Veld ${def.id} · ${AT.fmtHa(def.ha)}`, tl.x + 6, tl.y + 6);
-      const cx = (tl.x + br.x) / 2, cy = (tl.y + br.y) / 2 + 8;
-      const sum = sums[def.id];
-      if (!f.owned) pill('Te koop ' + AT.fmtMoney(G().fieldPrice(def.id)), cx, cy - 9, true, '#2d6a2d');
-      else if (f.job) pill('Loonwerker bezig ' + Math.floor(f.job.progress * 100) + '%', cx, cy - 9, true, 'rgba(44,127,184,0.9)');
-      else if (sum && sum.ready > 0 && sum.growing === 0) pill('Klaar om te oogsten', cx, cy - 9, true, '#b7791f');
-    }
-  }
-
-  // ---------- machines ----------
-  function drawMachine(type, x, y, angle, implType, lowered = true) {
-    const d = D.machines[type];
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    ctx.scale(1.4, 1.4);
-    if (d.kind === 'harvester') {
-      const hw = d.width / 2 / 1.4;
-      ctx.fillStyle = '#333'; ctx.fillRect(-8, -10, 6, 4); ctx.fillRect(-8, 6, 6, 4);
-      ctx.fillStyle = d.color; ctx.fillRect(-12, -8, 22, 16);
-      ctx.fillStyle = '#9fd3f0'; ctx.fillRect(2, -4, 6, 8);
-      ctx.fillStyle = lowered ? '#555' : '#888'; ctx.fillRect(10, -hw, 4, hw * 2);
-    } else if (d.kind === 'tractor') {
-      if (implType) {
-        const idf = D.machines[implType], hw = idf.width / 2 / 1.4;
-        ctx.fillStyle = '#444'; ctx.fillRect(-14, -1, 6, 2);
-        ctx.fillStyle = idf.color; ctx.globalAlpha = lowered ? 1 : 0.75;
-        ctx.fillRect(-19, -hw, 5, hw * 2);
-        ctx.globalAlpha = 1;
+      if (sel || hov) {
+        ctx.lineWidth = (sel ? 2.5 : 1.5) / cam.zoom * 1.5;
+        ctx.strokeStyle = sel ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.6)';
+        ctx.strokeRect(def.x, def.y, def.w, def.h);
       }
-      ctx.fillStyle = '#222';
-      ctx.fillRect(-8, -8, 7, 4); ctx.fillRect(-8, 4, 7, 4);
-      ctx.fillRect(3, -6, 4, 3); ctx.fillRect(3, 3, 4, 3);
-      ctx.fillStyle = d.color; ctx.fillRect(-8, -4, 17, 8);
-      ctx.fillStyle = '#cfe8f5'; ctx.fillRect(-6, -3, 6, 6);
-    } else {
-      ctx.fillStyle = d.color; ctx.fillRect(-4, -8, 8, 16);
-      ctx.fillStyle = '#444'; ctx.fillRect(4, -1, 5, 2);
     }
-    ctx.restore();
   }
 
-  function drawWorkers(state) {
+  // wind die over rijpe en groeiende gewassen golft
+  function drawWind(sums) {
+    for (const def of D.fields) {
+      const sum = sums[def.id];
+      if (!sum || (sum.growing + sum.ready) < sum.total * 0.3) continue;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(def.x, def.y, def.w, def.h); ctx.clip();
+      const span = def.w + def.h + 160;
+      for (let k = 0; k < 3; k++) {
+        const s = ((time * 22 + k * span / 3 + def.id * 57) % span) - 80;
+        const gx = def.x + s, gy = def.y;
+        const grad = ctx.createLinearGradient(gx - 30, gy, gx + 30, gy + 30);
+        grad.addColorStop(0, 'rgba(255,250,210,0)'); grad.addColorStop(0.5, 'rgba(255,250,210,0.13)'); grad.addColorStop(1, 'rgba(255,250,210,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(gx - 40, gy); ctx.lineTo(gx + 20, gy); ctx.lineTo(gx + 20 - def.h, gy + def.h); ctx.lineTo(gx - 40 - def.h, gy + def.h);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // ---------- bomen ----------
+  function visibleRect(m) {
+    const tl = screenToWorld(0, 0), br = screenToWorld(vw, vh);
+    return { x0: tl.x - m, y0: tl.y - m, x1: br.x + m, y1: br.y + m };
+  }
+  function drawTrees() {
+    const v = visibleRect(30);
+    const vis = trees.filter(t => t.x > v.x0 && t.x < v.x1 && t.y > v.y0 && t.y < v.y1);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    for (const t of vis) SP().treeShadow(ctx, t.x, t.y, t.variant);
+    for (const t of vis) SP().tree(ctx, t.x, t.y, t.variant, Math.sin(time * 1.3 + t.seed) * 0.35);
+  }
+
+  // ---------- machines en boer ----------
+  function lightsOn() { return darkness() > 0.25; }
+
+  function drawMachines(state) {
+    const lights = lightsOn();
+    const p = state.player;
+    for (const m of state.machines) {
+      if (m.busy || m.attached) continue;
+      const impl = m.impl ? G().machine(m.impl) : null;
+      SP().machine(ctx, m.type, m.x, m.y, m.angle, { implType: impl && impl.type, lowered: false, wheel: 0, t: time });
+    }
+    // loonwerkers
     for (const f of state.fields) {
       if (!f.job) continue;
-      const def = G().fieldDef(f.id);
-      const pos = G().jobPosition(def, f.job);
+      const def = G().fieldDef(f.id), pos = G().jobPosition(def, f.job);
       const ms = state.machines.filter(m => f.job.machines.includes(m.uid));
       const main = ms.find(m => ['tractor', 'harvester'].includes(D.machines[m.type].kind));
       const impl = ms.find(m => m !== main);
-      if (main) drawMachine(main.type, pos.x, pos.y, pos.angle, impl && impl.type);
+      if (main) SP().machine(ctx, main.type, pos.x, pos.y, pos.angle, { implType: impl && impl.type, lowered: true, wheel: time * 30, t: time, lights, beacon: (time * 2) % 1 < 0.5, grain: f.job.type === 'harvest' ? 1 : 0 });
     }
-  }
-
-  function drawPlayer(state) {
-    const p = state.player;
-    if (!p) return;
-    const r = AT.vehicle.rig();
-    // stofwolkje bij werken
-    if (p.lowered && Math.abs(p.speed) > 3) {
-      ctx.fillStyle = 'rgba(120,90,50,0.22)';
-      for (let k = 1; k <= 3; k++) {
-        ctx.beginPath();
-        ctx.arc(p.x - Math.cos(p.angle) * (22 + k * 6) + (Math.random() - 0.5) * 6, p.y - Math.sin(p.angle) * (22 + k * 6), 3 + k * 1.5, 0, Math.PI * 2);
-        ctx.fill();
+    // jouw machine
+    if (p.mode === 'drive') {
+      const r = AT.vehicle.rig();
+      if (r) {
+        SP().machine(ctx, r.main.type, p.x, p.y, p.angle, {
+          implType: r.impl && r.impl.type, lowered: p.lowered, wheel: p.dist || 0, steer: p.steer || 0, t: time,
+          lights, beacon: p.lowered && (time * 2) % 1 < 0.5, grain: r.mainDef.kind === 'harvester' && G().siloUsed() > 0 ? 1 : 0,
+        });
       }
     }
-    drawMachine(r.main.type, p.x, p.y, p.angle, r.impl && r.impl.type, p.lowered);
-    // markering
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 / cam.zoom;
-    ctx.beginPath(); ctx.arc(p.x, p.y, 20, 0, Math.PI * 2); ctx.stroke();
   }
 
-  // ---------- minimap & HUD (schermcoördinaten) ----------
+  function drawFarmer(p) {
+    if (p.mode !== 'foot') return;
+    // ring om de boer zodat je hem altijd terugvindt
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 + Math.sin(time * 4) * 0.25})`; ctx.lineWidth = 1.2 / Math.max(1, cam.zoom / 2);
+    ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(p.x + 1.5, p.y + 2.5, 3.6, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.save();
+    ctx.translate(p.x, p.y); ctx.rotate(p.angle);
+    const swing = p.speed ? Math.sin((p.walk || 0) * 0.35) * 1.6 : 0;
+    // benen/armen
+    ctx.fillStyle = '#3b4f7a'; ctx.fillRect(-0.6 + swing, -1.9, 1.6, 1.2); ctx.fillRect(-0.6 - swing, 0.7, 1.6, 1.2);
+    ctx.fillStyle = '#e2b48f'; SP().circle(ctx, swing * 0.6, -3, 0.8); SP().circle(ctx, -swing * 0.6, 3, 0.8);
+    // lijf (overall) + hoed
+    ctx.fillStyle = '#2f5d9e'; ctx.beginPath(); ctx.ellipse(0, 0, 1.8, 2.9, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c94a3a'; ctx.fillRect(-0.6, -2.4, 1.2, 4.8);
+    ctx.fillStyle = '#e8c766'; SP().circle(ctx, 0.2, 0, 2.2);
+    ctx.fillStyle = '#c9a548'; SP().circle(ctx, 0.2, 0, 1.2);
+    ctx.restore();
+  }
+
+  // ---------- licht: dag/nacht, zonsopgang, koplampen ----------
+  function darkness() {
+    const h = G().hour();
+    if (h >= 21 || h < 4) return 1;
+    if (h < 6) return 1 - (h - 4) / 2;
+    if (h >= 19) return (h - 19) / 2;
+    return 0;
+  }
+  function warmth() {
+    const h = G().hour();
+    return Math.max(0, 1 - Math.abs(h - 6.5) / 1.6, 1 - Math.abs(h - 18.7) / 1.6);
+  }
+
+  function lightSources(state) {
+    const list = [];
+    const p = state.player;
+    if (p.mode === 'drive') list.push({ x: p.x, y: p.y, a: p.angle, cone: true });
+    else list.push({ x: p.x, y: p.y, r: 30 });
+    for (const f of state.fields) {
+      if (!f.job) continue;
+      const pos = G().jobPosition(G().fieldDef(f.id), f.job);
+      list.push({ x: pos.x, y: pos.y, a: pos.angle, cone: true });
+    }
+    for (const L of LAMPS) list.push({ x: L.x, y: L.y, r: 60 });
+    list.push({ x: D.house.x + D.house.w / 2, y: D.house.y + D.house.h + 6, r: 34 });
+    return list;
+  }
+
+  function drawLighting(state) {
+    const dark = darkness(), warm = warmth();
+    if (warm > 0) {
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = `rgba(255,130,50,${(warm * 0.6).toFixed(3)})`; ctx.fillRect(0, 0, vw, vh);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(255,150,80,${(warm * 0.07).toFixed(3)})`; ctx.fillRect(0, 0, vw, vh);
+    }
+    if (dark <= 0) return;
+    const z = cam.zoom;
+    lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    lctx.globalCompositeOperation = 'source-over';
+    lctx.clearRect(0, 0, vw, vh);
+    lctx.fillStyle = `rgba(6,12,38,${(dark * 0.62).toFixed(3)})`;
+    lctx.fillRect(0, 0, vw, vh);
+    lctx.globalCompositeOperation = 'destination-out';
+    const sources = lightSources(state);
+    for (const L of sources) {
+      const s = worldToScreen(L.x, L.y);
+      if (L.cone) {
+        const ox = s.x + Math.cos(L.a) * 11 * z, oy = s.y + Math.sin(L.a) * 11 * z, len = 150 * z;
+        const g = lctx.createRadialGradient(ox, oy, 0, ox, oy, len);
+        g.addColorStop(0, 'rgba(0,0,0,0.95)'); g.addColorStop(0.6, 'rgba(0,0,0,0.6)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        lctx.fillStyle = g;
+        lctx.beginPath(); lctx.moveTo(ox, oy); lctx.arc(ox, oy, len, L.a - 0.45, L.a + 0.45); lctx.closePath(); lctx.fill();
+        const g2 = lctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 28 * z);
+        g2.addColorStop(0, 'rgba(0,0,0,0.7)'); g2.addColorStop(1, 'rgba(0,0,0,0)');
+        lctx.fillStyle = g2; lctx.beginPath(); lctx.arc(s.x, s.y, 28 * z, 0, Math.PI * 2); lctx.fill();
+      } else {
+        const g = lctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, L.r * z);
+        g.addColorStop(0, 'rgba(0,0,0,0.85)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        lctx.fillStyle = g; lctx.beginPath(); lctx.arc(s.x, s.y, L.r * z, 0, Math.PI * 2); lctx.fill();
+      }
+    }
+    ctx.drawImage(lightCanvas, 0, 0, vw, vh);
+    // warme gloed van de lampen
+    ctx.globalCompositeOperation = 'lighter';
+    for (const L of sources) {
+      const s = worldToScreen(L.x, L.y);
+      const r = (L.cone ? 120 : L.r) * z;
+      const ox = L.cone ? s.x + Math.cos(L.a) * 50 * z : s.x, oy = L.cone ? s.y + Math.sin(L.a) * 50 * z : s.y;
+      const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, r);
+      g.addColorStop(0, `rgba(255,220,150,${(0.12 * dark).toFixed(3)})`); g.addColorStop(1, 'rgba(255,220,150,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---------- schermlaag: labels, pijl, minimap, HUD ----------
+  function drawFieldLabels(state, sums) {
+    for (const def of D.fields) {
+      const f = G().field(def.id);
+      const tl = worldToScreen(def.x, def.y), br = worldToScreen(def.x + def.w, def.y + def.h);
+      if (br.x < 0 || br.y < 0 || tl.x > vw || tl.y > vh) continue;
+      if (br.x - tl.x < 110 || br.y - tl.y < 70) continue;
+      pill(`Veld ${def.id} · ${AT.fmtHa(def.ha)}`, tl.x + 6, tl.y + 6);
+      const cx = (tl.x + br.x) / 2, cy = (tl.y + br.y) / 2 + 8;
+      const sum = sums[def.id];
+      if (!f.owned) pill('Te koop ' + AT.fmtMoney(G().fieldPrice(def.id)), cx, cy - 9, true, 'rgba(45,106,45,0.92)');
+      else if (f.job) pill('Loonwerker bezig ' + Math.floor(f.job.progress * 100) + '%', cx, cy - 9, true, 'rgba(44,127,184,0.9)');
+      else if (sum && sum.ready > 0 && sum.growing === 0) pill('Klaar om te oogsten', cx, cy - 9, true, 'rgba(183,121,31,0.92)');
+    }
+  }
+
+  // pijl rond de speler naar het geselecteerde veld
+  function drawWaypoint(state) {
+    const p = state.player, def = G().fieldDef(view.selected);
+    if (!def) return;
+    const tx = Math.max(def.x, Math.min(def.x + def.w, p.x)), ty = Math.max(def.y, Math.min(def.y + def.h, p.y));
+    const dist = Math.hypot(tx - p.x, ty - p.y);
+    if (dist < 30) return;
+    const a = Math.atan2(ty - p.y, tx - p.x);
+    const s = worldToScreen(p.x, p.y), r = 46;
+    const ax = s.x + Math.cos(a) * r, ay = s.y + Math.sin(a) * r;
+    ctx.save();
+    ctx.translate(ax, ay); ctx.rotate(a);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-6, -8); ctx.lineTo(-2, 0); ctx.lineTo(-6, 8); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    const lx = s.x + Math.cos(a) * (r + 26), ly = s.y + Math.sin(a) * (r + 26);
+    pill(`Veld ${def.id} · ${Math.round(dist)} m`, lx, ly - 10, true, 'rgba(0,0,0,0.6)');
+  }
+
   const MINI_COLORS = { stubble: '#c8ad6a', plowed: '#7a5232', growing: '#7fb24a', ready: '#e0b84c' };
   function drawMinimap(state, sums) {
     const m = miniRect(), s = MINI.scale;
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; roundRect(m.x - 4, m.y - 4, m.w + 8, m.h + 8, 6); ctx.fill();
-    ctx.fillStyle = '#7cb95a'; ctx.fillRect(m.x, m.y, m.w, m.h);
-    ctx.fillStyle = '#c9b08a';
+    ctx.drawImage(bg, m.x, m.y, m.w, m.h);
+    ctx.fillStyle = '#6b6f73';
     for (const r of D.roads) ctx.fillRect(m.x + r.x * s, m.y + r.y * s, Math.max(1, r.w * s), Math.max(1, r.h * s));
-    ctx.fillStyle = '#b9b3a4';
-    ctx.fillRect(m.x + D.yard.x * s, m.y + D.yard.y * s, D.yard.w * s, D.yard.h * s);
     for (const def of D.fields) {
-      const f = state.fields.find(x => x.id === def.id), sum = sums[def.id];
-      let col = '#5f9a45';
-      if (f.owned && sum) {
-        const top = ['ready', 'growing', 'plowed', 'stubble'].reduce((a, k) => sum[k] > sum[a] ? k : a, 'stubble');
-        col = MINI_COLORS[top];
-      }
+      const f = G().field(def.id), sum = sums[def.id];
+      let col = 'rgba(95,154,69,0.6)';
+      if (f.owned && sum) col = MINI_COLORS[['ready', 'growing', 'plowed', 'stubble'].reduce((a, k) => sum[k] > sum[a] ? k : a, 'stubble')];
       ctx.fillStyle = col;
       ctx.fillRect(m.x + def.x * s, m.y + def.y * s, def.w * s, def.h * s);
       if (view.selected === def.id) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(m.x + def.x * s, m.y + def.y * s, def.w * s, def.h * s); }
     }
-    // zichtbaar gebied
-    const tl = screenToWorld(0, 0);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
-    ctx.strokeRect(m.x + tl.x * s, m.y + tl.y * s, vw / cam.zoom * s, vh / cam.zoom * s);
-    if (state.player) {
-      ctx.fillStyle = '#ff3b30';
-      ctx.beginPath(); ctx.arc(m.x + state.player.x * s, m.y + state.player.y * s, 3.5, 0, Math.PI * 2); ctx.fill();
+    for (const mm of state.machines) {
+      if (mm.busy || mm.attached) continue;
+      ctx.fillStyle = '#ffd25a'; ctx.fillRect(m.x + mm.x * s - 1, m.y + mm.y * s - 1, 2, 2);
     }
+    const tl = screenToWorld(0, 0);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1;
+    ctx.strokeRect(m.x + tl.x * s, m.y + tl.y * s, vw / cam.zoom * s, vh / cam.zoom * s);
+    const p = state.player;
+    ctx.fillStyle = '#ff3b30'; ctx.beginPath(); ctx.arc(m.x + p.x * s, m.y + p.y * s, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.stroke();
   }
 
   function drawHud() {
-    const info = AT.vehicle && AT.vehicle.hudInfo();
+    const info = AT.vehicle.hudInfo();
+    if (!info) return;
     const lines = [];
-    if (info) {
+    if (info.mode === 'drive') {
       lines.push([info.name, '#fff', '700 14px']);
       lines.push([`${info.kmh} km/u`, '#ffe08a', '700 20px']);
       if (info.tool) lines.push([`${info.tool}: ${info.lowered ? 'OMLAAG (aan het werk)' : 'omhoog'}`, info.lowered ? '#9be15d' : '#ddd', '600 13px']);
       if (info.crop) lines.push([`Zaaigoed: ${info.crop}  (C = wisselen)`, '#ddd', '600 13px']);
-      lines.push(['WASD/pijltjes rijden · Spatie werktuig · E uitstappen', '#bbb', '12px']);
-      if (info.warn) lines.push([info.warn, '#ffb38a', '700 13px']);
+      lines.push(['WASD rijden · Spatie werktuig · F koppelen · E uitstappen', '#bbb', '12px']);
     } else {
-      lines.push(['Camera: WASD/pijltjes of slepen · scroll = zoom', '#ddd', '12px']);
-      lines.push(['Zelf rijden: Garage → Instappen (of E)', '#ddd', '12px']);
+      lines.push(['Te voet', '#fff', '700 14px']);
+      lines.push(['WASD lopen · Shift rennen · E instappen', '#bbb', '12px']);
+      lines.push(['Slepen = rondkijken · scroll = zoomen', '#bbb', '12px']);
     }
     let w = 0;
     lines.forEach(([t, , f]) => { ctx.font = `${f} system-ui, sans-serif`; w = Math.max(w, ctx.measureText(t).width); });
@@ -365,61 +643,60 @@ window.AT = window.AT || {};
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText(t, 24, 12 + 6 + lh / 2 + i * lh);
     });
+    // actie-hint en waarschuwing onderaan in beeld
+    let y = vh - 34;
+    if (info.warn) { bigPill(info.warn, vw / 2, y, 'rgba(160,60,30,0.92)'); y -= 38; }
+    if (info.prompt) bigPill(info.prompt, vw / 2, y, 'rgba(0,0,0,0.7)');
   }
 
   // ---------- kleine helpers ----------
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
+  function roundRect(x, y, w, h, r) { SP().rr(ctx, x, y, w, h, r); }
 
-  function pill(text, x, y, centered = false, bg = 'rgba(0,0,0,0.55)') {
+  function pill(text, x, y, centered = false, bg2 = 'rgba(0,0,0,0.55)') {
     ctx.font = '600 12px system-ui, sans-serif';
     const tw = ctx.measureText(text).width;
     const px = centered ? x - tw / 2 - 7 : x;
-    ctx.fillStyle = bg; roundRect(px, y, tw + 14, 20, 10); ctx.fill();
+    ctx.fillStyle = bg2; roundRect(px, y, tw + 14, 20, 10); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText(text, px + 7, y + 10.5);
   }
-
-  function mix(a, b, t) {
-    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
-    const ch = s => [(s >> 16) & 255, (s >> 8) & 255, s & 255];
-    const [ar, ag, ab] = ch(pa), [br, bg, bb] = ch(pb);
-    const c = (p, q) => Math.round(p + (q - p) * t);
-    return `rgb(${c(ar, br)},${c(ag, bg)},${c(ab, bb)})`;
+  function bigPill(text, x, y, bg2) {
+    ctx.font = '700 15px system-ui, sans-serif';
+    const tw = ctx.measureText(text).width;
+    ctx.fillStyle = bg2; roundRect(x - tw / 2 - 14, y - 15, tw + 28, 30, 15); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 1);
   }
-
-  function hash(n) { n = (n ^ 61) ^ (n >>> 16); n = n + (n << 3); n = n ^ (n >>> 4); n = Math.imul(n, 0x27d4eb2d); return (n ^ (n >>> 15)) >>> 0; }
 
   // ---------- hoofd-tekenfunctie ----------
   let sums = {}, sumTimer = 1;
   function draw(state, dt) {
     if (!vw || !vh) return;
+    time += dt;
     updateCamera(dt);
+    AT.fx.update(dt);
     refreshSome(2);
     sumTimer += dt;
     if (sumTimer > 0.5) { sumTimer = 0; sums = {}; for (const f of state.fields) sums[f.id] = G().summary(f); }
 
     ctx.setTransform(dpr * cam.zoom, 0, 0, dpr * cam.zoom, dpr * (vw / 2 - cam.x * cam.zoom), dpr * (vh / 2 - cam.y * cam.zoom));
-    drawWorldBase();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(bg, 0, 0);
+    drawRoads();
+    drawFields(state, sums);
+    AT.fx.drawTracks(ctx);
+    drawWind(sums);
     drawYard(state);
-    drawFields(state);
-    drawWorkers(state);
-    drawPlayer(state);
+    drawTrees();
+    drawMachines(state);
+    drawFarmer(state.player);
+    AT.fx.drawParticles(ctx);
+    AT.fx.drawBirds(ctx);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const h = G().hour();
-    let dark = 0;
-    if (h < 6) dark = 0.4 - h * 0.05;
-    else if (h > 19) dark = Math.min(0.4, (h - 19) * 0.08);
-    if (dark > 0) { ctx.fillStyle = `rgba(10,20,60,${dark})`; ctx.fillRect(0, 0, vw, vh); }
+    drawLighting(state);
     drawFieldLabels(state, sums);
+    drawWaypoint(state);
     drawMinimap(state, sums);
     drawHud();
   }

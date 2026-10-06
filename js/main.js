@@ -2,7 +2,7 @@
 (function () {
   AT.state = AT.game.load();
   if (!AT.state.log.length) {
-    AT.state.log.push({ day: 1, hour: 6, text: 'Welkom bij Agro Tycoon 2.0! Ga naar Garage en stap in je tractor met ploeg.', type: 'goal' });
+    AT.state.log.push({ day: 1, hour: 6, text: 'Welkom bij Agro Tycoon 2.0! Loop met WASD naar je rode tractor en druk E om in te stappen.', type: 'goal' });
   }
 
   AT.render.init(document.getElementById('map'));

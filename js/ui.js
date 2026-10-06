@@ -7,7 +7,7 @@ window.AT = window.AT || {};
   const $ = sel => document.querySelector(sel);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  let activeTab = 'garage';
+  let activeTab = 'field';
 
   const JOB_NAMES = { plow: 'Ploegen', sow: 'Zaaien', harvest: 'Oogsten' };
   const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser' };
@@ -35,7 +35,8 @@ window.AT = window.AT || {};
           <div class="bar"><div class="fill job" data-live="jobbar"></div></div>
           <div class="muted"><span data-live="jobpct"></span> · ${esc(machines)}</div></div>`;
       } else {
-        html += `<h3>Loonwerker inhuren</h3><p class="muted">Een loonwerker doet het hele veld voor je met jouw vrije machines (+${AT.fmtMoney(D.workerWagePerHour)}/u loon).</p>`;
+        html += selfHelp(sum);
+        html += `<h3>Of: loonwerker inhuren</h3><p class="muted">Een loonwerker doet het hele veld voor je met jouw vrije machines (+${AT.fmtMoney(D.workerWagePerHour)}/u loon).</p>`;
         if (sum.stubble) html += workerButton(s, f, 'plow', 'Laat ploegen');
         if (sum.plowed) html += cropChoice(s, f, def, sum);
         if (sum.ready) html += workerButton(s, f, 'harvest', `Laat oogsten (±${AT.fmtTons(sum.readyTons)})`);
@@ -56,6 +57,16 @@ window.AT = window.AT || {};
         data-action="select" data-id="${fd.id}"><span>Veld ${fd.id} <span class="muted">${AT.fmtHa(fd.ha)}</span></span><span>${st}</span></button>`;
     }
     return html + `</div>`;
+  }
+
+  // uitleg om het zelf te doen, afhankelijk van wat er op het veld moet gebeuren
+  function selfHelp(sum) {
+    let step = '';
+    if (sum.ready) step = 'Loop naar je <b>maaidorser</b>, stap in (E), rij naar dit veld en zet het maaibord omlaag (spatie).';
+    else if (sum.plowed) step = 'Koppel een <b>zaaimachine</b> aan je tractor (achteruit ertegen rijden + F), kies het zaaigoed (C), rij hierheen en zet hem omlaag (spatie).';
+    else if (sum.stubble) step = 'Stap in je <b>tractor met ploeg</b> (E), rij hierheen en zet de ploeg omlaag (spatie).';
+    else return '';
+    return `<div class="card self"><b>Zelf doen</b><p>${step}</p><p class="muted">De witte pijl rond je boer of machine wijst de weg naar dit veld.</p></div>`;
   }
 
   function fieldSummaryHtml(f) {
@@ -99,64 +110,59 @@ window.AT = window.AT || {};
     return html + '</div>';
   }
 
-  // ---------- Garage (instappen) ----------
+  // ---------- Garage ----------
+  const thumbImg = type => `<img class="thumb" src="${AT.sprites.thumb(type)}" alt="">`;
+
+  function whereIs(m) {
+    if (m.busy === 'player') return 'jij rijdt hiermee';
+    if (m.busy) return 'loonwerker op Veld ' + m.busy;
+    if (m.attached) {
+      const t = G().machine(m.attached);
+      return 'aangekoppeld aan ' + D.machines[t.type].name + (t.busy === 'player' ? ' (jij rijdt)' : '');
+    }
+    const Y = D.yard;
+    if (m.x >= Y.x && m.x <= Y.x + Y.w && m.y >= Y.y && m.y <= Y.y + Y.h) return 'op het erf';
+    const fid = AT.render.fieldAt(m.x, m.y);
+    return fid ? 'op Veld ' + fid : 'langs de weg';
+  }
+
   function renderGarage(s) {
+    const p = s.player;
     let html = `<h2>Garage</h2>`;
-    if (s.player) {
+    if (p.mode === 'drive') {
       const r = AT.vehicle.rig();
-      html += `<div class="card driving"><b>Je rijdt: ${esc(r.mainDef.name)}${r.impl ? ' + ' + esc(D.machines[r.impl.type].name) : ''}</b>
-        <div class="muted">WASD/pijltjes = rijden · Spatie = werktuig omlaag/omhoog · E = uitstappen</div>`;
+      html += `<div class="card driving"><b>Je rijdt: ${esc(r.mainDef.name)}${r.impl ? ' + ' + esc(D.machines[r.impl.type].name) : ''}</b>`;
       if (r.toolDef && r.toolDef.kind === 'seeder') {
         html += `<div class="row crop-pick">Zaaigoed (C):`;
         for (const [key, c] of Object.entries(D.crops)) {
-          html += `<button class="btn small ${s.player.crop === key ? 'primary' : ''}" data-action="crop" data-crop="${key}">${c.name}</button>`;
+          html += `<button class="btn small ${p.crop === key ? 'primary' : ''}" data-action="crop" data-crop="${key}">${c.name}</button>`;
         }
         html += `</div>`;
       }
-      html += `<button class="btn" data-action="exit">Uitstappen (terug naar schuur)</button></div>`;
+      html += `<button class="btn" data-action="exit">Uitstappen (E)</button></div>`;
     }
+    html += `<div class="card howto"><b>Zo werkt het</b><ul>
+      <li><b>WASD</b>: lopen of rijden · <b>Shift</b>: rennen</li>
+      <li><b>E</b>: in- of uitstappen (loop tot vlak bij de machine)</li>
+      <li><b>F</b>: werktuig aan- of afkoppelen (rij achteruit tegen de ploeg/zaaimachine)</li>
+      <li><b>Spatie</b>: werktuig omlaag/omhoog · <b>C</b>: zaaigoed wisselen</li>
+    </ul></div>`;
 
-    const free = s.machines.filter(m => !m.busy);
-    const tractors = s.machines.filter(m => D.machines[m.type].kind === 'tractor');
-    const harvesters = s.machines.filter(m => D.machines[m.type].kind === 'harvester');
-    const implsFree = free.filter(m => ['plow', 'seeder'].includes(D.machines[m.type].kind));
-
-    html += `<h3>Instappen</h3>`;
-    for (const t of tractors) {
-      const d = D.machines[t.type];
-      if (t.busy) { html += machineRow(t, statusText(t)); continue; }
-      const options = implsFree.filter(i => G().canPull(t, i));
-      const btns = options.map(i => `<button class="btn small primary" data-action="enter" data-uid="${t.uid}" data-impl="${i.uid}">+ ${esc(D.machines[i.type].name)}</button>`).join('');
-      html += `<div class="card"><div class="row"><span class="swatch" style="background:${d.color}"></span><b class="grow">${esc(d.name)}</b>
-        <button class="btn small" data-action="enter" data-uid="${t.uid}">Alleen rijden</button></div>
-        ${btns ? `<div class="row wrap">${btns}</div>` : '<div class="muted">Geen vrij werktuig dat past.</div>'}</div>`;
-    }
-    for (const h of harvesters) {
-      if (h.busy) { html += machineRow(h, statusText(h)); continue; }
-      html += machineRow(h, 'Vrij', `<button class="btn small primary" data-action="enter" data-uid="${h.uid}">Instappen</button>`);
-    }
-
-    html += `<h3>Alle machines</h3>`;
+    html += `<h3>Jouw machines</h3>`;
     const order = ['tractor', 'harvester', 'plow', 'seeder'];
     const sorted = [...s.machines].sort((a, b) => order.indexOf(D.machines[a.type].kind) - order.indexOf(D.machines[b.type].kind));
     for (const m of sorted) {
-      const value = Math.round(D.machines[m.type].price * 0.6);
-      html += machineRow(m, `${KIND_NAMES[D.machines[m.type].kind]} · ${statusText(m)}`,
-        `<button class="btn small" data-action="sellMachine" data-uid="${m.uid}" ${m.busy ? 'disabled' : ''} title="Verkoop voor 60% van de nieuwprijs">Verkoop ${AT.fmtMoney(value)}</button>`);
+      const d = D.machines[m.type];
+      const value = Math.round(d.price * 0.6);
+      const sellable = !m.busy && !(m.attached && G().machine(m.attached).busy);
+      html += `<div class="card row">${thumbImg(m.type)}
+        <div class="grow"><b>${esc(d.name)}</b><div class="muted">${esc(whereIs(m))}</div></div>
+        <div class="col">
+          <button class="btn small" data-action="findMachine" data-uid="${m.uid}">Zoek</button>
+          <button class="btn small" data-action="sellMachine" data-uid="${m.uid}" ${sellable ? '' : 'disabled'} title="Verkoop voor 60% van de nieuwprijs">${AT.fmtMoney(value)}</button>
+        </div></div>`;
     }
     return html;
-  }
-
-  function statusText(m) {
-    if (m.busy === 'player') return 'jij rijdt hiermee';
-    if (m.busy) return 'loonwerker op Veld ' + m.busy;
-    return 'vrij in de schuur';
-  }
-
-  function machineRow(m, sub, button = '') {
-    const d = D.machines[m.type];
-    return `<div class="card row"><span class="swatch" style="background:${d.color}"></span>
-      <div class="grow"><b>${esc(d.name)}</b><div class="muted">${esc(sub)}</div></div>${button}</div>`;
   }
 
   // ---------- Winkel ----------
@@ -174,7 +180,7 @@ window.AT = window.AT || {};
       for (const [key, d] of Object.entries(D.machines)) {
         if (d.kind !== kind) continue;
         const owned = s.machines.filter(m => m.type === key).length;
-        html += `<div class="card row"><span class="swatch" style="background:${d.color}"></span>
+        html += `<div class="card row">${thumbImg(key)}
           <div class="grow"><b>${esc(d.name)}</b>${owned ? ` <span class="badge">${owned}×</span>` : ''}<div class="muted">${machineSpecs(d)}</div></div>
           <button class="btn small primary" data-action="buyMachine" data-type="${key}" ${s.money < d.price ? 'disabled' : ''}>${AT.fmtMoney(d.price)}</button></div>`;
       }
@@ -229,8 +235,8 @@ window.AT = window.AT || {};
       <div>Totale uitgaven: ${AT.fmtMoney(s.stats.spent)}</div>
     </div>
     <h3>Besturing</h3><div class="card muted">
-      WASD / pijltjes: rijden (of camera als je niet rijdt)<br>Spatie: werktuig omlaag/omhoog · C: zaaigoed wisselen<br>
-      E: in-/uitstappen · Scroll: zoomen · Slepen: kaart verschuiven<br>P: pauze · 1 / 2 / 3: snelheid
+      WASD / pijltjes: lopen of rijden<br>Spatie: werktuig omlaag/omhoog · C: zaaigoed wisselen<br>
+      E: in-/uitstappen · F: werktuig aan-/afkoppelen · Shift: rennen<br>Scroll: zoomen · Slepen: rondkijken<br>P: pauze · 1 / 2 / 3: snelheid
     </div>
     <button class="btn danger" data-action="reset">Nieuw spel starten</button>`;
     return html;
@@ -304,7 +310,11 @@ window.AT = window.AT || {};
       case 'buyMachine': G().buyMachine(a.type); break;
       case 'sellMachine': G().sellMachine(Number(a.uid)); break;
       case 'upgradeSilo': G().upgradeSilo(); break;
-      case 'enter': G().enterVehicle(Number(a.uid), a.impl ? Number(a.impl) : null); break;
+      case 'findMachine': {
+        const m = G().machine(Number(a.uid));
+        if (m) { const t = m.attached ? G().machine(m.attached) : m; AT.render.centerOn(t.busy === 'player' ? AT.state.player.x : t.x, t.busy === 'player' ? AT.state.player.y : t.y); }
+        break;
+      }
       case 'exit': G().exitVehicle(); break;
       case 'crop': AT.state.player.crop = a.crop; renderPanel(); break;
       case 'reset':
@@ -333,14 +343,13 @@ window.AT = window.AT || {};
       const p = AT.render.eventPos(e);
       if (drag) {
         if (drag.mini) {
-          if (!AT.state.player) { const w = AT.render.minimapToWorld(p.x, p.y); AT.render.centerOn(w.x, w.y); }
+          const w = AT.render.minimapToWorld(p.x, p.y); AT.render.centerOn(w.x, w.y);
           drag.moved = true;
         } else if (Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) > 4) {
           drag.moved = true;
-          if (!AT.state.player) {
-            AT.render.cam.x = drag.cx - (p.x - drag.sx) / AT.render.cam.zoom;
-            AT.render.cam.y = drag.cy - (p.y - drag.sy) / AT.render.cam.zoom;
-          }
+          AT.render.cam.free = true;
+          AT.render.cam.x = drag.cx - (p.x - drag.sx) / AT.render.cam.zoom;
+          AT.render.cam.y = drag.cy - (p.y - drag.sy) / AT.render.cam.zoom;
         }
       }
       if (e.target === canvas) {
@@ -357,7 +366,7 @@ window.AT = window.AT || {};
       const p = AT.render.eventPos(e);
       if (mini) {
         const w = AT.render.minimapToWorld(p.x, p.y);
-        if (!AT.state.player) AT.render.centerOn(w.x, w.y);
+        AT.render.centerOn(w.x, w.y);
         const id = AT.render.fieldAt(w.x, w.y);
         if (id) selectField(id);
         return;
@@ -367,7 +376,7 @@ window.AT = window.AT || {};
       if (id) return selectField(id);
       const Y = D.yard;
       if (w.x >= Y.x && w.x <= Y.x + Y.w && w.y >= Y.y && w.y <= Y.y + Y.h) {
-        activeTab = w.y > 910 ? 'market' : w.y > 740 ? 'garage' : 'market';
+        activeTab = w.y > D.hall.y ? 'garage' : w.x > D.house.x + D.house.w ? 'market' : 'goals';
         renderPanel();
       }
     });
@@ -403,7 +412,6 @@ window.AT = window.AT || {};
     });
 
     AT.on('change', renderPanel);
-    AT.on('enter', () => { activeTab = 'garage'; });
     AT.on('newday', () => { if (activeTab === 'market') renderPanel(); });
     AT.on('log', renderLog);
     renderPanel();

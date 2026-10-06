@@ -5,7 +5,10 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 
 ## ✅ Fase 0: Basisspel
 - [x] Grote kaart (2400×1600) met 19 velden, wegen, erf, schuur, silo's en graanhandel
-- [x] **Zelf rijden** over de hele kaart (WASD/pijltjes), camera volgt je
+- [x] **Lopen als boer** en **zelf rijden** over de hele kaart (WASD/pijltjes), camera volgt je
+- [x] Machines blijven staan waar je uitstapt; nieuwe machines staan op de parkeerplaats
+- [x] Werktuigen zelf aan- en afkoppelen (achteruit tegen het werktuig + F)
+- [x] Pijl die de weg wijst naar het gekozen veld
 - [x] Werktuig omlaag/omhoog met spatie, E = in-/uitstappen, C = zaaigoed wisselen
 - [x] Velden bestaan uit cellen: de grond verandert precies waar je rijdt
 - [x] Veldcyclus: stoppel → ploegen → zaaien → groeien → rijp → oogsten
@@ -23,23 +26,26 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Live link via GitHub Pages
 
 ## 🎨 Mooiere game graphics
-- [ ] Eigen sprites voor tractoren, maaidorsers en werktuigen (in plaats van blokjes), met draaiende wielen
-- [ ] Gedetailleerde gebouwen: boerderij, schuur, silo's en graanhandel met schaduwen
-- [ ] Mooiere veldtexturen: voren die de rijrichting volgen, gewassen die wiegen in de wind
-- [ ] Elk gewas herkenbaar: tarwe, gerst en maïs zien er echt anders uit, ook tijdens het groeien
-- [ ] Natuur rond de velden: bomen, struiken, hagen, sloten, hekken en een vijver
-- [ ] Schaduwen en licht: zachte schaduw onder machines en gebouwen, mooiere zonsopgang en -ondergang
-- [ ] Effecten: stofwolken, graanstroom bij lossen, bandensporen, uitlaatrook, vogels boven het veld
-- [ ] Mooiere wegen (asfalt/grind met randen) en een erf met bestrating
-- [ ] Stijlkeuze maken: pixel-art of isometrisch (zoals Agro Tycoon)
-- [ ] Mooiere interface: iconen voor geld, tijd en silo, en afbeeldingen van machines in de winkel
+- [x] Eigen sprites voor tractoren, maaidorsers en werktuigen (in plaats van blokjes), met draaiende wielen
+- [x] Gedetailleerde gebouwen: boerderij, schuur, silo's en graanhandel met schaduwen
+- [x] Mooiere veldtexturen: voren die de rijrichting volgen, gewassen die wiegen in de wind
+- [x] Elk gewas herkenbaar: tarwe, gerst en maïs zien er echt anders uit, ook tijdens het groeien
+- [x] Natuur rond de velden: bomen, struiken, hagen, sloten, hekken en een vijver
+- [x] Schaduwen en licht: zachte schaduw onder machines en gebouwen, mooiere zonsopgang en -ondergang
+- [x] Effecten: stofwolken, kaf, bandensporen, uitlaatrook, meeuwen die achter de ploeg aan vliegen
+- [ ] Graanstroom bij het lossen (komt met de graanbunker)
+- [x] 's Nachts koplampen en lantaarns op het erf
+- [x] Mooiere wegen (asfalt/grind met randen) en een erf met bestrating
+- [x] Stijlkeuze: bovenaanzicht met getekende details (isometrisch zou een volledige herbouw zijn)
+- [x] Afbeeldingen van machines in de winkel en garage
+- [ ] Iconen voor geld, tijd en silo in de bovenbalk
+- [ ] Graanhandel als gebouw op de kaart
+- [ ] Struiken/hagen langs sommige akkers en sloten
 
 ## 🚜 Fase 1: Meer machines en vervoer
 - [ ] **Extra tractormodellen** (50 pk oldtimer, 200 pk, 400 pk rupstrekker)
 - [ ] **Graanbunker in de maaidorser**: als hij vol is, moet je lossen
 - [ ] **Aanhangers / overlaadwagens**: graan zelf naar de silo of graanhandel rijden
-- [ ] Werktuigen los in de schuur aan- en afkoppelen (achteruit tegen het werktuig rijden)
-- [ ] Machines laten staan waar je uitstapt (niet terug naar de schuur)
 - [ ] **Cultivator** (sneller dan ploegen)
 - [ ] **Spuitmachine**: onkruid/herbicide
 - [ ] **Kunstmeststrooier**: hogere opbrengst
