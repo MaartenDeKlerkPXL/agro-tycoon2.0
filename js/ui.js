@@ -9,8 +9,8 @@ window.AT = window.AT || {};
 
   let activeTab = 'field';
 
-  const JOB_NAMES = { plow: 'Ploegen', sow: 'Zaaien', harvest: 'Oogsten', fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden' };
-  const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser', spreader: 'Kunstmeststrooier', manure: 'Mestverspreider' };
+  const JOB_NAMES = { plow: 'Ploegen', sow: 'Zaaien', harvest: 'Oogsten', fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden', mow: 'Maaien', ted: 'Schudden', bale: 'Hooi persen' };
+  const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser', spreader: 'Kunstmeststrooier', manure: 'Mestverspreider', mower: 'Maaier', tedder: 'Schudder', baler: 'Balenpers', truck: 'Vrachtwagen', trailer: 'Aanhanger' };
   const seasonName = i => D.seasons[i].name.toLowerCase();
   const monthShort = i => D.months[i].slice(0, 3).toLowerCase();
   // maanden als korte reeks: "mrt–apr, sep–okt"
@@ -30,8 +30,9 @@ window.AT = window.AT || {};
     if (c.droughtProof) t.push('kan tegen droogte');
     if (c.soilDemand < 0) t.push('verbetert de bodem');
     if (c.greenManure) t.push('groenbemester: onderploegen');
-    if (c.harvester === 'potato') t.push('aardappelrooier nodig');
-    if (c.harvester === 'beet') t.push('bietenrooier nodig');
+    if (c.harvester === 'potato') t.push('pootmachine + aardappelrooier nodig');
+    if (c.harvester === 'beet') t.push('bietenzaaier + bietenrooier nodig');
+    if (c.perennial) t.push('grasland: maaien, schudden, hooi persen; groeit vanzelf weer aan');
     return t;
   }
   const pct = (n, total) => Math.round(n / total * 100);
@@ -65,13 +66,17 @@ window.AT = window.AT || {};
         html += fieldQueue(f);
         html += `<h3>Of: opdracht geven aan je personeel</h3><p class="muted">Opdrachten gaan in de wachtrij (tab Team). Een vrije werknemer rijdt met jouw machines naar het veld.${s.staff && s.staff.allowExternal ? ` Is niemand vrij, dan komt een loonwerker (+${AT.fmtMoney(D.workerWagePerHour)}/u).` : ''}</p>`;
         if (sum.stubble) html += workerButton(s, f, 'plow', 'Laat ploegen');
+        if (sum.readyCrops.grass) html += workerButton(s, f, 'mow', 'Laat maaien');
+        if (sum.needTed) html += workerButton(s, f, 'ted', 'Laat schudden (sneller droog)');
+        if (sum.dryHay) html += workerButton(s, f, 'bale', `Laat hooi persen (±${AT.fmtTons(sum.hayTons)})`);
+        if (sum.grass && !sum.mown && !sum.readyCrops.grass) html += `<p class="muted">Grasland: het gras groeit weer aan. Wil je iets anders zaaien? <button class="btn small" data-action="plowGrass" data-id="${f.id}">Gras omploegen</button></p>`;
         if (sum.plowed) html += cropChoice(s, f, def, sum);
         const rc = G().mainCrop({ crops: sum.readyCrops });
-        if (sum.ready && rc && !D.crops[rc].greenManure) html += workerButton(s, f, 'harvest', `Laat oogsten (±${AT.fmtTons(sum.readyTons)})`);
+        if (sum.ready - (sum.readyCrops.grass || 0) > 0 && rc && !D.crops[rc].greenManure && !D.crops[rc].perennial) html += workerButton(s, f, 'harvest', `Laat oogsten (±${AT.fmtTons(sum.readyTons)})`);
         if (sum.clover && sum.stubble === 0) html += workerButton(s, f, 'plow', 'Laat klaver onderploegen');
         if (sum.needFert && G().bestRig('fertilize', f.id)) html += workerButton(s, f, 'fertilize', 'Laat kunstmest strooien');
         if (sum.needManure && G().bestRig('manure', f.id)) html += workerButton(s, f, 'manure', 'Laat mest uitrijden');
-        if (!sum.stubble && !sum.plowed && !sum.ready) html += `<p class="muted">Niets te doen: het gewas groeit.</p>`;
+        if (!sum.stubble && !sum.plowed && !sum.ready && !sum.mown) html += `<p class="muted">Niets te doen: het gewas groeit.</p>`;
       }
     }
 
@@ -81,7 +86,7 @@ window.AT = window.AT || {};
       let st = 'Te koop';
       if (ff.owned) {
         const sm = G().summary(ff);
-        st = ff.job ? JOB_NAMES[ff.job.type] + '…' : sm.ready && !sm.growing ? 'Rijp!' : sm.growing ? (D.crops[G().mainCrop(sm)].name + ' groeit') :
+        st = ff.job ? JOB_NAMES[ff.job.type] + '…' : sm.mown ? (sm.dryHay ? 'Hooi droog!' : 'Hooi droogt') : sm.ready && !sm.growing ? 'Rijp!' : sm.growing ? (D.crops[G().mainCrop(sm)].name + ' groeit') :
           sm.plowed > sm.stubble ? 'Geploegd' : 'Stoppel';
       }
       html += `<button class="field-row ${fd.id === id ? 'active' : ''} ${st === 'Rijp!' ? 'ready' : ''} ${!ff.owned ? 'forsale' : ''}"
@@ -114,7 +119,10 @@ window.AT = window.AT || {};
   function selfHelp(sum) {
     let step = '';
     const readyCrop = G().mainCrop({ crops: sum.readyCrops });
-    if (sum.ready && readyCrop && D.crops[readyCrop].greenManure) step = `De <b>klaver</b> is volgroeid. Ploeg hem onder met je <b>ploeg</b>: dat maakt de bodem veel beter.`;
+    if (sum.dryHay) step = 'Het hooi is droog. Koppel de <b>balenpers</b> aan je tractor (F) en rij over de zwaden.';
+    else if (sum.mown) step = 'Het gras droogt. Met de <b>schudder</b> gaat het sneller; daarna pers je het met de <b>balenpers</b>.';
+    else if (sum.ready && readyCrop === 'grass') step = 'Het gras is lang genoeg. Koppel de <b>maaier</b> aan je tractor (F), rij hierheen en zet hem omlaag (spatie).';
+    else if (sum.ready && readyCrop && D.crops[readyCrop].greenManure) step = `De <b>klaver</b> is volgroeid. Ploeg hem onder met je <b>ploeg</b>: dat maakt de bodem veel beter.`;
     else if (sum.ready) step = `Loop naar je <b>${G().HARVESTER_NAMES[D.crops[readyCrop].harvester]}</b>, stap in (E), rij naar dit veld en zet hem omlaag (spatie).` + (AT.weather.isWet() ? ' <b>Let op: het is nu te nat om te oogsten.</b>' : '') + (sum.withering ? ' <b>Het gewas verwelkt: oogst snel!</b>' : '');
     else if (sum.plowed) step = 'Koppel een <b>zaaimachine</b> aan je tractor (achteruit ertegen rijden + F), kies het zaaigoed (C), rij hierheen en zet hem omlaag (spatie).';
     else if (sum.stubble) step = 'Stap in je <b>tractor met ploeg</b> (E), rij hierheen en zet de ploeg omlaag (spatie).';
@@ -175,14 +183,17 @@ window.AT = window.AT || {};
   function cropChoice(s, f, def, sum) {
     const rig = G().bestRig('sow', f.id);
     if (!rig && !s.machines.some(m => D.machines[m.type].kind === 'seeder')) return `<p class="warn">${esc(G().missingFor('sow'))}</p>`;
+    const planters = new Set(s.machines.map(m => D.machines[m.type].sows).filter(Boolean));
     const ha = def.ha * sum.plowed / sum.total;
     let html = `<div class="card"><b>Laat zaaien</b> <span class="muted">· ${rig ? esc(rig.machines.map(m => D.machines[m.type].name).join(' + ')) + ' · ±' + AT.fmtHours(rig.hours) : 'zaaimachine nu bezet, wacht in de rij'}</span>`;
     const entries = Object.entries(D.crops).sort(([a], [b]) => G().canSowNow(b) - G().canSowNow(a));
     for (const [key, c] of entries) {
       const cost = (rig ? rig.hours * rig.fuelPerHour * D.fuelPrice : 0) + c.seedCostPerHa * ha;
-      const ok = G().canSowNow(key);
+      const hasPlanter = planters.has(c.planter || 'seeder');
+      const ok = G().canSowNow(key) && hasPlanter;
+      const note = !hasPlanter ? `${G().PLANTER_NAMES[c.planter]} nodig` : !G().canSowNow(key) ? 'zaaien: ' + monthRanges(c.sow) : AT.fmtMoney(cost);
       html += `<div class="row crop-row ${ok ? '' : 'off'}"><span class="dot" style="background:${c.color}"></span>
-        <span class="grow">${c.name} <span class="muted">${c.growDays} d · ${ok ? AT.fmtMoney(cost) : 'zaaien: ' + monthRanges(c.sow)}</span></span>
+        <span class="grow">${c.name} <span class="muted">${c.growDays} d · ${note}</span></span>
         <button class="btn small primary" data-action="sow" data-crop="${key}" data-id="${f.id}" ${!ok ? 'disabled' : ''}>Zaai</button></div>`;
     }
     return html + '</div>';
@@ -255,6 +266,11 @@ window.AT = window.AT || {};
       const what = Object.values(D.crops).filter(c => c.harvester === d.harvests).map(c => c.name.toLowerCase());
       return `${d.width} m breed · bunker ${d.tank} t · oogst: ${what.length > 4 ? 'granen, maïs, koolzaad, zonnebloem, soja, bonen' : what.join(', ')}`;
     }
+    if (d.kind === 'truck') return `${d.pallets} pallets · ${d.speed} km/u · laden bij het laadperron`;
+    if (d.kind === 'mower') return `${d.width} m breed · gras maaien`;
+    if (d.kind === 'tedder') return `${d.width} m breed · hooi droogt sneller`;
+    if (d.kind === 'baler') return `pers droog gras tot hooi`;
+    if (d.kind === 'seeder' && d.sows !== 'seeder') return `${d.width} m breed · zaait ${d.sows === 'potato' ? 'aardappelen' : 'suikerbieten'}`;
     if (d.kind === 'spreader') return `${d.width} m breed · +25% opbrengst · ${AT.fmtMoney(D.fertCostPerHa)}/ha`;
     if (d.kind === 'manure') return `${d.width} m breed · betere bodem · ${D.manurePerHa} t mest/ha`;
     return `${d.width} m breed · ${d.workSpeed} km/u · vereist ${d.minPower >= 2 ? '150+ pk' : '75+ pk'}`;
@@ -262,7 +278,7 @@ window.AT = window.AT || {};
 
   function renderShop(s) {
     let html = `<h2>Winkel</h2>`;
-    const groups = [['tractor', 'Tractoren'], ['trailer', 'Aanhangers'], ['plow', 'Ploegen'], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting'], ['manure', ''], ['harvester', 'Oogstmachines']];
+    const groups = [['tractor', 'Tractoren'], ['trailer', 'Aanhangers'], ['truck', 'Vrachtwagens'], ['plow', 'Ploegen'], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting'], ['manure', ''], ['mower', 'Grasland'], ['tedder', ''], ['baler', ''], ['harvester', 'Oogstmachines']];
     for (const [kind, title] of groups) {
       if (title) html += `<h3>${title}</h3>`;
       for (const [key, d] of Object.entries(D.machines)) {
@@ -295,42 +311,168 @@ window.AT = window.AT || {};
     return m.factor > prev + 0.005 ? '<span class="up">▲</span>' : m.factor < prev - 0.005 ? '<span class="down">▼</span>' : '<span class="muted">■</span>';
   }
 
+  const goodName = k => (D.crops[k] || D.products[k]).name;
+  const bestMonth = k => { let best = 0; for (let m = 1; m < 12; m++) if (AT.weather.monthFactor(k, m) > AT.weather.monthFactor(k, best)) best = m; return best; };
+
   function renderMarket(s) {
-    let html = `<h2>Graanhandel</h2>
-      <p class="muted">Silo: ${AT.fmtTons(G().siloUsed())} / ${G().siloCapacity()} t. Prijzen veranderen elke dag en per seizoen: in de oogsttijd is het goedkoop, een half jaar later duur. Bewaren kan dus lonen!</p>
-      <div class="card self"><b>Zelf wegbrengen = meer geld</b><p>Verkopen vanuit de silo kost <b>${Math.round(D.pickupFee * 100)}% ophaalkosten</b>. Breng je graan zelf met een aanhanger naar de <b>graanhandel</b> (onderaan de kaart) en los met <b>U</b> voor de volle prijs.</p>
-      <button class="btn small" data-action="look-trader">Zoek graanhandel</button></div>
-      <div class="market-list">`;
-    const entries = Object.entries(D.crops).filter(([, c]) => c.basePrice > 0)
-      .sort(([a], [b]) => s.silo[b] - s.silo[a]);
-    for (const [key, c] of entries) {
-      const stock = s.silo[key];
-      const sf = AT.weather.priceFactor(key);
-      const seasonTag = sf > 1 ? '<span class="tag up">duur</span>' : sf < 1 ? '<span class="tag down">oogsttijd</span>' : '';
-      html += `<div class="mrow ${stock < 0.05 ? 'empty' : ''}">
-        <span class="dot" style="background:${c.color}"></span>
-        <span class="grow"><b>${c.name}</b> ${seasonTag}<br><span class="muted">${stock >= 0.05 ? AT.fmtTons(stock) + ' · ≈ ' + AT.fmtMoney(stock * G().cropPrice(key)) : 'geen voorraad'}</span></span>
-        ${sparkline(s.market[key].history)}
-        <span class="price">${AT.fmtMoney(G().cropPrice(key))}/t ${trendOf(s.market[key])}</span>
-        <button class="btn small primary" data-action="sell" data-crop="${key}" ${stock < 0.05 ? 'disabled' : ''} title="Laten ophalen: −${Math.round(D.pickupFee * 100)}%">Laat ophalen</button>
-      </div>`;
+    if (!s.contracts.offers.length) G().refreshOffers();
+    let html = `<h2>Markt</h2>
+      <div class="row wrap"><button class="btn small primary" data-open="prices">📈 Prijskalender: wanneer verkopen?</button></div>
+      <p class="muted">Silo: ${AT.fmtTons(G().siloUsed())} / ${G().siloCapacity()} t · opslagloods: ${AT.fmtNum(G().palletsUsed(), 0)} / ${G().warehouseCapacity()} pallets.
+      Laten ophalen kost ${Math.round(D.pickupFee * 100)}%; zelf brengen met aanhanger of vrachtwagen (U bij een verkooppunt) geeft de volle prijs. Veel tegelijk verkopen drukt de prijs even.</p>`;
+
+    // contracten
+    const C = s.contracts;
+    html += `<h3>Contracten</h3>`;
+    for (const c of C.active) {
+      const have = G().stock(c.key);
+      html += `<div class="card contract active"><div class="row"><b class="grow">📜 ${AT.fmtAmount(c.amount, c.key)} ${goodName(c.key).toLowerCase()}</b><span class="badge">vóór dag ${c.deadline}</span></div>
+        <div class="bar"><div class="fill job" style="width:${c.delivered / c.amount * 100}%"></div></div>
+        <div class="muted">${AT.fmtAmount(c.delivered, c.key)} geleverd · ${AT.fmtPrice2(c.pricePer, c.key)} + bonus ${AT.fmtMoney(c.bonus)} · te laat = boete ${Math.round(D.contracts.fine * 100)}%</div>
+        <div class="row"><span class="grow muted">Leveren: breng het naar een verkooppunt (U), of uit je voorraad (${AT.fmtAmount(have, c.key)}).</span>
+        <button class="btn small primary" data-action="deliver" data-c="${c.id}" ${have < 0.01 ? 'disabled' : ''}>Lever uit voorraad</button></div></div>`;
     }
+    for (const o of C.offers) {
+      const normal = G().price(o.key);
+      html += `<div class="card contract"><div class="row"><b class="grow">${AT.fmtAmount(o.amount, o.key)} ${goodName(o.key).toLowerCase()} in ${o.days} dagen</b>
+        <button class="btn small primary" data-action="acceptContract" data-c="${o.id}">Aannemen</button></div>
+        <div class="muted">${AT.fmtPrice2(o.pricePer, o.key)} (nu ${AT.fmtPrice2(normal, o.key)}) + bonus ${AT.fmtMoney(o.bonus)} · totaal ±${AT.fmtMoney(o.amount * o.pricePer + o.bonus)}</div></div>`;
+    }
+    html += `<p class="muted">Elke ${D.contracts.refreshDays} dagen nieuwe aanbiedingen.</p>`;
+
+    // gewassen
+    html += `<h3>Gewassen <span class="muted">(prijs bij de graanhandel)</span></h3><div class="market-list">`;
+    const entries = Object.entries(D.crops).filter(([, c]) => c.basePrice > 0).sort(([a], [b]) => s.silo[b] - s.silo[a]);
+    for (const [key, c] of entries) html += marketRow(s, key, c.color, s.silo[key], 'sell');
+    html += `</div><h3>Producten</h3><div class="market-list">`;
+    const prods = Object.entries(D.products).filter(([k]) => s.goods[k] > 0.01 && k !== 'manure');
+    for (const [key] of prods) html += marketRow(s, key, null, s.goods[key], 'sellGood');
+    if (!prods.length) html += `<p class="muted">Nog geen producten. Bouw stallen, kassen en fabrieken in de tab Bedrijf.</p>`;
     html += `</div>`;
-    html += `<h3>Producten</h3>`;
-    let any = false;
-    for (const [key, d] of Object.entries(D.products)) {
-      const st = s.goods[key];
-      if (st < 0.01 && !s.market[key]) continue;
-      if (st < 0.01) continue;
-      any = true;
-      const m = s.market[key];
-      html += `<div class="card">
-        <div class="row"><b class="grow">${d.name}</b>${sparkline(m.history)} <span class="price">${AT.fmtPrice(key)}/${d.unit} ${trendOf(m)}</span></div>
-        <div class="row"><span class="grow muted">Voorraad: ${AT.fmtAmount(st, key)} (≈ ${AT.fmtMoney(st * G().price(key))})</span>
-          <button class="btn small primary" data-action="sellGood" data-good="${key}">Verkoop alles</button></div>
-      </div>`;
+
+    // verkooppunten
+    html += `<h3>Verkooppunten</h3>`;
+    for (const [id, sp] of Object.entries(D.sellPoints)) {
+      const extras = Object.entries(sp.mult).map(([k, v]) => `${goodName(k).toLowerCase()} +${Math.round((v - 1) * 100)}%`).join(', ');
+      const what = sp.only ? sp.only.map(k => goodName(k).toLowerCase()).join(', ') : sp.kind === 'crops' ? 'alle gewassen' : 'alle producten';
+      html += `<div class="card"><div class="row"><b class="grow">${sp.name}</b><button class="btn small" data-action="look-sp" data-sp="${id}">Zoek</button></div>
+        <div class="muted">Koopt: ${what}${extras ? `<br>Betaalt extra: ${extras}` : ''}</div></div>`;
     }
-    if (!any) html += `<p class="muted">Nog geen producten. Bouw stallen en fabrieken in de tab Bedrijf.</p>`;
+    return html;
+  }
+
+  function marketRow(s, key, color, stock, action) {
+    const m = s.market[key];
+    const sf = AT.weather.priceFactor(key);
+    const tags = [sf > 1.03 ? '<span class="tag up">duur</span>' : sf < 0.97 ? '<span class="tag down">goedkoop</span>' : '',
+      m.sat > 0.02 ? `<span class="tag down" title="Je hebt hier veel van verkocht">verzadigd −${Math.round(m.sat * 100)}%</span>` : ''].join(' ');
+    const unit = D.crops[key] ? 't' : D.products[key].unit;
+    return `<div class="mrow2 ${stock < 0.05 ? 'empty' : ''}">
+      <div class="row">${color ? `<span class="dot" style="background:${color}"></span>` : ''}<b class="grow">${goodName(key)} ${tags}</b>
+        ${sparkline(m.history)}<span class="price">${AT.fmtPrice2(G().price(key), key)}/${unit} ${trendOf(m)}</span></div>
+      <div class="row"><span class="grow muted">${stock >= 0.05 ? AT.fmtAmount(stock, key) + ' · ≈ ' + AT.fmtMoney(stock * G().price(key)) : 'geen voorraad'} · beste maand: ${D.months[bestMonth(key)].toLowerCase()}</span>
+        <button class="btn small primary" data-action="${action}" data-crop="${key}" data-good="${key}" ${stock < 0.05 ? 'disabled' : ''} title="Laten ophalen: −${Math.round(D.pickupFee * 100)}%">Laat ophalen</button></div>
+    </div>`;
+  }
+
+  // ---------- prijskalender (heatmap: goedkoop ↔ duur per maand) ----------
+  // diverging: rood = goedkoop, grijs = gemiddeld, blauw = duur (goed moment om te verkopen)
+  const DIV = { mid: [240, 239, 236], low: [[247, 200, 199], [235, 128, 126], [210, 70, 69]], high: [[205, 226, 251], [109, 167, 236], [37, 106, 191]] };
+  function divColor(v) { // v in −1..1
+    const arm = v < 0 ? DIV.low : DIV.high, t = Math.min(1, Math.abs(v));
+    const stops = [DIV.mid, ...arm], pos = t * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(pos)), f = pos - i;
+    const c = stops[i].map((x, k) => Math.round(x + (stops[i + 1][k] - x) * f));
+    return { bg: `rgb(${c.join(',')})`, ink: t > 0.7 ? '#ffffff' : '#0b0b0b' };
+  }
+
+  function renderPriceCalendar() {
+    const now = AT.weather.month();
+    const keys = [...Object.keys(D.crops).filter(k => D.crops[k].basePrice > 0 && D.crops[k].cheapMonth != null),
+      ...Object.keys(D.products).filter(k => D.products[k].cheapMonth != null)];
+    let html = `<div class="modal-card"><div class="row"><h2 class="grow">📈 Prijskalender</h2><button class="btn small" data-close>Sluiten</button></div>
+      <p class="muted">Gemiddelde prijs per maand ten opzichte van het jaargemiddelde. In de oogstmaand is het aanbod groot en de prijs laag; een half jaar later is het duur.
+      Bovenop deze lijn schommelt de prijs elke dag een beetje. Een maand duurt ${D.daysPerMonth} dagen.</p>
+      <div class="legend-bar"><span>goedkoop</span><span class="grad"></span><span>duur (verkopen!)</span></div>
+      <table class="cal heat"><thead><tr><th>Gewas</th>${D.months.map((m, i) => `<th class="${i === now ? 'now' : ''}">${m.slice(0, 3)}</th>`).join('')}<th>Nu</th><th>Beste maand</th></tr></thead><tbody>`;
+    for (const k of keys) {
+      const base = (D.crops[k] || D.products[k]).basePrice, unit = D.crops[k] ? 't' : D.products[k].unit;
+      html += `<tr><th class="rowh">${goodName(k)}</th>`;
+      for (let m = 0; m < 12; m++) {
+        const f = AT.weather.monthFactor(k, m), v = (f - 1) / D.seasonPrice, col = divColor(v);
+        const pct = Math.round((f - 1) * 100);
+        html += `<td class="${m === now ? 'now' : ''}" style="background:${col.bg};color:${col.ink}" title="${goodName(k)} in ${D.months[m].toLowerCase()}: ±${AT.fmtPrice2(base * f, k)}/${unit} (${pct > 0 ? '+' : ''}${pct}%)">${pct > 0 ? '+' : ''}${pct}%</td>`;
+      }
+      html += `<td>${AT.fmtPrice2(G().price(k), k)}/${unit}</td><td><b>${D.months[bestMonth(k)]}</b></td></tr>`;
+    }
+    html += `</tbody></table></div>`;
+    $('#modal').innerHTML = html;
+    $('#modal').hidden = false;
+  }
+
+  // ---------- Geld: financieel overzicht, bank ----------
+  const CAT_NAMES = { gewassen: 'Gewassen', producten: 'Producten', contracten: 'Contracten', doelen: 'Beloningen', dieren: 'Dieren', 'machines verkocht': 'Machines verkocht',
+    zaaigoed: 'Zaaigoed', brandstof: 'Brandstof', kunstmest: 'Kunstmest', lonen: 'Lonen', loonwerk: 'Loonwerk', energie: 'Energie', machines: 'Machines', land: 'Land',
+    gebouwen: 'Gebouwen', rente: 'Rente', boetes: 'Boetes', overig: 'Overig' };
+
+  function financeChart(ledger) {
+    const days = ledger.slice(-14);
+    if (!days.length) return '<p class="muted">Nog geen gegevens.</p>';
+    const sum = o => Object.values(o).reduce((a, b) => a + b, 0);
+    const data = days.map(d => ({ day: d.day, inc: sum(d.income), exp: sum(d.expense) }));
+    const max = Math.max(1000, ...data.map(d => Math.max(d.inc, d.exp)));
+    const step = Math.pow(10, Math.floor(Math.log10(max))) * (max / Math.pow(10, Math.floor(Math.log10(max))) > 5 ? 2 : 1);
+    const top = Math.ceil(max / step) * step;
+    const W = 340, H = 150, padL = 40, padB = 18, plotW = W - padL - 4, plotH = H - padB - 6;
+    const gw = plotW / 14, bw = Math.max(3, (gw - 6) / 2);
+    const y = v => 6 + plotH - v / top * plotH;
+    const bar = (x, v, color) => {
+      const h = Math.max(0, v / top * plotH), r = Math.min(4, bw / 2, h);
+      if (h <= 0) return '';
+      // bovenkant afgerond, onderkant vlak op de as
+      return `<path d="M${x},${6 + plotH} v${-(h - r)} q0,${-r} ${r},${-r} h${bw - 2 * r} q${r},0 ${r},${r} v${h - r} z" fill="${color}"/>`;
+    };
+    let svg = `<svg class="fin-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Inkomsten en uitgaven per dag">`;
+    for (let v = 0; v <= top; v += step) {
+      svg += `<line x1="${padL}" x2="${W - 4}" y1="${y(v)}" y2="${y(v)}" stroke="#e6e2d8" stroke-width="1"/>`;
+      svg += `<text x="${padL - 4}" y="${y(v) + 3}" text-anchor="end" class="ax">${v >= 1000 ? Math.round(v / 1000) + 'k' : v}</text>`;
+    }
+    data.forEach((d, i) => {
+      const x0 = padL + i * gw + 3;
+      svg += `<g class="hit"><title>Dag ${d.day}: +${AT.fmtMoney(d.inc)} / −${AT.fmtMoney(d.exp)} = ${AT.fmtMoney(d.inc - d.exp)}</title>
+        <rect x="${x0 - 2}" y="6" width="${gw - 2}" height="${plotH}" fill="transparent"/>
+        ${bar(x0, d.inc, '#2a78d6')}${bar(x0 + bw + 2, d.exp, '#eb6834')}</g>`;
+      if (i % 2 === 0 || data.length < 8) svg += `<text x="${x0 + bw}" y="${H - 4}" text-anchor="middle" class="ax">${d.day}</text>`;
+    });
+    svg += `</svg>`;
+    return `<div class="legend"><span><i style="background:#2a78d6"></i>Inkomsten</span><span><i style="background:#eb6834"></i>Uitgaven</span><span class="muted">per dag · beweeg over een staaf</span></div>${svg}`;
+  }
+
+  function renderMoney(s) {
+    const L = s.ledger || [];
+    const today = L[L.length - 1] || { income: {}, expense: {} };
+    const sum = o => Object.values(o).reduce((a, b) => a + b, 0);
+    const week = L.slice(-7);
+    const wIn = week.reduce((a, d) => a + sum(d.income), 0), wOut = week.reduce((a, d) => a + sum(d.expense), 0);
+    let html = `<h2>Geld</h2>
+      <div class="tiles">
+        <div class="tile"><small>Op de bank</small><b>${AT.fmtMoney(s.money)}</b></div>
+        <div class="tile"><small>Laatste 7 dagen</small><b class="${wIn - wOut >= 0 ? 'up' : 'down'}">${wIn - wOut >= 0 ? '+' : '−'}${AT.fmtMoney(Math.abs(wIn - wOut))}</b></div>
+        <div class="tile"><small>Lening</small><b>${AT.fmtMoney(s.loan)}</b></div>
+      </div>
+      <h3>Inkomsten en uitgaven</h3>${financeChart(L)}
+      <h3>Vandaag per categorie</h3><table class="ledger"><tbody>`;
+    const rows = [...Object.entries(today.income).map(([k, v]) => [k, v]), ...Object.entries(today.expense).map(([k, v]) => [k, -v])].sort((a, b) => b[1] - a[1]);
+    html += rows.length ? rows.map(([k, v]) => `<tr><td>${CAT_NAMES[k] || k}</td><td class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : '−'}${AT.fmtMoney(Math.abs(v))}</td></tr>`).join('') : '<tr><td class="muted">Nog niets vandaag.</td></tr>';
+    html += `</tbody></table>`;
+    // bank
+    const max = G().maxLoan();
+    html += `<h3>Bank</h3><div class="card">
+      <div class="row"><span class="grow">Lening</span><b>${AT.fmtMoney(s.loan)} / ${AT.fmtMoney(max)}</b></div>
+      <div class="muted">Rente ${(D.bank.ratePerDay * 100).toFixed(1).replace('.', ',')}% per dag${s.loan ? ` (nu ${AT.fmtMoney(s.loan * D.bank.ratePerDay)}/dag)` : ''}. Hoeveel je mag lenen hangt af van je land en machines.</div>
+      <div class="row wrap">${D.bank.steps.map(v => `<button class="btn small primary" data-action="borrow" data-v="${v}" ${s.loan + v > max ? 'disabled' : ''}>Leen ${AT.fmtMoney(v)}</button>`).join('')}</div>
+      <div class="row wrap"><button class="btn small" data-action="repay" data-v="10000" ${s.loan < 1 ? 'disabled' : ''}>Los €10.000 af</button>
+      <button class="btn small" data-action="repay" ${s.loan < 1 ? 'disabled' : ''}>Alles aflossen</button></div></div>`;
+    html += `<button class="btn" data-open="goals">🎯 Doelen en statistieken</button>`;
     return html;
   }
 
@@ -427,7 +569,33 @@ window.AT = window.AT || {};
         <div class="muted">${line} · max ${d.batchesPerDay}× per dag · €${d.costPerBatch} energie per keer</div>
         <div class="${f.running ? '' : 'warn'}">Status: ${esc(f.status || 'start op')}</div></div>`;
     }
-    html += `<h3>Opslag</h3><div class="card">`;
+    // kassen
+    html += `<h3>Kassen</h3>`;
+    AT.farm.greenhouses().forEach((g, i) => {
+      if (!g.owned) {
+        html += `<div class="card row"><div class="grow"><b>Kas ${i + 1}</b><div class="muted">Het hele jaar groenten · stookkosten hoger in de winter</div></div>
+          <button class="btn small primary" data-action="buyGreenhouse" data-i="${i}" ${s.money < D.greenhouse.price ? 'disabled' : ''}>Bouw ${AT.fmtMoney(D.greenhouse.price)}</button></div>`;
+        return;
+      }
+      html += `<div class="card"><div class="row"><b class="grow">Kas ${i + 1}</b><span class="muted">${esc(g.status || '')}</span></div>
+        <div class="row wrap">${Object.entries(D.greenhouse.crops).map(([k, c]) => `<button class="btn small ${g.crop === k ? 'primary' : ''}" data-action="ghCrop" data-i="${i}" data-crop="${k}">${D.products[k].name} (${c.perDay} ${D.products[k].unit}/dag)</button>`).join('')}</div></div>`;
+    });
+    // bos
+    const wl = AT.farm.woodlot();
+    const readyTrees = wl.trees.filter(t => t.growth >= 0.95).length;
+    html += `<h3>Bosperceel</h3><div class="card">`;
+    if (!wl.owned) html += `<div class="row"><span class="grow">${wl.trees.length} bomen · hout voor de zagerij</span><button class="btn small primary" data-action="buyWoodlot" ${s.money < D.woodlot.price ? 'disabled' : ''}>Koop ${AT.fmtMoney(D.woodlot.price)}</button></div>`;
+    else html += `<div class="row"><span class="grow">${readyTrees} van ${wl.trees.length} bomen kapklaar</span><button class="btn small" data-action="look-wood">Zoek</button>
+      <button class="btn small primary" data-action="cutAll" ${readyTrees ? '' : 'disabled'}>Laat kappen (${AT.fmtMoney(D.woodlot.cutCost)}/boom)</button></div>
+      <div class="muted">Zelf kappen: loop naar een boom en druk H. Er groeit vanzelf een nieuwe boom (${D.woodlot.growDays} dagen, niet in de winter).</div>`;
+    html += `</div>`;
+    // opslagloods
+    const nextW = D.warehouse[(s.warehouseLevel || 0) + 1];
+    html += `<h3>Opslagloods</h3><div class="card"><div class="row"><span class="grow">${AT.fmtNum(G().palletsUsed(), 1)} / ${G().warehouseCapacity()} pallets</span>
+      ${nextW ? `<button class="btn small primary" data-action="upgradeWarehouse" ${s.money < nextW.price ? 'disabled' : ''}>Uitbreiden naar ${nextW.pallets} (${AT.fmtMoney(nextW.price)})</button>` : ''}</div>
+      <div class="bar"><div class="fill" style="width:${Math.min(100, G().palletsUsed() / G().warehouseCapacity() * 100)}%;background:${G().palletsUsed() / G().warehouseCapacity() > 0.9 ? '#d03b3b' : '#7fb24a'}"></div></div>
+      <div class="muted">Vol = productie gaat verloren. Laad een vrachtwagen bij het laadperron (U) en breng het naar de supermarkt.</div></div>`;
+    html += `<h3>Voorraad</h3><div class="card">`;
     const stocked = Object.entries(D.products).filter(([k]) => s.goods[k] > 0.01);
     html += stocked.length ? stocked.map(([k, d]) => `<div class="row"><span class="grow">${d.name}</span><span>${AT.fmtAmount(s.goods[k], k)}</span></div>`).join('') : '<span class="muted">Leeg</span>';
     html += `</div>`;
@@ -436,7 +604,7 @@ window.AT = window.AT || {};
 
   // ---------- Doelen ----------
   function renderGoals(s) {
-    let html = `<h2>Doelen</h2><ul class="goals">`;
+    let html = `<div class="modal-card narrow"><div class="row"><h2 class="grow">🎯 Doelen</h2><button class="btn small" data-close>Sluiten</button></div><ul class="goals">`;
     for (const g of D.goals) {
       const done = !!s.goalsDone[g.id];
       html += `<li class="${done ? 'done' : ''}"><span>${done ? '✔' : '○'}</span> ${esc(g.text)}${g.reward ? ` <span class="muted">(+${AT.fmtMoney(g.reward)})</span>` : ''}</li>`;
@@ -451,11 +619,12 @@ window.AT = window.AT || {};
       WASD / pijltjes: lopen of rijden<br>Spatie: werktuig omlaag/omhoog · C: zaaigoed wisselen<br>
       E: in-/uitstappen · F: werktuig aan-/afkoppelen · U: lossen · Shift: sneller<br>Scroll: zoomen · Slepen: rondkijken<br>P: pauze · 1 / 2 / 3 / 4: snelheid 1× / 5× / 20× / 60×
     </div>
-    <button class="btn danger" data-action="reset">Nieuw spel starten</button>`;
+    <button class="btn danger" data-action="reset">Nieuw spel starten</button></div>`;
     return html;
   }
+  function openGoals() { $('#modal').innerHTML = renderGoals(AT.state); $('#modal').hidden = false; }
 
-  const TABS = { field: renderField, garage: renderGarage, shop: renderShop, team: renderTeam, farm: renderFarm, market: renderMarket, goals: renderGoals };
+  const TABS = { field: renderField, garage: renderGarage, shop: renderShop, team: renderTeam, farm: renderFarm, market: renderMarket, money: renderMoney };
 
   function renderPanel() {
     const s = AT.state;
@@ -488,7 +657,8 @@ window.AT = window.AT || {};
       html += `<tr><td><span class="dot" style="background:${c.color}"></span> ${c.name}</td>`;
       for (let m = 0; m < 12; m++) html += `<td class="${c.sow.includes(m) ? 'sow' : ''} ${m === now ? 'now' : ''}"></td>`;
       const value = c.yieldPerHa * c.basePrice - c.seedCostPerHa;
-      html += `<td>${c.growDays} d</td><td>${c.yieldPerHa ? '±' + AT.fmtMoney(value) + '/ha' : '—'}</td><td class="muted">${cropTraits(c).join(', ') || '—'}</td></tr>`;
+      const v2 = c.perennial ? c.yieldPerHa * D.products.hay.basePrice - c.seedCostPerHa : value;
+      html += `<td>${c.growDays} d</td><td>${c.yieldPerHa ? '±' + AT.fmtMoney(v2) + '/ha' : '—'}</td><td class="muted">${cropTraits(c).join(', ') || '—'}</td></tr>`;
     }
     html += `</tbody></table></div>`;
     $('#modal').innerHTML = html;
@@ -580,6 +750,18 @@ window.AT = window.AT || {};
       case 'look-farm': { const r = D.animals[a.key].pen; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
       case 'look-factory': { const r = D.factories[a.key].lot; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
       case 'crop': AT.state.player.crop = a.crop; renderPanel(); break;
+      case 'plowGrass': if (confirm('Het gras omploegen? Daarna moet je opnieuw zaaien.')) { G().startJob(id, 'plow', null, { plowGrass: true }) ; } break;
+      case 'acceptContract': G().acceptContract(a.c); break;
+      case 'deliver': G().deliverContract(a.c); break;
+      case 'borrow': G().borrow(Number(a.v)); break;
+      case 'repay': G().repay(a.v ? Number(a.v) : undefined); break;
+      case 'buyGreenhouse': AT.farm.buyGreenhouse(Number(a.i)); break;
+      case 'ghCrop': AT.farm.setGreenhouseCrop(Number(a.i), a.crop); break;
+      case 'buyWoodlot': AT.farm.buyWoodlot(); break;
+      case 'cutAll': AT.farm.cutAll(); break;
+      case 'upgradeWarehouse': G().upgradeWarehouse(); break;
+      case 'look-wood': { const r = D.woodlot.area; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
+      case 'look-sp': { const r = a.sp === 'trader' ? D.trader.lot : D.sellPoints[a.sp].lot; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
       case 'reset':
         if (confirm('Weet je zeker dat je opnieuw wilt beginnen? Je voortgang gaat verloren.')) G().reset();
         break;
@@ -678,6 +860,9 @@ window.AT = window.AT || {};
     initCanvas();
     document.addEventListener('click', e => {
       if (e.target.closest('[data-open="calendar"]')) renderCalendar();
+      if (e.target.closest('[data-open="prices"]')) renderPriceCalendar();
+      if (e.target.closest('[data-open="goals"]') || e.target.closest('#goal')) openGoals();
+      if (e.target.closest('#modal [data-action="reset"]')) { if (confirm('Weet je zeker dat je opnieuw wilt beginnen? Je voortgang gaat verloren.')) { G().reset(); $('#modal').hidden = true; } }
       if (e.target.closest('[data-close]') || e.target.id === 'modal') $('#modal').hidden = true;
     });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').hidden = true; });

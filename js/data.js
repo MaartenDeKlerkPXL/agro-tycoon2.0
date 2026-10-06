@@ -4,10 +4,10 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 7,
+  version: 8,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
-  world: { w: 2400, h: 1900 },
+  world: { w: 2700, h: 1900 },
   CELL: 8,
 
   start: {
@@ -34,19 +34,22 @@ AT.data = {
   // soilDemand   = hoeveel bodemkwaliteit een volledige oogst kost (negatief = bodem wordt béter)
   // droughtProof = geen last van droogte
   // harvester    = welke machine oogst: 'combine' (maaidorser), 'potato', 'beet' of null (niet oogsten)
-  // cheapSeason  = seizoen waarin de prijs laag is (oogsttijd)
+  // cheapMonth   = maand waarin de prijs het laagst is (oogsttijd); een half jaar later het hoogst
+  // planter      = welke zaaimachine nodig is ('potato' pootmachine, 'beet' bietenzaaier, anders gewone zaaimachine)
+  // gras         = maaien → (schudden) → drogen → persen tot hooi; groeit daarna vanzelf weer aan
   // style        = hoe het gewas er op het veld uitziet
   crops: {
-    wheat:     { name: 'Tarwe',       seedCostPerHa: 120, growDays: 3, yieldPerHa: 8,   basePrice: 220, color: '#e0b84c', growColor: '#7fb24a', sow: [0, 1, 6, 7], winterHardy: true, winterGrowth: 0.3, soilDemand: 0.08, harvester: 'combine', cheapSeason: 1, style: 'grain' },
-    barley:    { name: 'Gerst',       seedCostPerHa: 100, growDays: 2, yieldPerHa: 6.5, basePrice: 200, color: '#d6c27a', growColor: '#8cbf5a', sow: [0, 1, 2, 3],                                     soilDemand: 0.06, harvester: 'combine', cheapSeason: 1, style: 'barley' },
-    oats:      { name: 'Haver',       seedCostPerHa: 90,  growDays: 2, yieldPerHa: 5.5, basePrice: 230, color: '#e3d9a8', growColor: '#93c26a', sow: [0, 1, 2],                                        soilDemand: 0.04, harvester: 'combine', cheapSeason: 1, style: 'oats' },
-    corn:      { name: 'Maïs',        seedCostPerHa: 220, growDays: 5, yieldPerHa: 11,  basePrice: 210, color: '#f2cf3a', growColor: '#4f9a3a', sow: [1, 2, 3],                                        soilDemand: 0.12, harvester: 'combine', cheapSeason: 2, style: 'corn' },
-    canola:    { name: 'Koolzaad',    seedCostPerHa: 80,  growDays: 5, yieldPerHa: 4,   basePrice: 450, color: '#f2d22e', growColor: '#5e9c3a', sow: [5, 6],       winterHardy: true, winterGrowth: 0.4, soilDemand: 0.1,  harvester: 'combine', cheapSeason: 1, style: 'canola' },
-    sunflower: { name: 'Zonnebloem',  seedCostPerHa: 110, growDays: 4, yieldPerHa: 3,   basePrice: 420, color: '#f5b800', growColor: '#5a9a3c', sow: [1, 2],       droughtProof: true,                     soilDemand: 0.07, harvester: 'combine', cheapSeason: 2, style: 'sunflower' },
-    soy:       { name: 'Soja',        seedCostPerHa: 130, growDays: 4, yieldPerHa: 3.2, basePrice: 400, color: '#c2a35e', growColor: '#3f7f3a', sow: [1, 2],                                           soilDemand: -0.06, harvester: 'combine', cheapSeason: 2, style: 'soy' },
-    beans:     { name: 'Veldbonen',   seedCostPerHa: 150, growDays: 3, yieldPerHa: 4.5, basePrice: 300, color: '#5b4a32', growColor: '#4a8a3f', sow: [0, 1],                                           soilDemand: -0.08, harvester: 'combine', cheapSeason: 1, style: 'beans' },
-    potato:    { name: 'Aardappelen', seedCostPerHa: 600, growDays: 4, yieldPerHa: 30,  basePrice: 140, color: '#d8b47a', growColor: '#4f8f3a', sow: [0, 1],                                           soilDemand: 0.1,  harvester: 'potato',  cheapSeason: 2, style: 'potato' },
-    beet:      { name: 'Suikerbieten', seedCostPerHa: 250, growDays: 6, yieldPerHa: 40, basePrice: 50,  color: '#efe2d8', growColor: '#3d7a35', sow: [0, 1],                                           soilDemand: 0.1,  harvester: 'beet',    cheapSeason: 2, style: 'beet' },
+    wheat:     { name: 'Tarwe',       seedCostPerHa: 120, growDays: 3, yieldPerHa: 8,   basePrice: 220, color: '#e0b84c', growColor: '#7fb24a', sow: [0, 1, 6, 7], winterHardy: true, winterGrowth: 0.3, soilDemand: 0.08, harvester: 'combine', cheapMonth: 5, style: 'grain' },
+    barley:    { name: 'Gerst',       seedCostPerHa: 100, growDays: 2, yieldPerHa: 6.5, basePrice: 200, color: '#d6c27a', growColor: '#8cbf5a', sow: [0, 1, 2, 3],                                     soilDemand: 0.06, harvester: 'combine', cheapMonth: 4, style: 'barley' },
+    oats:      { name: 'Haver',       seedCostPerHa: 90,  growDays: 2, yieldPerHa: 5.5, basePrice: 230, color: '#e3d9a8', growColor: '#93c26a', sow: [0, 1, 2],                                        soilDemand: 0.04, harvester: 'combine', cheapMonth: 5, style: 'oats' },
+    corn:      { name: 'Maïs',        seedCostPerHa: 220, growDays: 5, yieldPerHa: 11,  basePrice: 210, color: '#f2cf3a', growColor: '#4f9a3a', sow: [1, 2, 3],                                        soilDemand: 0.12, harvester: 'combine', cheapMonth: 7, style: 'corn' },
+    canola:    { name: 'Koolzaad',    seedCostPerHa: 80,  growDays: 5, yieldPerHa: 4,   basePrice: 450, color: '#f2d22e', growColor: '#5e9c3a', sow: [5, 6],       winterHardy: true, winterGrowth: 0.4, soilDemand: 0.1,  harvester: 'combine', cheapMonth: 4, style: 'canola' },
+    sunflower: { name: 'Zonnebloem',  seedCostPerHa: 110, growDays: 4, yieldPerHa: 3,   basePrice: 420, color: '#f5b800', growColor: '#5a9a3c', sow: [1, 2],       droughtProof: true,                     soilDemand: 0.07, harvester: 'combine', cheapMonth: 6, style: 'sunflower' },
+    soy:       { name: 'Soja',        seedCostPerHa: 130, growDays: 4, yieldPerHa: 3.2, basePrice: 400, color: '#c2a35e', growColor: '#3f7f3a', sow: [1, 2],                                           soilDemand: -0.06, harvester: 'combine', cheapMonth: 7, style: 'soy' },
+    beans:     { name: 'Veldbonen',   seedCostPerHa: 150, growDays: 3, yieldPerHa: 4.5, basePrice: 300, color: '#5b4a32', growColor: '#4a8a3f', sow: [0, 1],                                           soilDemand: -0.08, harvester: 'combine', cheapMonth: 5, style: 'beans' },
+    potato:    { name: 'Aardappelen', seedCostPerHa: 600, growDays: 4, yieldPerHa: 30,  basePrice: 140, color: '#d8b47a', growColor: '#4f8f3a', sow: [0, 1],                                           soilDemand: 0.1,  harvester: 'potato',  planter: 'potato', cheapMonth: 6, style: 'potato' },
+    beet:      { name: 'Suikerbieten', seedCostPerHa: 250, growDays: 6, yieldPerHa: 40, basePrice: 50,  color: '#efe2d8', growColor: '#3d7a35', sow: [0, 1],                                           soilDemand: 0.1,  harvester: 'beet',    planter: 'beet', cheapMonth: 8, style: 'beet' },
+    grass:     { name: 'Gras',        seedCostPerHa: 90,  growDays: 2, yieldPerHa: 6,   basePrice: 0,   color: '#7fbf4f', growColor: '#6aae45', sow: [0, 1, 2, 3, 4, 5, 6],                         soilDemand: 0.03, harvester: 'grass', perennial: true, style: 'grass' },
     clover:    { name: 'Klaver',      seedCostPerHa: 60,  growDays: 2, yieldPerHa: 0,   basePrice: 0,   color: '#e8a3c7', growColor: '#5fa14a', sow: [0, 1, 2, 3, 4, 5, 6],                         soilDemand: 0,    harvester: null, greenManure: 0.3, style: 'clover' },
   },
 
@@ -54,7 +57,40 @@ AT.data = {
   months: ['Maart', 'April', 'Mei', 'Juni', 'Juli', 'Augustus', 'September', 'Oktober', 'November', 'December', 'Januari', 'Februari'],
   daysPerMonth: 2,
   witherAfter: 0.5,   // rijp gewas begint te verwelken als het 50% langer staat dan de groeitijd
-  seasonPrice: 0.12,  // prijzen ±12%: goedkoop in oogsttijd, duur een half jaar later
+  seasonPrice: 0.15,  // prijzen ±15% door het jaar: goedkoop in de oogstmaand, duur een half jaar later
+  hayDryHours: 16,    // gemaaid gras droogt in 16 uur (in 6 uur als je het schudt)
+
+  // ---------- economie ----------
+  saturation: { perEuro: 1 / 400000, max: 0.4, recovery: 0.85 }, // veel verkopen drukt de prijs tijdelijk
+  bank: { ratePerDay: 0.004, steps: [10000, 50000, 100000], maxShare: 0.5, base: 50000 },
+  contracts: { offers: 3, refreshDays: 4, minDays: 6, maxDays: 12, fine: 0.15 },
+  // opslagloods voor producten (in pallets); mest heeft een eigen mestput
+  warehouse: [
+    { pallets: 30, price: 0 }, { pallets: 80, price: 20000 }, { pallets: 200, price: 60000 }, { pallets: 500, price: 150000 },
+  ],
+  dock: { x: 150, y: 796, w: 80, h: 12 },  // laadperron bij de machinehal (vrachtwagen laden met U)
+  // verkooppunten op de kaart: wat ze kopen en hoeveel extra (×) ze betalen
+  sellPoints: {
+    trader:  { name: 'Graanhandel',    kind: 'crops', mult: {}, roof: '#3f6e8c' },
+    feed:    { name: 'Veevoerbedrijf', kind: 'mixed', only: ['corn', 'barley', 'oats', 'soy', 'beans', 'hay'],
+               mult: { corn: 1.08, barley: 1.08, oats: 1.1, soy: 1.1, beans: 1.05, hay: 1.15 }, roof: '#6d8f3a',
+               lot: { x: 2450, y: 620, w: 230, h: 200 }, pit: { x: 2462, y: 690, w: 74, h: 22 } },
+    harbor:  { name: 'Haven',          kind: 'mixed', only: ['wheat', 'canola', 'sunflower', 'soy', 'sugar', 'planks', 'oil'],
+               mult: { wheat: 1.08, canola: 1.1, sunflower: 1.08, soy: 1.06, sugar: 1.05, planks: 1.1, oil: 1.1 }, roof: '#5a6b7c',
+               lot: { x: 2450, y: 1250, w: 240, h: 300 }, pit: { x: 2462, y: 1280, w: 74, h: 22 } },
+    shop:    { name: 'Supermarkt',     kind: 'products', mult: {}, roof: '#c0392b',
+               lot: { x: 2450, y: 60, w: 230, h: 180 }, pit: { x: 2462, y: 130, w: 74, h: 22 } },
+  },
+
+  // kassen: hele jaar groenten, in de winter hogere stookkosten
+  greenhouse: {
+    price: 45000,
+    crops: { tomatoes: { perDay: 300 }, lettuce: { perDay: 500 } },
+    energyPerDay: [40, 30, 60, 160],   // per seizoen
+    lots: [{ x: 1016, y: 1612, w: 200, h: 124 }, { x: 1016, y: 1748, w: 200, h: 124 }],
+  },
+  // bosperceel: bomen groeien, kappen geeft hout (te voet: H bij een boom)
+  woodlot: { price: 40000, area: { x: 2075, y: 1762, w: 305, h: 126 }, growDays: 8, woodPerTree: 2.5, cutCost: 15 },
 
   // ---------- seizoenen & weer ----------
   daysPerSeason: 6,   // = 3 maanden van 2 dagen
@@ -86,24 +122,30 @@ AT.data = {
 
   // ---------- producten (dieren en fabrieken) ----------
   products: {
-    milk:   { name: 'Melk',   unit: 'L',  basePrice: 0.55, decimals: 0 },
-    eggs:   { name: 'Eieren', unit: 'st', basePrice: 0.6,  decimals: 0 },
-    wool:   { name: 'Wol',    unit: 'kg', basePrice: 6,    decimals: 0 },
-    manure: { name: 'Mest',   unit: 't',  basePrice: 15,   decimals: 1 },
-    flour:  { name: 'Meel',   unit: 't',  basePrice: 480,  decimals: 1 },
-    bread:  { name: 'Brood',  unit: 'st', basePrice: 1.4,  decimals: 0 },
-    cheese: { name: 'Kaas',   unit: 'kg', basePrice: 9,    decimals: 0 },
-    beer:   { name: 'Bier',   unit: 'L',  basePrice: 1.2,  decimals: 0 },
-    oil:    { name: 'Olie',   unit: 'L',  basePrice: 1.5,  decimals: 0 },
-    sugar:  { name: 'Suiker', unit: 'kg', basePrice: 0.6,  decimals: 0 },
-    chips:  { name: 'Chips',  unit: 'zakken', basePrice: 0.35, decimals: 0 },
+    // perPallet = hoeveel er op één pallet in de opslagloods past
+    milk:   { name: 'Melk',   unit: 'L',  basePrice: 0.55, decimals: 0, perPallet: 1000 },
+    eggs:   { name: 'Eieren', unit: 'st', basePrice: 0.6,  decimals: 0, perPallet: 3000 },
+    wool:   { name: 'Wol',    unit: 'kg', basePrice: 6,    decimals: 0, perPallet: 300 },
+    manure: { name: 'Mest',   unit: 't',  basePrice: 15,   decimals: 1, perPallet: 0 },   // mestput, telt niet mee
+    flour:  { name: 'Meel',   unit: 't',  basePrice: 480,  decimals: 1, perPallet: 1 },
+    bread:  { name: 'Brood',  unit: 'st', basePrice: 1.4,  decimals: 0, perPallet: 800 },
+    cheese: { name: 'Kaas',   unit: 'kg', basePrice: 9,    decimals: 0, perPallet: 400 },
+    beer:   { name: 'Bier',   unit: 'L',  basePrice: 1.2,  decimals: 0, perPallet: 1000 },
+    oil:    { name: 'Olie',   unit: 'L',  basePrice: 1.5,  decimals: 0, perPallet: 1000 },
+    sugar:  { name: 'Suiker', unit: 'kg', basePrice: 0.6,  decimals: 0, perPallet: 1000 },
+    chips:  { name: 'Chips',  unit: 'zakken', basePrice: 0.35, decimals: 0, perPallet: 1500 },
+    hay:    { name: 'Hooi',   unit: 't',  basePrice: 120,  decimals: 1, perPallet: 1, cheapMonth: 3 },
+    wood:   { name: 'Hout',   unit: 'm³', basePrice: 70,   decimals: 1, perPallet: 2 },
+    planks: { name: 'Planken', unit: 'm³', basePrice: 260, decimals: 1, perPallet: 2 },
+    tomatoes: { name: 'Tomaten', unit: 'kg', basePrice: 1.6, decimals: 0, perPallet: 500, cheapMonth: 4 },
+    lettuce:  { name: 'Sla',     unit: 'krop', basePrice: 0.8, decimals: 0, perPallet: 1000, cheapMonth: 3 },
   },
 
   // Dieren: eten graan uit de silo (feeds = voorkeur), produceren per dier per dag
   animals: {
     cows: {
       name: 'Koeien', one: 'koe', building: 'Koeienstal', buildPrice: 25000, capacity: 20, price: 900,
-      feedPerDay: 0.04, feeds: ['corn', 'oats', 'barley', 'soy', 'wheat'], produce: { milk: 80, manure: 0.08 },
+      feedPerDay: 0.04, feeds: ['hay', 'corn', 'oats', 'barley', 'soy', 'wheat'], produce: { milk: 80, manure: 0.08 },
       pen: { x: 48, y: 1608, w: 400, h: 272 }, barn: { x: 60, y: 1620, w: 130, h: 80 },
     },
     chickens: {
@@ -113,8 +155,8 @@ AT.data = {
     },
     sheep: {
       name: 'Schapen', one: 'schaap', building: 'Schaapskooi', buildPrice: 12000, capacity: 40, price: 150,
-      feedPerDay: 0.006, feeds: ['oats', 'barley', 'wheat', 'corn'], produce: { wool: 1, manure: 0.01 },
-      pen: { x: 732, y: 1608, w: 492, h: 272 }, barn: { x: 744, y: 1620, w: 110, h: 70 },
+      feedPerDay: 0.006, feeds: ['hay', 'oats', 'barley', 'wheat', 'corn'], produce: { wool: 1, manure: 0.01 },
+      pen: { x: 732, y: 1608, w: 268, h: 272 }, barn: { x: 744, y: 1620, w: 110, h: 70 },
     },
   },
 
@@ -132,6 +174,8 @@ AT.data = {
                batchesPerDay: 6, costPerBatch: 15, lot: { x: 2150, y: 1612, w: 200, h: 130 }, roof: '#b8962e' },
     sugar:   { name: 'Suikerfabriek', price: 90000, in: { beet: 5 },              out: { sugar: 800 },  batchesPerDay: 6, costPerBatch: 30,
                lot: { x: 1290, y: 1764, w: 200, h: 112 }, roof: '#d8d3c7' },
+    sawmill: { name: 'Zagerij',     price: 40000, in: { wood: 2 },                out: { planks: 1.5 }, batchesPerDay: 6, costPerBatch: 15,
+               lot: { x: 1912, y: 1764, w: 150, h: 112 }, roof: '#7b5a3a' },
     chips:   { name: 'Chipsfabriek', price: 75000, in: { potato: 1, oil: 20 },    out: { chips: 1200 }, batchesPerDay: 6, costPerBatch: 20,
                lot: { x: 1520, y: 1764, w: 190, h: 112 }, roof: '#c0562b' },
   },
@@ -143,6 +187,8 @@ AT.data = {
   //  spreader  : kunstmest strooien (meer opbrengst), heeft tractor nodig
   //  manure    : mest uitrijden (betere bodem), heeft tractor nodig
   //  trailer   : aanhanger voor graan (capacity in ton), lossen met U
+  //  mower/tedder/baler: gras maaien, schudden en tot hooi persen
+  //  truck     : vrachtwagen voor producten (pallets), laden bij het laadperron, lossen bij een verkooppunt
   //  harvester : oogsten (rijp -> stoppel), zelfrijdend, met graanbunker (tank in ton)
   // rate   = hectare per speluur als een loonwerker het doet
   // width  = werkbreedte in px als je zelf rijdt
@@ -155,8 +201,15 @@ AT.data = {
 
     plow_small:   { kind: 'plow',   name: 'Ploeg 3-schaar',  price: 4000,  rate: 0.5, width: 16, workSpeed: 8, minPower: 1.0, color: '#7f8c8d' },
     plow_large:   { kind: 'plow',   name: 'Ploeg 6-schaar',  price: 14000, rate: 1.1, width: 32, workSpeed: 10, minPower: 2.0, color: '#566573' },
-    seeder_small: { kind: 'seeder', name: 'Zaaimachine 3 m', price: 6000,  rate: 0.7, width: 24, workSpeed: 12, minPower: 1.0, color: '#2874a6' },
-    seeder_large: { kind: 'seeder', name: 'Zaaimachine 6 m', price: 20000, rate: 1.5, width: 48, workSpeed: 14, minPower: 2.0, color: '#1b4f72' },
+    seeder_small: { kind: 'seeder', sows: 'seeder', name: 'Zaaimachine 3 m', price: 6000,  rate: 0.7, width: 24, workSpeed: 12, minPower: 1.0, color: '#2874a6' },
+    seeder_large: { kind: 'seeder', sows: 'seeder', name: 'Zaaimachine 6 m', price: 20000, rate: 1.5, width: 48, workSpeed: 14, minPower: 2.0, color: '#1b4f72' },
+
+    potato_planter: { kind: 'seeder', sows: 'potato', name: 'Aardappelpootmachine', price: 18000, rate: 0.6, width: 12, workSpeed: 8,  minPower: 1.0, color: '#7d4e9e' },
+    beet_seeder:    { kind: 'seeder', sows: 'beet',   name: 'Bietenzaaier',         price: 16000, rate: 0.9, width: 18, workSpeed: 10, minPower: 1.0, color: '#2c7a7b' },
+    mower:   { kind: 'mower',  name: 'Maaier 3 m',  price: 9000,  rate: 1.2, width: 22, workSpeed: 14, minPower: 1.0, color: '#c0392b' },
+    tedder:  { kind: 'tedder', name: 'Schudder',    price: 7000,  rate: 1.6, width: 30, workSpeed: 14, minPower: 1.0, color: '#e67e22' },
+    baler:   { kind: 'baler',  name: 'Balenpers',   price: 28000, rate: 0.8, width: 10, workSpeed: 10, minPower: 1.0, color: '#2e7d32' },
+    truck:   { kind: 'truck',  name: 'Vrachtwagen', price: 60000, pallets: 12, speed: 70, fuelPerHour: 25, color: '#34495e' },
 
     spreader_fert:   { kind: 'spreader', name: 'Kunstmeststrooier', price: 7000,  rate: 2.0, width: 40, workSpeed: 15, minPower: 1.0, color: '#e67e22' },
     manure_spreader: { kind: 'manure',   name: 'Mestverspreider',   price: 12000, rate: 0.8, width: 20, workSpeed: 10, minPower: 1.0, color: '#6d4c2f' },
@@ -204,9 +257,10 @@ AT.data = {
     { x: 380, y: 0, w: 24, h: 1900 },
     { x: 1240, y: 0, w: 24, h: 1900 },
     { x: 1880, y: 0, w: 24, h: 1900 },
-    { x: 0, y: 1568, w: 2400, h: 24 },
-    { x: 0, y: 560, w: 2400, h: 24 },
-    { x: 0, y: 1040, w: 2400, h: 24 },
+    { x: 2404, y: 0, w: 24, h: 1900 },
+    { x: 0, y: 1568, w: 2700, h: 24 },
+    { x: 0, y: 560, w: 2700, h: 24 },
+    { x: 0, y: 1040, w: 2700, h: 24 },
     { x: 624, y: 584, w: 16, h: 456 },
     { x: 872, y: 584, w: 16, h: 456 },
     { x: 808, y: 0, w: 24, h: 560 },
@@ -261,7 +315,10 @@ AT.data = {
     { id: 'deliver',  text: 'Breng zelf graan weg: los een aanhanger bij de silo of graanhandel (U)', reward: 2000, check: s => s.stats.deliveredTons >= 1 },
     { id: 'crops3',   text: 'Oogst 3 verschillende gewassen',       reward: 3000,  check: s => Object.keys(s.stats.cropsHarvested || {}).length >= 3 },
     { id: 'clover',   text: 'Zaai klaver en ploeg het onder (groenbemester)', reward: 2000, check: s => s.stats.greenManureHa >= 1 },
+    { id: 'hay',      text: 'Maai gras en pers het tot hooi',       reward: 2000,  check: s => s.stats.hayTons >= 1 },
+    { id: 'contract', text: 'Voltooi een contract (tab Markt)',     reward: 3000,  check: s => s.stats.contractsDone >= 1 },
     { id: 'animals',  text: 'Bouw een stal en koop dieren (tab Bedrijf)', reward: 3000, check: s => Object.values(s.animals).some(a => a.count > 0) },
+    { id: 'truck',    text: 'Breng producten met de vrachtwagen naar de supermarkt', reward: 3000, check: s => s.stats.truckDeliveries >= 1 },
     { id: 'factory',  text: 'Bouw een fabriek (tab Bedrijf)',        reward: 5000,  check: s => Object.values(s.factories).some(f => f.owned) },
     { id: 'field3',   text: 'Koop een extra veld',                  reward: 5000,  check: s => s.fields.filter(f => f.owned).length >= 3 },
     { id: 'hire',     text: 'Neem een werknemer aan (tab Team)',   reward: 2000,  check: s => s.staff && s.staff.employees.length >= 1 },

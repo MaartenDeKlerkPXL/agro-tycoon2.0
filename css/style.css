@@ -245,3 +245,24 @@ body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; m
 .card.auto select { font: inherit; font-size: 13px; padding: 4px; border-radius: 6px; border: 1px solid var(--line); max-width: 100%; }
 .card.auto label { font-size: 13px; }
 .qrow { margin-top: 6px; gap: 4px; }
+.goal-banner { cursor: pointer; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 6px 0; }
+.tile { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.tile small { display: block; color: var(--muted); font-size: 11px; }
+.tile b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.fin-chart { width: 100%; height: auto; display: block; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.fin-chart .ax { font-size: 9px; fill: #898781; font-family: system-ui, sans-serif; }
+.fin-chart .hit:hover rect { fill: rgba(0,0,0,0.04); }
+.ledger { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.ledger td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.ledger td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.card.contract.active { border-color: #2c7fb8; background: #f2f8fd; }
+.modal-card.narrow { max-width: 520px; }
+.legend-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin: 6px 0; }
+.legend-bar .grad { flex: 0 0 160px; height: 10px; border-radius: 5px; background: linear-gradient(90deg, rgb(210,70,69), rgb(247,200,199), rgb(240,239,236), rgb(205,226,251), rgb(37,106,191)); }
+.cal.heat td { text-align: center; font-size: 11px; font-variant-numeric: tabular-nums; border: 2px solid var(--panel); }
+.cal.heat th.rowh { text-align: left; white-space: nowrap; }
+.mrow2 { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.mrow2.empty { opacity: .7; }
+.mrow2 .spark { width: 56px; }
+.mrow2 .muted { font-size: 12px; }

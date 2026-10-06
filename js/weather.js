@@ -124,14 +124,18 @@ window.AT = window.AT || {};
     return Math.round(base + Math.sin((h - 9) / 24 * Math.PI * 2) * 4);
   }
 
-  // prijs-vermenigvuldiger per seizoen: goedkoop in de oogsttijd, duur een half jaar later
-  function priceFactor(cropKey) {
-    const c = D.crops[cropKey];
-    if (c.cheapSeason == null) return 1;
-    const se = season();
-    if (se === c.cheapSeason) return 1 - D.seasonPrice;
-    if (se === (c.cheapSeason + 2) % 4) return 1 + D.seasonPrice;
-    return 1;
+  // prijs-vermenigvuldiger per maand: laagst in de oogstmaand, hoogst een half jaar later (vloeiende golf)
+  function monthFactor(key, m) {
+    const c = D.crops[key] || D.products[key];
+    if (!c || c.cheapMonth == null) return 1;
+    return 1 - D.seasonPrice * Math.cos((m - c.cheapMonth) / 12 * Math.PI * 2);
+  }
+  function priceFactor(key) {
+    // tussen twee maanden vloeiend overgaan
+    const MONTH_HOURS = D.daysPerMonth * 24;
+    const t = (S().time / MONTH_HOURS) % 12;
+    const m0 = Math.floor(t), f = t - m0;
+    return monthFactor(key, m0) * (1 - f) + monthFactor(key, (m0 + 1) % 12) * f;
   }
 
   // voorspelling voor de komende dagen: het meest voorkomende weer per dag
@@ -157,5 +161,5 @@ window.AT = window.AT || {};
     return out;
   }
 
-  AT.weather = { init, update, season, seasonAt, year, dayInSeason, seasonProgress, month, monthAt, monthName, dayInMonth, growRate, drought, isWet, temperature, forecast, priceFactor };
+  AT.weather = { init, update, season, seasonAt, year, dayInSeason, seasonProgress, month, monthAt, monthName, dayInMonth, growRate, drought, isWet, temperature, forecast, priceFactor, monthFactor };
 })();

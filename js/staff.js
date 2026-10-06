@@ -102,7 +102,7 @@ window.AT = window.AT || {};
 
   const TASK_LABEL = (task, crop) => ({
     plow: 'Ploegen', sow: 'Zaaien' + (crop ? ' (' + D.crops[crop].name.toLowerCase() + ')' : ''), harvest: 'Oogsten',
-    fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden',
+    fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden', mow: 'Gras maaien', ted: 'Gras schudden', bale: 'Hooi persen',
   })[task];
 
   // Kan deze taak nu starten? Geeft { ok } of { wait: 'reden' } of { drop: 'reden' }
@@ -113,16 +113,19 @@ window.AT = window.AT || {};
     if (f.job) return { wait: 'veld is bezig' };
     if (S().trips.some(tr => tr.fieldId === t.fieldId && tr.phase === 'work')) return { wait: 'veld is bezig' };
     const sum = G().summary(f);
-    if (t.task === 'plow' && !(sum.stubble + sum.clover)) return sum.growing || sum.ready ? { drop: 'er staat een gewas op het veld' } : { drop: 'veld is al geploegd' };
+    if (t.task === 'plow' && !(sum.stubble + sum.clover)) return sum.growing || sum.ready || sum.mown ? { drop: 'er staat een gewas op het veld' } : { drop: 'veld is al geploegd' };
+    if (t.task === 'mow' && !sum.readyCrops.grass) return sum.grass ? { wait: 'gras groeit nog' } : { drop: 'geen gras op dit veld' };
+    if (t.task === 'ted' && !sum.needTed) return { drop: 'niets te schudden' };
+    if (t.task === 'bale' && !sum.dryHay) return sum.mown ? { wait: 'gras droogt nog' } : { drop: 'niets te persen' };
     if (t.task === 'sow') {
       if (!sum.plowed) return sum.stubble ? { wait: 'veld moet eerst geploegd worden' } : { drop: 'niets meer te zaaien' };
       if (!G().canSowNow(t.crop)) return { wait: `wacht op de zaaimaand van ${D.crops[t.crop].name.toLowerCase()}` };
     }
-    if (t.task === 'harvest' && !sum.ready) return sum.growing ? { wait: 'gewas groeit nog' } : { drop: 'niets te oogsten' };
+    if (t.task === 'harvest' && !(sum.ready - (sum.readyCrops.grass || 0))) return sum.growing ? { wait: 'gewas groeit nog' } : { drop: 'niets te oogsten' };
     if (t.task === 'fertilize' && !sum.needFert) return { drop: 'al bemest' };
     if (t.task === 'manure' && !sum.needManure) return { drop: 'al bemest' };
-    const rig = G().bestRig(t.task, t.fieldId);
-    if (!rig) return { wait: G().missingFor(t.task, t.fieldId) };
+    const rig = G().bestRig(t.task, t.fieldId, t.crop);
+    if (!rig) return { wait: G().missingFor(t.task, t.fieldId, t.crop) };
     const worker = freeWorker();
     if (!worker) return { wait: 'wacht op een vrije werknemer' };
     return { ok: true, worker };
@@ -158,8 +161,9 @@ window.AT = window.AT || {};
     const sum = G().summary(f);
     const prev = G().mainCrop({ crops: sum.prev });
     const owned = new Set(S().machines.map(m => D.machines[m.type].harvests).filter(Boolean));
-    const options = Object.entries(D.crops).filter(([k, c]) => G().canSowNow(k) && k !== prev &&
-      (c.harvester ? owned.has(c.harvester) : f.soil < 0.55));
+    const planters = new Set(S().machines.map(m => D.machines[m.type].sows).filter(Boolean));
+    const options = Object.entries(D.crops).filter(([k, c]) => G().canSowNow(k) && k !== prev && !c.perennial &&
+      planters.has(c.planter || 'seeder') && (c.harvester ? owned.has(c.harvester) : f.soil < 0.55));
     if (!options.length) return null;
     // waarde per dag groeitijd, en klaver als de bodem slecht is
     const score = ([k, c]) => c.greenManure ? 1e9 : (c.yieldPerHa * G().cropPrice(k) - c.seedCostPerHa) / c.growDays;
@@ -174,6 +178,16 @@ window.AT = window.AT || {};
       const sum = G().summary(f), half = sum.total * 0.5;
       const readyCrop = G().mainCrop({ crops: sum.readyCrops });
       let msg = '';
+      const hasKind = k => s.machines.some(m => D.machines[m.type].kind === k);
+      if (sum.grass || sum.mown) {
+        // grasland: maaien → (schudden) → persen; het gras groeit vanzelf weer aan
+        if (sum.dryHay > sum.mown * 0.8 && sum.dryHay) enqueue(f.id, 'bale', null, true);
+        else if (sum.needTed > half * 0.5 && hasKind('tedder')) enqueue(f.id, 'ted', null, true);
+        else if (sum.readyCrops.grass > half) enqueue(f.id, 'mow', null, true);
+        else msg = sum.mown ? 'hooi droogt' : 'gras groeit';
+        f.auto.status = msg;
+        continue;
+      }
       if (sum.ready > half * 0.2 && readyCrop && !D.crops[readyCrop].greenManure && !sum.growing) enqueue(f.id, 'harvest', null, true);
       else if (sum.ready && readyCrop && D.crops[readyCrop].greenManure && !sum.growing) enqueue(f.id, 'plow', null, true);
       else if (sum.stubble > half) enqueue(f.id, 'plow', null, true);

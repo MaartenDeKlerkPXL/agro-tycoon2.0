@@ -4,7 +4,7 @@ Legenda: `[x]` klaar · `[ ]` te doen. Bovenaan staat wat eerst moet. Achtergron
 Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 
 ## ✅ Fase 0: Basisspel
-- [x] Grote kaart (2400×1900) met 19 velden, wegen, erf, machinehal, silo's, weides, fabrieksterrein en graanhandel
+- [x] Grote kaart (2700×1900) met 19 velden, wegen, erf, machinehal, silo's, weides, fabrieksterrein, graanhandel, veevoerbedrijf, haven en supermarkt
 - [x] **Lopen als boer** en **zelf rijden** over de hele kaart (WASD/pijltjes), camera volgt je
 - [x] Realistische snelheden: tractor 30–50 km/u, werken 5–15 km/u, lopen 9 km/u
 - [x] Shift = een stukje sneller (lopen 13 km/u, voertuigen +25%)
@@ -16,11 +16,12 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Velden bestaan uit cellen: de grond verandert precies waar je rijdt
 - [x] Veldcyclus: stoppel → ploegen → zaaien → groeien → rijp → oogsten
 - [x] Loonwerker inhuren die een heel veld automatisch doet (met jouw vrije machines)
-- [x] 11 gewassen (zie Fase 4)
+- [x] 12 gewassen (zie Fase 4)
 - [x] Machines: 3 tractoren, 3 aanhangers, 2 ploegen, 2 zaaimachines, 2 strooiers, 3 maaidorsers, aardappel- en bietenrooier
 - [x] Diesel-, zaai- en loonkosten
 - [x] Silo met capaciteit en 5 upgrade-niveaus
 - [x] Markt met dagelijkse prijsschommeling, trendpijl en grafiekje
+- [x] **Prijskalender**: per gewas/product de prijs per maand, met de duurste en goedkoopste maand gemarkeerd
 - [x] Velden kopen, machines kopen en verkopen
 - [x] Minimap, zoomen (scroll) en kaart verschuiven (slepen)
 - [x] Doelen/tutorial met beloningen + statistieken
@@ -101,18 +102,22 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Haver, koolzaad (winterhard, gele bloei), zonnebloem (droogtebestendig), soja en veldbonen (verbeteren de bodem)
 - [x] Aardappelen en suikerbieten met eigen aardappelrooier en bietenrooier
 - [x] Klaver als groenbemester
-- [ ] Aardappelpootmachine en bietenzaaier (nu doet de zaaimachine alles)
-- [ ] Gras/hooi (maaier, schudder, balenpers)
-- [ ] Bomen/houtkap
-- [ ] Kassen (groenten, het hele jaar)
+- [x] Aardappelpootmachine en bietenzaaier (de gewone zaaimachine doet alleen granen, zaden en klaver)
+- [x] Gras/hooi: maaien → schudden → drogen → persen; gras groeit daarna vanzelf terug
+- [x] Bosperceel kopen, bomen kappen (H) en hout tot planken zagen in de zagerij; bomen groeien terug
+- [x] Kassen met tomaten of sla, het hele jaar (stookkosten in de winter)
+- [ ] Regen vertraagt het drogen van hooi
+- [ ] Echte balen op het veld die je zelf ophaalt
+- [ ] Boomgaard/fruit en wijngaard
 
 **Waarom zou je niet altijd het duurste gewas kiezen?** Elk gewas moet een eigen reden hebben:
 - [x] **Seizoenen**: niet elk gewas mag in elk seizoen gezaaid worden (tarwe in lente/herfst, gerst en maïs in lente/zomer)
 - [x] **Vruchtwisseling**: steeds hetzelfde gewas geeft −10%, wisselen geeft +10%
 - [x] **Bodem**: elk gewas put de bodem anders uit (maïs het meest)
 - [x] **Fabrieken en dieren vragen specifieke gewassen**: brouwerij wil gerst, molen wil tarwe, koeien eten graag maïs
-- [ ] **Marktverzadiging**: als je veel van één gewas verkoopt, zakt de prijs daarvan tijdelijk
-- [ ] **Vraag en contracten**: opdrachten voor een bepaald gewas met een bonusprijs
+- [x] **Marktverzadiging**: als je veel van één gewas verkoopt, zakt de prijs daarvan tijdelijk
+- [x] **Vraag en contracten**: opdrachten voor een bepaald gewas met een bonusprijs
+- [x] **Elk gewas zijn eigen dure maand**: de prijskalender laat zien wanneer je wat het best verkoopt
 - [x] **Groeitijd vs. opbrengst**: snelle gewassen voor tussendoor, trage voor de grote winst
 - [x] **Seizoensprijzen**: wie bewaart tot buiten de oogsttijd, krijgt meer
 - [x] **Stikstofbinders** (bonen, klaver, soja) maken de bodem juist béter voor het volgende gewas
@@ -125,19 +130,24 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Dieren eten graan uit de silo; honger = minder productie
 - [ ] Varkens
 - [ ] Voer zelf naar de stal rijden (voerwagen) in plaats van automatisch
-- [ ] Voer maken van eigen oogst (kuilvoer, hooi, veevoermengerij)
+- [x] Hooi als voer voor koeien en schapen
+- [ ] Voer maken van eigen oogst (kuilvoer, veevoermengerij)
 - [ ] Dierengezondheid, jongen en stallen uitbreiden (meer plek)
 
 ## 🏭 Fase 6: Productie en economie
 - [x] Fabrieken: graanmolen (meel), bakkerij (brood van meel + eieren), kaasmakerij (kaas van melk), brouwerij (bier van gerst)
 - [x] Producten verkopen op de markt met schommelende prijzen
-- [x] Oliepers (koolzaad/zonnebloem → olie), suikerfabriek (bieten → suiker), chipsfabriek (aardappelen + olie → chips)
-- [ ] Producten zelf met een vrachtwagen naar de fabriek/winkel rijden
-- [ ] Opslagloods met beperkte ruimte voor producten
-- [ ] Contracten/orders met deadline en bonus
-- [ ] Meerdere verkooppunten op de kaart met verschillende prijzen
-- [ ] Leningen bij de bank + rente
-- [ ] Financieel overzicht (grafiek inkomsten/uitgaven per dag)
+- [x] Oliepers (koolzaad/zonnebloem → olie), suikerfabriek (bieten → suiker), chipsfabriek (aardappelen + olie → chips), zagerij (hout → planken)
+- [x] Vrachtwagen: pallets laden bij het laadperron en zelf naar de supermarkt/haven rijden (volle prijs)
+- [x] Opslagloods met beperkte ruimte (pallets) en 4 niveaus; vol = fabrieken stoppen
+- [x] Contracten met deadline, bonus en boete als je te laat bent
+- [x] Meerdere verkooppunten: graanhandel, veevoerbedrijf, haven en supermarkt, elk met eigen prijzen
+- [x] Leningen bij de bank met dagelijkse rente (max. op basis van je bezit)
+- [x] Financieel overzicht: grafiek inkomsten/uitgaven per dag + kasboek per categorie
+- [x] Marktverzadiging en seizoensprijzen per maand (prijskalender)
+- [ ] Werknemers rijden zelf met de vrachtwagen
+- [ ] Verzekering tegen storm/vorst
+- [ ] Grond pachten in plaats van kopen
 
 ## 🗺️ Fase 7: Wereld en progressie
 - [ ] Nog grotere kaart / meerdere kaarten

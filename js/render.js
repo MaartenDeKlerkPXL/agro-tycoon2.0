@@ -109,6 +109,8 @@ window.AT = window.AT || {};
       if (Object.values(D.animals).some(a => inRect(x, y, a.pen, R + 3))) continue;
       if (Object.values(D.factories).some(f => inRect(x, y, f.lot, R + 3))) continue;
       if (inRect(x, y, D.trader.lot, R + 3)) continue;
+      if (D.greenhouse.lots.some(l => inRect(x, y, l, R + 3)) || inRect(x, y, D.woodlot.area, R + 2)) continue;
+      if (Object.values(D.sellPoints).some(sp => sp.lot && inRect(x, y, sp.lot, R + 3))) continue;
       if (x < 395 && y > D.yard.y + D.yard.gate.y - D.yard.y - 30 && y < D.yard.gate.y + D.yard.gate.h + 30) continue; // inrit vrijhouden
       if (list.some(t => Math.hypot(t.x - x, t.y - y) < (t.R + R) * 0.75)) continue;
       list.push({ x, y, variant, R, seed: k });
@@ -327,6 +329,22 @@ window.AT = window.AT || {};
       for (const an of list) SP().animal(ctx, key, an.x, an.y, an.a, an.step);
     }
     SP().trader(ctx, D.trader.lot, D.trader.pit, time);
+    for (const [id, sp] of Object.entries(D.sellPoints)) if (sp.lot) SP().sellPoint(ctx, id, sp, time);
+    SP().dock(ctx, D.dock);
+    // kassen
+    AT.farm.greenhouses().forEach((gh, i) => {
+      const lot = D.greenhouse.lots[i];
+      if (gh.owned) SP().greenhouse(ctx, lot, gh.crop, time); else SP().buildingLot(ctx, lot);
+    });
+    // bosperceel
+    const wl = AT.farm.woodlot(), se = treeSeason();
+    if (!wl.owned) { ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.setLineDash([6, 5]); ctx.strokeRect(D.woodlot.area.x, D.woodlot.area.y, D.woodlot.area.w, D.woodlot.area.h); ctx.setLineDash([]); }
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    for (const t of wl.trees) SP().treeShadow(ctx, t.x, t.y, t.variant, se);
+    for (const t of wl.trees) {
+      if (t.growth < 0.12) { ctx.fillStyle = '#6b4a2a'; SP().circle(ctx, t.x, t.y, 2); }
+      SP().tree(ctx, t.x, t.y, t.variant, 0, se, 0.25 + 0.75 * t.growth);
+    }
     for (const key of Object.keys(D.factories)) {
       const d = D.factories[key], f = state.factories[key];
       if (!f.owned) { SP().buildingLot(ctx, d.lot); continue; }
@@ -339,6 +357,8 @@ window.AT = window.AT || {};
     for (const key of Object.keys(D.animals)) if (inRect(x, y, D.animals[key].pen, 0)) return { kind: 'animal', key };
     for (const key of Object.keys(D.factories)) if (inRect(x, y, D.factories[key].lot, 0)) return { kind: 'factory', key };
     if (inRect(x, y, D.trader.lot, 0)) return { kind: 'trader' };
+    for (const sp of Object.values(D.sellPoints)) if (sp.lot && inRect(x, y, sp.lot, 0)) return { kind: 'trader' };
+    if (D.greenhouse.lots.some(l => inRect(x, y, l, 0)) || inRect(x, y, D.woodlot.area, 0)) return { kind: 'farm' };
     return null;
   }
 
@@ -350,6 +370,11 @@ window.AT = window.AT || {};
         return { r: d.pen, txt, bg: !a.owned ? 'rgba(45,106,45,0.92)' : a.count && a.fed < 0.5 ? 'rgba(170,60,30,0.92)' : 'rgba(0,0,0,0.55)' };
       }),
       { r: D.trader.lot, txt: `Graanhandel · ${AT.fmtMoney(G().cropPrice('wheat'))}/t tarwe`, bg: 'rgba(63,110,140,0.92)' },
+      ...Object.entries(D.sellPoints).filter(([, sp]) => sp.lot).map(([, sp]) => ({ r: sp.lot, txt: sp.name, bg: 'rgba(63,110,140,0.92)' })),
+      { r: { x: D.dock.x - 20, y: D.dock.y - 40, w: D.dock.w + 40, h: 54 }, txt: 'Laadperron (vrachtwagen)', bg: 'rgba(0,0,0,0.55)', small: true },
+      ...AT.farm.greenhouses().map((gh, i) => ({ r: D.greenhouse.lots[i], txt: gh.owned ? `Kas: ${D.products[gh.crop].name.toLowerCase()} · ${gh.status || ''}` : `Kas · bouw ${AT.fmtMoney(D.greenhouse.price)}`, bg: gh.owned ? 'rgba(0,0,0,0.55)' : 'rgba(45,106,45,0.92)' })),
+      (() => { const wl = AT.farm.woodlot(); const ready = wl.trees.filter(t => t.growth >= 0.95).length;
+        return { r: D.woodlot.area, txt: wl.owned ? `Bosperceel · ${ready} bomen kapklaar` : `Bosperceel · koop ${AT.fmtMoney(D.woodlot.price)}`, bg: wl.owned ? 'rgba(0,0,0,0.55)' : 'rgba(45,106,45,0.92)' }; })(),
       { r: { x: D.siloPit.x - 20, y: D.siloPit.y - 40, w: D.siloPit.w + 40, h: 60 }, txt: 'Stortput silo', bg: 'rgba(0,0,0,0.55)', small: true },
       ...Object.keys(D.factories).map(k => {
         const d = D.factories[k], f = state.factories[k];
@@ -442,6 +467,10 @@ window.AT = window.AT || {};
   // ---------- velden: cellen tekenen (offscreen) ----------
   function visKey(f, i) {
     const st = f.cells.state[i], dir = f.cells.dir[i], fe = f.cells.fert[i] & 3;
+    if (st === G().ST.MOWN) {
+      const d = G().hayDryness(f, i);
+      return (4 + (d >= 1 ? 2 : d >= 0.5 ? 1 : 0)) * 4 + fe + (dir ? 0 : 0);
+    }
     if (st !== G().ST.SOWN) return (st * 2 + dir) * 4 + fe;
     const stage = G().isReady(f, i) ? (G().isWithering(f, i) ? 6 : 5) : Math.min(4, Math.floor(G().cellGrowth(f, i) * 5));
     return (10 + (f.cells.crop[i] * 8 + stage) * 2 + dir) * 4 + fe;
@@ -578,6 +607,18 @@ window.AT = window.AT || {};
         }
       }
     },
+    grass(p) {
+      const { g, stage, h } = p;
+      if (stage === 0) return sprouts(p);
+      const cover = [0, 0.4, 0.75, 1, 1, 1][stage];
+      if (cover >= 1) { g.fillStyle = stage === 5 ? '#4f9a3a' : '#5fa847'; g.fillRect(p.x, p.y, C, C); }
+      const n = [0, 10, 16, 18, 20, 22][stage];
+      for (let k = 0; k < n; k++) {
+        g.fillStyle = k % 3 === 0 ? '#3f8a34' : k % 3 === 1 ? '#77c25a' : '#5fa847';
+        p.R(hp(p, k % 9) + (k % 2) * 0.5, hp(p, (k * 5) % 13 + 3), 0.5, stage >= 3 ? 1.6 : 1);
+      }
+      if (stage === 5) { g.fillStyle = '#c8d07a'; for (let k = 0; k < 4; k++) p.R(hp(p, k * 4 + 1), hp(p, k * 4 + 7), 0.7, 0.7); }
+    },
     clover(p) {
       const { g, stage, h } = p;
       if (stage === 0) return sprouts(p);
@@ -635,6 +676,17 @@ window.AT = window.AT || {};
         }
       }
       g.fillStyle = '#ead7a0'; R((h >> 4) & 7, (h >> 7) & 7, 2.2, 0.5);
+      return;
+    }
+    if (key >= 4 && key <= 6) { // gemaaid gras: zwaden die drogen tot hooi
+      const stage = key - 4;
+      g.fillStyle = ['#8fbf5a', '#9cbf62', '#a9bd6a'][stage]; g.fillRect(x, y, C, C);
+      g.fillStyle = 'rgba(60,100,30,0.25)'; for (let k = 0; k < 4; k++) g.fillRect(x + ((h >> (k * 3)) & 7), y + ((h >> (k * 3 + 1)) & 7), 0.6, 0.6);
+      const col = ['#5f9a3e', '#a8b65a', '#dcc77a'][stage], hi = ['#7cb956', '#c4c873', '#f0dc94'][stage];
+      for (const c of [1.5, 5.5]) {
+        g.fillStyle = col; R(0, c - 1, C, 2.2);
+        g.fillStyle = hi; for (let a = (h & 1); a < C; a += 2) R(a, c - 0.6 + ((h >> a) & 1) * 0.6, 1, 0.5);
+      }
       return;
     }
     // ondergrond (geploegd)
@@ -747,7 +799,9 @@ window.AT = window.AT || {};
     const p = state.player;
     const loadOpts = (m, impl) => {
       const L = m.load, IL = impl && impl.load;
+      const cargo = m.cargo ? Object.entries(m.cargo).reduce((a, [k, v]) => a + v / D.products[k].perPallet, 0) : 0;
       return {
+        cargoFrac: D.machines[m.type].pallets ? cargo / D.machines[m.type].pallets : 0,
         implLoad: IL, load: L,
         grain: L && L.tons > 0 ? L.tons / G().loadCap(m) : 0,
         grainColor: L && L.crop ? D.crops[L.crop].color : null,
@@ -896,7 +950,9 @@ window.AT = window.AT || {};
         const txt = f.job.phase === 'to' ? `${who} is onderweg` : f.job.waiting ? `${who} wacht tot het droog is` : `${who}: ${Math.floor(f.job.progress * 100)}%`;
         pill(txt, cx, cy - 9, true, 'rgba(44,127,184,0.9)');
       } else if (f.auto && f.auto.on) pill('🤖 Automatisch' + (f.auto.status ? ': ' + f.auto.status : ''), cx, cy - 9, true, 'rgba(0,0,0,0.5)');
-      else if (sum && sum.ready > 0 && sum.growing === 0) pill('Klaar om te oogsten', cx, cy - 9, true, 'rgba(183,121,31,0.92)');
+      else if (sum && sum.dryHay > 0) pill('Hooi is droog: persen', cx, cy - 9, true, 'rgba(183,121,31,0.92)');
+      else if (sum && sum.mown > 0) pill('Hooi droogt', cx, cy - 9, true, 'rgba(0,0,0,0.5)');
+      else if (sum && sum.ready > 0 && sum.growing === 0) pill(sum.readyCrops.grass ? 'Klaar om te maaien' : 'Klaar om te oogsten', cx, cy - 9, true, 'rgba(183,121,31,0.92)');
     }
   }
 
@@ -946,6 +1002,7 @@ window.AT = window.AT || {};
     }
     ctx.fillStyle = '#3f6e8c';
     ctx.fillRect(m.x + D.trader.lot.x * s, m.y + D.trader.lot.y * s, D.trader.lot.w * s, D.trader.lot.h * s);
+    for (const sp of Object.values(D.sellPoints)) if (sp.lot) ctx.fillRect(m.x + sp.lot.x * s, m.y + sp.lot.y * s, sp.lot.w * s, sp.lot.h * s);
     for (const mm of state.machines) {
       if (mm.busy || mm.attached) continue;
       ctx.fillStyle = '#ffd25a'; ctx.fillRect(m.x + mm.x * s - 1, m.y + mm.y * s - 1, 2, 2);

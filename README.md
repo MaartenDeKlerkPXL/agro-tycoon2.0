@@ -16,7 +16,8 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 | F | Werktuig aan-/afkoppelen (rij achteruit tegen het werktuig) |
 | Spatie | Werktuig omlaag/omhoog (ploeg, zaaimachine, maaibord) |
 | C | Zaaigoed wisselen |
-| U | Lossen: maaidorser → aanhanger, aanhanger → stortput silo of graanhandel |
+| U | Lossen: maaidorser → aanhanger, aanhanger → stortput silo of verkooppunt; vrachtwagen laden (laadperron) of verkopen |
+| H | Boom kappen (te voet, in je eigen bosperceel) |
 | Scroll / slepen | Zoomen / rondkijken |
 | P | Pauze |
 | 1 / 2 / 3 / 4 | Snelheid 1×, 5×, 20×, 60× (1× = 1 seconde is 1 speelminuut) |
@@ -31,17 +32,20 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 7. Koop extra velden, tractoren en werktuigen
 8. Houd je **bodem** gezond: elke oogst put hem uit. Rij **mest** uit (van je koeien en schapen) en strooi **kunstmest** voor meer opbrengst. Wissel van gewas voor een bonus
 9. Let op **seizoenen en weer**: elk gewas heeft eigen zaaimaanden (zie de 📅 Zaaikalender), in de winter groeit bijna niets en vorst beschadigt gewassen die niet winterhard zijn. Bij regen kun je niet oogsten, en rijpe gewassen verwelken als je te lang wacht
-10. **11 gewassen**: tarwe, gerst, haver, maïs, koolzaad, zonnebloem, soja, veldbonen, aardappelen, suikerbieten en klaver. Elk heeft een eigen reden om te verbouwen: prijs, groeitijd, bodem, droogte/vorst of een fabriek die erom vraagt
-11. In de tab **Bedrijf** bouw je **stallen** (koeien, kippen, schapen) en **fabrieken** (molen, bakkerij, kaasmakerij, brouwerij, oliepers, suikerfabriek, chipsfabriek) die je oogst meer waard maken
+10. **12 gewassen**: tarwe, gerst, haver, maïs, koolzaad, zonnebloem, soja, veldbonen, aardappelen, suikerbieten, gras en klaver. Elk heeft een eigen reden om te verbouwen: prijs, groeitijd, bodem, droogte/vorst of een fabriek die erom vraagt. Aardappelen en bieten vragen een eigen pootmachine/zaaier; gras maai je, schud je en pers je tot hooi
+11. In de tab **Bedrijf** bouw je **stallen** (koeien, kippen, schapen) en **fabrieken** (molen, bakkerij, kaasmakerij, brouwerij, oliepers, suikerfabriek, chipsfabriek) die je oogst meer waard maken. Daar koop je ook **kassen** (tomaten, sla), een **bosperceel** met **zagerij** en bouw je de **opslagloods** uit
+12. In de tab **Markt** zie je de **📈 prijskalender**: welke maand elk gewas duur of goedkoop is. Neem **contracten** aan voor een bonus, en let op: veel tegelijk verkopen drukt de prijs
+13. Er zijn vier **verkooppunten**: graanhandel, veevoerbedrijf, haven en supermarkt. Breng graan met een kipper en producten met de **vrachtwagen** (laden bij het laadperron, U) voor de volle prijs
+14. In de tab **Geld** zie je inkomsten en uitgaven per dag, het kasboek per categorie, en kun je **lenen** bij de bank (met rente)
 
 ## Projectstructuur
 ```
 index.html        pagina + layout
 css/style.css     opmaak
 js/data.js        ALLE content: gewassen, machines, velden, silo, doelen
-js/game.js        spellogica (cellen, bodem, loonwerkers, economie, opslaan)
+js/game.js        spellogica (cellen, bodem, taken, economie, contracten, bank, opslaan)
 js/weather.js     seizoenen, weer, weersvoorspelling, groeisnelheid
-js/farm.js        dieren en fabrieken
+js/farm.js        dieren, fabrieken, kassen en bosperceel
 js/staff.js       personeel, wachtrij, automatisch beheer, routes over de wegen
 js/vehicle.js     lopen en zelf rijden: besturing + werken onder het werktuig
 js/sprites.js     tekeningen: machines, gebouwen, bomen
