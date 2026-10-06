@@ -34,7 +34,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Natuur rond de velden: bomen, struiken, hagen, sloten, hekken en een vijver
 - [x] Schaduwen en licht: zachte schaduw onder machines en gebouwen, mooiere zonsopgang en -ondergang
 - [x] Effecten: stofwolken, kaf, bandensporen, uitlaatrook, meeuwen die achter de ploeg aan vliegen
-- [ ] Graanstroom bij het lossen (komt met de graanbunker)
+- [x] Graanstroom bij het lossen
 - [x] 's Nachts koplampen en lantaarns op het erf
 - [x] Mooiere wegen (asfalt/grind met randen) en een erf met bestrating
 - [x] Stijlkeuze: bovenaanzicht met getekende details (isometrisch zou een volledige herbouw zijn)
@@ -45,8 +45,13 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 
 ## 🚜 Fase 1: Meer machines en vervoer
 - [ ] **Extra tractormodellen** (50 pk oldtimer, 200 pk, 400 pk rupstrekker)
-- [ ] **Graanbunker in de maaidorser**: als hij vol is, moet je lossen
-- [ ] **Aanhangers / overlaadwagens**: graan zelf naar de silo of graanhandel rijden
+- [x] **Graanbunker in de maaidorser** (5–12 t): als hij vol is, moet je lossen
+- [x] **Aanhangers** (kipper 8 t, 16 t, overlaadwagen 30 t): graan zelf naar de silo of graanhandel rijden
+- [x] Lossen met U: maaidorser → aanhanger (losbuis), aanhanger → stortput silo of graanhandel
+- [x] Graanhandel op de kaart: volle prijs; verkopen vanuit de silo kost 10% ophaalkosten
+- [ ] Overladen tijdens het rijden (maaidorser en tractor naast elkaar)
+- [ ] Loonwerker-chauffeur die met de aanhanger meerijdt en zelf wegbrengt
+- [ ] Graan naar een fabriek brengen (bonus voor directe levering)
 - [ ] **Cultivator** (sneller dan ploegen)
 - [ ] **Spuitmachine**: onkruid/herbicide
 - [ ] **Kunstmeststrooier**: hogere opbrengst

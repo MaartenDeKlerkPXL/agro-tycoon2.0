@@ -58,8 +58,11 @@ window.AT = window.AT || {};
     const r = rig();
     if (!r) { p.mode = 'foot'; return; }
 
-    const working = p.lowered && r.toolDef;
-    const maxSpeed = (working ? r.toolDef.workSpeed : r.mainDef.speed) * PX;
+    const working = p.lowered && r.toolDef && r.toolDef.kind !== 'trailer';
+    // een volle aanhanger maakt je trager
+    const src = loadSource(r);
+    const heavy = src && r.mainDef.kind === 'tractor' ? 1 - 0.25 * (src.load.tons / src.cap) : 1;
+    const maxSpeed = (working ? r.toolDef.workSpeed : r.mainDef.speed) * PX * heavy;
     const throttle = (pressed('KeyW', 'ArrowUp') ? 1 : 0) - (pressed('KeyS', 'ArrowDown') ? 1 : 0);
     const steerIn = (pressed('KeyD', 'ArrowRight') ? 1 : 0) - (pressed('KeyA', 'ArrowLeft') ? 1 : 0);
     if (throttle || steerIn) AT.input.moved = 1;
@@ -95,6 +98,93 @@ window.AT = window.AT || {};
       AT.state.stats.spent += cost;
     }
     if (working && p.speed > 3) workUnderTool(p, r);
+    if (p.unloading) unload(p, r, dt);
+  }
+
+  // ---------- lossen (U) ----------
+  const rot = (x, y, a, lx, ly) => ({ x: x + Math.cos(a) * lx - Math.sin(a) * ly, y: y + Math.sin(a) * lx + Math.cos(a) * ly });
+  const inRect = (pt, r, m) => pt.x > r.x - m && pt.x < r.x + r.w + m && pt.y > r.y - m && pt.y < r.y + r.h + m;
+
+  // waar komt het graan vandaan: bunker van de maaidorser of de aanhanger
+  function loadSource(r) {
+    if (!r) return null;
+    const p = AT.state.player;
+    if (r.mainDef.kind === 'harvester') {
+      return { m: r.main, load: G().getLoad(r.main), cap: G().loadCap(r.main), point: rot(p.x, p.y, p.angle, -2, -26), kind: 'harvester' };
+    }
+    if (r.impl && r.toolDef.kind === 'trailer') {
+      return { m: r.impl, load: G().getLoad(r.impl), cap: G().loadCap(r.impl), point: G().trailerPose(r.impl).rear, kind: 'trailer' };
+    }
+    return null;
+  }
+
+  // waar kan het naartoe vanaf dit punt
+  function unloadTarget(src) {
+    if (src.kind === 'harvester') {
+      for (const m of AT.state.machines) {
+        if (D.machines[m.type].kind !== 'trailer' || (m.busy && m.busy !== 'player')) continue;
+        const c = G().trailerPose(m).center;
+        if (Math.hypot(c.x - src.point.x, c.y - src.point.y) < 14) return { kind: 'trailer', m, point: c };
+      }
+    }
+    if (inRect(src.point, D.siloPit, 10)) return { kind: 'silo', point: { x: D.siloPit.x + D.siloPit.w / 2, y: D.siloPit.y + D.siloPit.h / 2 } };
+    const tp = D.trader.pit;
+    if (inRect(src.point, tp, 10)) return { kind: 'trader', point: { x: tp.x + tp.w / 2, y: tp.y + tp.h / 2 } };
+    return null;
+  }
+
+  let sale = { tons: 0, money: 0, crop: null };
+  function finishSale() {
+    if (sale.tons > 0.01) G().log(`${AT.fmtTons(sale.tons)} ${D.crops[sale.crop].name.toLowerCase()} verkocht aan de graanhandel voor ${AT.fmtMoney(sale.money)}.`, 'money');
+    sale = { tons: 0, money: 0, crop: null };
+  }
+
+  function toggleUnload() {
+    const p = AT.state.player, r = rig();
+    if (!r) { warn('Stap eerst in een maaidorser of een tractor met aanhanger.'); return; }
+    const src = loadSource(r);
+    if (!src) { warn('Koppel eerst een aanhanger aan (F) om graan te vervoeren.'); return; }
+    if (p.unloading) { p.unloading = false; finishSale(); return; }
+    if (src.load.tons < 0.01) { warn(src.kind === 'harvester' ? 'De bunker is leeg.' : 'De aanhanger is leeg.'); return; }
+    p.unloading = true;
+  }
+
+  function unload(p, r, dt) {
+    const src = loadSource(r);
+    if (!src || src.load.tons < 0.001) { p.unloading = false; finishSale(); return; }
+    const target = unloadTarget(src);
+    p.unloadTarget = target ? target.kind : null;
+    if (!target) {
+      warn(src.kind === 'harvester' ? 'Rij met je linkerkant (de losbuis) naast een aanhanger, of naar de stortput/graanhandel.' : 'Rij achteruit met de aanhanger over de stortput bij de silo of bij de graanhandel.');
+      return;
+    }
+    const crop = src.load.crop;
+    let amount = Math.min(src.load.tons, D.unloadRate[src.kind] * dt);
+    if (target.kind === 'trailer') {
+      const L = G().getLoad(target.m), cap = G().loadCap(target.m);
+      if (L.tons > 0.001 && L.crop !== crop) { warn(`Die aanhanger zit al vol met ${D.crops[L.crop].name.toLowerCase()}.`); return; }
+      amount = Math.min(amount, cap - L.tons);
+      if (amount <= 0.0001) { warn('De aanhanger is vol!'); return; }
+      L.crop = crop; L.tons += amount;
+    } else if (target.kind === 'silo') {
+      amount = Math.min(amount, G().siloRoom());
+      if (amount <= 0.0001) { warn('De silo is vol! Verkoop graan of breng het naar de graanhandel.'); return; }
+      AT.state.silo[crop] += amount;
+      AT.state.stats.deliveredTons += amount;
+    } else {
+      const money = amount * G().cropPrice(crop);
+      G().earn(money);
+      sale.tons += amount; sale.money += money; sale.crop = crop;
+      AT.state.stats.deliveredTons += amount;
+    }
+    src.load.tons -= amount;
+    if (src.load.tons < 0.001) {
+      src.load.tons = 0; src.load.crop = null; p.unloading = false;
+      if (target.kind === 'silo') G().log(`${src.kind === 'harvester' ? 'Bunker' : 'Aanhanger'} gelost in de silo.`, 'good');
+      finishSale();
+      AT.emit('change');
+    }
+    if (AT.fx) AT.fx.stream(src.point, target.point, D.crops[crop].color, dt);
   }
 
   // Bewerk alle cellen onder het werktuig (achter de tractor, of het maaibord vóór de maaidorser)
@@ -111,7 +201,10 @@ window.AT = window.AT || {};
       const hit = G().cellAt(cx - sin * s, cy + cos * s);
       if (!hit) continue;
       if (!hit.f.owned) { notOwned = true; continue; }
-      const res = G().workCell(hit.f, hit.i, op, p.crop, 'player', dir, r.toolDef);
+      const bunker = r.mainDef.kind === 'harvester' ? { load: G().getLoad(r.main), cap: G().loadCap(r.main) } : null;
+      const res = G().workCell(hit.f, hit.i, op, p.crop, 'player', dir, r.toolDef, bunker);
+      if (res === 'tankfull') { warn('Bunker vol! Los in een aanhanger (U) of rij naar de stortput bij de silo.'); break; }
+      if (res === 'mixed') { warn('Er zit nog een ander gewas in de bunker. Los eerst (U).'); break; }
       if (res === 'nomoney') { warn(op === 'fertilize' ? 'Geen geld voor kunstmest!' : 'Geen geld voor zaaigoed!'); break; }
       if (res === 'full') { warn('Silo vol! Verkoop graan of vergroot de silo.'); break; }
       if (res === 'season') { warn(`${D.crops[p.crop].name} kun je nu niet zaaien (wel in: ${D.crops[p.crop].sow.map(i => D.months[i].toLowerCase()).join(', ')}). Kies ander zaaigoed met C.`); break; }
@@ -130,6 +223,7 @@ window.AT = window.AT || {};
     const p = AT.state.player, r = rig();
     if (!r) return;
     if (!r.toolDef) { warn('Geen werktuig aangekoppeld. Rij achteruit tegen een werktuig en druk F.'); return; }
+    if (r.toolDef.kind === 'trailer') { warn('Een aanhanger hoeft niet omlaag. Druk U om te lossen.'); return; }
     p.lowered = !p.lowered;
   }
 
@@ -163,7 +257,14 @@ window.AT = window.AT || {};
         if (im) prompt = `F = ${D.machines[im.type].name} aankoppelen`;
       }
     }
-    const toolName = r.toolDef && r.toolDef.kind === 'harvester' ? 'Maaibord' : r.toolDef ? r.toolDef.name : null;
+    const src = loadSource(r);
+    if (src) {
+      const t = src.load.tons > 0.01 ? unloadTarget(src) : null;
+      const names = { trailer: 'in de aanhanger', silo: 'in de silo', trader: 'bij de graanhandel (verkopen)' };
+      if (p.unloading) prompt = t ? `Lossen ${names[t.kind]}… (U = stoppen)` : 'Lossen: zoek een aanhanger, stortput of de graanhandel';
+      else if (t) prompt = `U = lossen ${names[t.kind]}`;
+    }
+    const toolName = r.toolDef && r.toolDef.kind === 'harvester' ? 'Maaibord' : r.toolDef && r.toolDef.kind !== 'trailer' ? r.toolDef.name : null;
     return {
       mode: 'drive',
       name: r.mainDef.name + (r.impl ? ' + ' + D.machines[r.impl.type].name : ''),
@@ -171,6 +272,8 @@ window.AT = window.AT || {};
       tool: toolName,
       lowered: p.lowered,
       crop: r.toolDef && r.toolDef.kind === 'seeder' ? D.crops[p.crop].name + (G().canSowNow(p.crop) ? '' : ' (niet in dit seizoen!)') : null,
+      load: src ? `${src.kind === 'harvester' ? 'Bunker' : 'Aanhanger'}: ${AT.fmtNum(src.load.tons, 1)} / ${src.cap} t${src.load.crop ? ' ' + D.crops[src.load.crop].name.toLowerCase() : ''}` : null,
+      loadFrac: src ? src.load.tons / src.cap : 0,
       extra: r.toolDef && r.toolDef.kind === 'manure' ? `Mest: ${AT.fmtTons(AT.state.goods.manure)}` : r.toolDef && r.toolDef.kind === 'spreader' ? `Kunstmest: ${AT.fmtMoney(D.fertCostPerHa)}/ha` : null,
       prompt,
       warn: warnTime > 0 ? warnText : '',
@@ -187,6 +290,7 @@ window.AT = window.AT || {};
     const p = AT.state.player;
     if (e.code === 'Space') toggleTool();
     if (e.code === 'KeyC') cycleCrop();
+    if (e.code === 'KeyU') toggleUnload();
     if (e.code === 'KeyE') {
       if (p.mode === 'drive') G().exitVehicle();
       else {
@@ -204,5 +308,7 @@ window.AT = window.AT || {};
   document.addEventListener('keyup', e => keys.delete(e.code));
   window.addEventListener('blur', () => keys.clear());
 
-  AT.vehicle = { update, rig, toggleTool, cycleCrop, hudInfo, pressed, KMH };
+  AT.on('change', () => { const p = AT.state.player; if (p.mode !== 'drive' && p.unloading) { p.unloading = false; finishSale(); } });
+
+  AT.vehicle = { update, rig, toggleTool, cycleCrop, hudInfo, pressed, KMH, loadSource, toggleUnload };
 })();

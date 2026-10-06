@@ -8,7 +8,7 @@ window.AT = window.AT || {};
   const CROP_KEYS = Object.keys(D.crops);           // index+1 = gewas-id in cellen (0 = geen)
   const ST = { STUBBLE: 0, PLOWED: 1, SOWN: 2 };    // celtoestanden
   const FERT = 1, MANURE = 2;                        // bits in cells.fert
-  const IMPLEMENT_KINDS = ['plow', 'seeder', 'spreader', 'manure'];
+  const IMPLEMENT_KINDS = ['plow', 'seeder', 'spreader', 'manure', 'trailer'];
   const isImplement = kind => IMPLEMENT_KINDS.includes(kind);
 
   // ---------- kleine event-bus zodat UI kan reageren ----------
@@ -67,7 +67,7 @@ window.AT = window.AT || {};
       machines: startMachines(),
       // speler: te voet (mode 'foot') of in een machine (mode 'drive', vehicle = uid)
       player: { mode: 'foot', x: D.start.farmer.x, y: D.start.farmer.y, angle: Math.PI, speed: 0, vehicle: null, lowered: false, crop: CROP_KEYS[0] },
-      stats: { drove: false, plowedHa: 0, sownHa: 0, harvestedHa: 0, tonsHarvested: 0, earned: 0, spent: 0, workerJobs: 0, fertHa: 0, rotationHa: 0, greenManureHa: 0, cropsHarvested: {} },
+      stats: { drove: false, plowedHa: 0, sownHa: 0, harvestedHa: 0, tonsHarvested: 0, earned: 0, spent: 0, workerJobs: 0, fertHa: 0, rotationHa: 0, greenManureHa: 0, cropsHarvested: {}, deliveredTons: 0 },
       goalsDone: {},
       log: [],
     };
@@ -135,6 +135,26 @@ window.AT = window.AT || {};
     if (c.state[i] !== ST.SOWN) return 0;
     // max(0): het zaaimoment wordt iets minder precies opgeslagen, dus nooit negatief
     return Math.max(0, Math.min(1, (clock(c.crop[i]) - c.planted[i]) / growHours(c.crop[i])));
+  }
+
+  // ---------- lading: graanbunker van de maaidorser of een aanhanger ----------
+  function getLoad(m) {
+    if (!m.load) m.load = { crop: null, tons: 0 };
+    return m.load;
+  }
+  function loadCap(m) { const d = machineDef(m); return d.tank || d.capacity || 0; }
+
+  // positie van een aanhanger: aan een tractor of los geparkeerd (x/y = trekoog)
+  function trailerPose(m) {
+    const d = machineDef(m);
+    let hx = m.x, hy = m.y, a = m.angle;
+    if (m.attached) { const t = machine(m.attached); const h = hitchPoint(t); hx = h.x; hy = h.y; a = t.angle; }
+    const cx = Math.cos(a), cy = Math.sin(a);
+    return {
+      angle: a,
+      center: { x: hx - cx * (3 + d.length / 2), y: hy - cy * (3 + d.length / 2) },
+      rear: { x: hx - cx * (3 + d.length + 2), y: hy - cy * (3 + d.length + 2) },
+    };
   }
 
   // ---------- bodem & opbrengst ----------
@@ -209,7 +229,8 @@ window.AT = window.AT || {};
   // Bewerk één cel. mode = 'player' (betaal direct) of 'worker' (vooruitbetaald).
   // tool = machine-definitie (voor oogsten: welke gewassen kan hij aan)
   // Geeft 'ok', 'skip', 'nomoney', 'full', 'season', 'wet', 'nomanure' of 'wrongtool' terug.
-  function workCell(f, i, op, cropKey, mode, dir = 0, tool = null) {
+  // bunker = { load, cap }: als je zelf oogst gaat het graan in de bunker van de maaidorser
+  function workCell(f, i, op, cropKey, mode, dir = 0, tool = null, bunker = null) {
     const c = f.cells, def = fieldDef(f.id), s = S();
     if (!f.owned) return 'skip';
     const ha = cellHa(def);
@@ -268,7 +289,13 @@ window.AT = window.AT || {};
       if (tool && tool.harvests !== D.crops[key].harvester) return 'wrongtool';
       if (mode === 'player' && tooWet()) return 'wet';
       const tons = cellYield(f, i) * (0.95 + Math.random() * 0.1);
-      if (siloRoom() < tons) {
+      if (bunker) {
+        const L = bunker.load;
+        if (L.tons > 0.001 && L.crop && L.crop !== key) return 'mixed';
+        if (L.tons + tons > bunker.cap) return 'tankfull';
+        L.crop = key; L.tons += tons;
+        s.stats.tonsHarvested += tons;
+      } else if (siloRoom() < tons) {
         if (mode === 'player') return 'full';
         if (f.job) f.job.lost += tons; // loonwerker: overschot gaat verloren
       } else {
@@ -292,7 +319,7 @@ window.AT = window.AT || {};
   // ---------- loonwerkers (automatische taken) ----------
   const TASK_IMPLEMENT = { plow: 'plow', sow: 'seeder', fertilize: 'spreader', manure: 'manure' };
   const TASK_OP = { plow: 'plow', sow: 'sow', harvest: 'harvest', fertilize: 'fertilize', manure: 'manure' };
-  const IMPL_NAMES = { plow: 'ploeg', seeder: 'zaaimachine', spreader: 'kunstmeststrooier', manure: 'mestverspreider' };
+  const IMPL_NAMES = { plow: 'ploeg', seeder: 'zaaimachine', spreader: 'kunstmeststrooier', manure: 'mestverspreider', trailer: 'aanhanger' };
 
   // snelheidsbonus als de tractor sterker is dan het werktuig nodig heeft
   function speedFactor(tractorDef, implDef) {
@@ -582,11 +609,11 @@ window.AT = window.AT || {};
     const s = S();
     tons = Math.min(tons ?? s.silo[crop], s.silo[crop]);
     if (tons <= 0.001) return;
-    const revenue = tons * cropPrice(crop);
+    const revenue = tons * cropPrice(crop) * (1 - D.pickupFee);
     s.silo[crop] -= tons;
     if (s.silo[crop] < 0.001) s.silo[crop] = 0;
     earn(revenue);
-    log(`${AT.fmtTons(tons)} ${D.crops[crop].name.toLowerCase()} verkocht voor ${AT.fmtMoney(revenue)}.`, 'money');
+    log(`${AT.fmtTons(tons)} ${D.crops[crop].name.toLowerCase()} laten ophalen en verkocht voor ${AT.fmtMoney(revenue)} (−${Math.round(D.pickupFee * 100)}% ophaalkosten).`, 'money');
     AT.emit('change');
   }
 
@@ -801,7 +828,7 @@ window.AT = window.AT || {};
     ST, CROP_KEYS, FERT, MANURE, isImplement, IMPL_NAMES,
     price, stock, take, addGood, sellGood, yieldFactor, canSowNow, spend, earn,
     tick, startJob, sell, buyField, buyMachine, sellMachine, upgradeSilo, enterVehicle, exitVehicle,
-    toggleHitch, nearestImplement, nearestVehicle, hitchPoint, machine, HITCH,
+    toggleHitch, nearestImplement, nearestVehicle, hitchPoint, machine, HITCH, getLoad, loadCap, trailerPose,
     save, load, reset, bestRig, missingFor, canPull, workCell, cellAt, summary, mainCrop,
     isReady, cellGrowth, overripe, isWithering, jobPosition, log, readyCropOf, HARVESTER_NAMES,
     day, hour, siloCapacity, siloUsed, siloRoom, cropPrice, fieldPrice, fieldDef, field,

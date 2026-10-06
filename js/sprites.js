@@ -46,7 +46,8 @@ window.AT = window.AT || {};
   // lengte en breedte van de machine (voor de schaduw)
   function footprint(d, implDef) {
     if (d.kind === 'harvester') return { x0: -16, x1: 18, w: Math.max(16, d.width) };
-    if (d.kind === 'tractor') return { x0: implDef ? -21 : -12, x1: 11.5, w: Math.max(17, implDef ? implDef.width : 0) };
+    if (d.kind === 'tractor') return { x0: implDef ? (implDef.length ? -15 - implDef.length : -21) : -12, x1: 11.5, w: Math.max(17, implDef ? implDef.width : 0) };
+    if (d.kind === 'trailer') return { x0: -4 - d.length, x1: 1, w: d.width };
     return { x0: -10, x1: 1, w: d.width };
   }
 
@@ -60,7 +61,7 @@ window.AT = window.AT || {};
     if (implDef || d.kind !== 'tractor') {
       const w = d.kind === 'harvester' ? d.width : implDef ? implDef.width : d.width;
       if (d.kind === 'harvester') rr(ctx, 13, -w / 2, 5, w, 1.5);
-      else rr(ctx, f.x0, -w / 2, 10, w, 1.5);
+      else { const ld = implDef || d; rr(ctx, f.x0, -w / 2, ld.length ? ld.length + 2 : 10, w, 1.5); }
       ctx.fill();
     }
     ctx.restore();
@@ -114,6 +115,32 @@ window.AT = window.AT || {};
       }
       // werkbreedte-armen
       ctx.fillStyle = 'rgba(80,80,80,0.6)'; ctx.fillRect(x0 - 8.5, -W / 2, 0.5, W);
+    } else if (id.kind === 'trailer') {
+      // kipper: dissel, twee assen, laadbak met zichtbare lading
+      const L = id.length, Wt = id.width;
+      ctx.fillStyle = '#333'; ctx.fillRect(x0 - 3.5, -0.8, 4, 1.6);
+      const bx = x0 - 3 - L;
+      for (const ax of [bx + L * 0.3, bx + L * 0.55]) {
+        wheel(ctx, ax, -Wt / 2 - 0.2, 4.5, 2.2, o.wheel || 0); wheel(ctx, ax, Wt / 2 + 0.2, 4.5, 2.2, o.wheel || 0);
+      }
+      const g = ctx.createLinearGradient(0, -Wt / 2, 0, Wt / 2);
+      g.addColorStop(0, shade(c, 0.3)); g.addColorStop(1, shade(c, -0.3));
+      ctx.fillStyle = g; rr(ctx, bx, -Wt / 2 + 0.6, L, Wt - 1.2, 1); ctx.fill();
+      ctx.fillStyle = '#3b3b3b'; rr(ctx, bx + 1, -Wt / 2 + 1.6, L - 2, Wt - 3.2, 0.6); ctx.fill();
+      const frac = o.load && o.load.tons > 0 ? Math.min(1, o.load.tons / id.capacity) : 0;
+      if (frac > 0) {
+        const col = D.crops[o.load.crop] ? D.crops[o.load.crop].color : '#e2bf55';
+        const gg = ctx.createRadialGradient(bx + L / 2, 0, 0.5, bx + L / 2, 0, L / 2);
+        gg.addColorStop(0, shade(col, 0.25)); gg.addColorStop(1, shade(col, -0.15));
+        ctx.fillStyle = gg;
+        ctx.globalAlpha = 0.55 + 0.45 * frac;
+        rr(ctx, bx + 1.2, -Wt / 2 + 1.8, (L - 2.4), Wt - 3.6, 0.6); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.ellipse(bx + L / 2, -1, L * 0.3 * frac, (Wt / 2 - 2) * frac, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.strokeStyle = shade(c, -0.45); ctx.lineWidth = 0.6;
+      for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(bx + L * k / 4, -Wt / 2 + 0.6); ctx.lineTo(bx + L * k / 4, -Wt / 2 + 1.6); ctx.stroke(); }
+      if (o.tipping) { ctx.fillStyle = 'rgba(255,255,255,0.18)'; rr(ctx, bx, -Wt / 2 + 0.6, L, Wt - 1.2, 1); ctx.fill(); }
     } else if (id.kind === 'manure') {
       // mestverspreider: aanhanger met mest en strooiwalsen achter
       ctx.fillStyle = '#333'; ctx.fillRect(x0 - 3, -0.8, 3.5, 1.6);
@@ -129,7 +156,7 @@ window.AT = window.AT || {};
 
   function tractor(ctx, d, o) {
     const c = d.color;
-    if (o.implDef) implement(ctx, o.implDef, -11.5, o);
+    if (o.implDef) implement(ctx, o.implDef, -11.5, Object.assign({}, o, { load: o.implLoad }));
     ctx.fillStyle = '#2d2d2d'; ctx.fillRect(-12.5, -0.8, 3, 1.6);
     // wielen
     wheel(ctx, -5.5, -6.6, 8.5, 3.4, o.wheel);
@@ -202,13 +229,24 @@ window.AT = window.AT || {};
     // graantank
     ctx.fillStyle = shade(c, -0.35); rr(ctx, -12.5, -4.7, 12, 9.4, 1.6); ctx.fill();
     if (o.grain > 0) {
-      ctx.fillStyle = d.harvests === 'potato' ? '#c9a46a' : d.harvests === 'beet' ? '#e9dccd' : '#e2bf55';
-      rr(ctx, -12, -4.2, 11, 8.4, 1.4); ctx.fill();
-      ctx.fillStyle = 'rgba(255,240,180,0.6)'; circle(ctx, -6.5, -0.8, 2.2);
+      const col = o.grainColor || (d.harvests === 'potato' ? '#c9a46a' : d.harvests === 'beet' ? '#e9dccd' : '#e2bf55');
+      ctx.fillStyle = col;
+      ctx.globalAlpha = 0.5 + 0.5 * Math.min(1, o.grain);
+      const gh = 8.4 * Math.min(1, 0.35 + 0.65 * o.grain);
+      rr(ctx, -12, -gh / 2, 11, gh, 1.4); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(255,240,180,0.6)'; circle(ctx, -6.5, -0.8, 1 + 1.4 * Math.min(1, o.grain));
     }
-    // losbuis langs de zijkant
-    ctx.fillStyle = '#7b7f83'; ctx.fillRect(-14, -7.6, 17, 1.3);
-    ctx.fillStyle = '#5c6064'; ctx.fillRect(2.5, -8.3, 2, 2.2);
+    if (o.auger) {
+      // losbuis uitgeklapt naar links
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(-1, -25, 2.2, 19);
+      ctx.fillStyle = '#8a8f93'; ctx.fillRect(-3, -26, 2.2, 20);
+      ctx.fillStyle = '#5c6064'; ctx.fillRect(-3.6, -27, 3.4, 2.4);
+    } else {
+      // losbuis langs de zijkant
+      ctx.fillStyle = '#7b7f83'; ctx.fillRect(-14, -7.6, 17, 1.3);
+      ctx.fillStyle = '#5c6064'; ctx.fillRect(2.5, -8.3, 2, 2.2);
+    }
     // motorrooster achter
     ctx.fillStyle = '#222'; ctx.fillRect(-15.3, -3, 1, 6);
     // cabine
@@ -222,10 +260,10 @@ window.AT = window.AT || {};
   }
 
   // los geparkeerd werktuig (op het erf)
-  function parkedImplement(ctx, d) {
+  function parkedImplement(ctx, d, o) {
     ctx.fillStyle = '#555'; ctx.fillRect(0, -0.6, 2.5, 1.2);
     ctx.fillStyle = '#666'; ctx.fillRect(1.8, -1.2, 1.2, 2.4);
-    implement(ctx, d, 0.5, {});
+    implement(ctx, d, 0.5, o || {});
   }
 
   // o: { implType, lowered, wheel, steer, t, lights, beacon, grain }
@@ -238,7 +276,7 @@ window.AT = window.AT || {};
     const opts = Object.assign({ wheel: 0, steer: 0, t: 0, lowered: true }, o, { implDef });
     if (d.kind === 'tractor') tractor(ctx, d, opts);
     else if (d.kind === 'harvester') harvester(ctx, d, opts);
-    else parkedImplement(ctx, d);
+    else parkedImplement(ctx, d, opts);
     ctx.restore();
   }
 
@@ -515,11 +553,32 @@ window.AT = window.AT || {};
     }
   }
 
+  function pit(ctx, r) {
+    ctx.fillStyle = '#6f6d66'; ctx.fillRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6);
+    ctx.fillStyle = '#2b2b2b'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = '#8c8a83'; ctx.lineWidth = 0.8;
+    for (let x = r.x + 2; x < r.x + r.w; x += 3) { ctx.beginPath(); ctx.moveTo(x, r.y); ctx.lineTo(x, r.y + r.h); ctx.stroke(); }
+    ctx.fillStyle = '#f2c94c';
+    for (let x = r.x - 3; x < r.x + r.w + 3; x += 8) { ctx.fillRect(x, r.y - 3, 4, 2); ctx.fillRect(x + 4, r.y + r.h + 1, 4, 2); }
+  }
+
+  function trader(ctx, lot, p, t) {
+    ctx.fillStyle = '#a8a397'; ctx.fillRect(lot.x, lot.y, lot.w, lot.h);
+    barn(ctx, { x: lot.x + 8, y: lot.y + 8, w: 74, h: 52 }, '#3f6e8c');
+    // grote graansilo's van de handel
+    for (let k = 0; k < 2; k++) silo(ctx, lot.x + 102 + (k % 2) * 0, lot.y + 22 + k * 32, 13, 0.6);
+    pit(ctx, p);
+    // bord
+    ctx.fillStyle = '#2d6a2d'; ctx.fillRect(lot.x + 8, lot.y + 66, 60, 12);
+    ctx.fillStyle = '#fff'; ctx.font = '600 7px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('GRAANHANDEL', lot.x + 11, lot.y + 72.5);
+  }
+
   function buildingLot(ctx, r) {
     ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.setLineDash([6, 5]); ctx.lineWidth = 1;
     ctx.strokeRect(r.x, r.y, r.w, r.h); ctx.setLineDash([]);
     ctx.fillStyle = 'rgba(160,140,100,0.25)'; ctx.fillRect(r.x, r.y, r.w, r.h);
   }
 
-  AT.sprites = { machine, thumb, house, hall, silo, tree, treeShadow, treeSprite, animal, barn, fence, trough, factory, buildingLot, shade, mix, rr, circle };
+  AT.sprites = { machine, thumb, house, hall, silo, tree, treeShadow, treeSprite, animal, barn, fence, trough, factory, buildingLot, pit, trader, shade, mix, rr, circle };
 })();

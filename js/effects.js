@@ -153,6 +153,19 @@ window.AT = window.AT || {};
     });
   }
 
+  // graan dat van de losbuis/kipper naar het doel stroomt
+  function stream(from, to, color, dt) {
+    const n = Math.max(1, Math.round(60 * dt));
+    const rgb = parseInt(color.slice(1), 16);
+    const c = `${(rgb >> 16) & 255},${(rgb >> 8) & 255},${rgb & 255}`;
+    for (let k = 0; k < n; k++) {
+      const life = 0.35;
+      spawn({ x: from.x + (Math.random() - 0.5) * 2, y: from.y + (Math.random() - 0.5) * 2,
+        vx: (to.x - from.x) / life * (0.7 + Math.random() * 0.3), vy: (to.y - from.y) / life * (0.7 + Math.random() * 0.3),
+        life: 0, max: life, r0: 0.9, r1: 0.6, c, a: 0.95 });
+    }
+  }
+
   function drawTracks(ctx) { ctx.drawImage(tracks, 0, 0); }
 
   function drawParticles(ctx) {
@@ -184,5 +197,5 @@ window.AT = window.AT || {};
 
   function reset() { if (tctx) tctx.clearRect(0, 0, tracks.width, tracks.height); particles.length = 0; lastStamp.clear(); }
 
-  AT.fx = { init, update, drawTracks, drawParticles, drawBirds, reset };
+  AT.fx = { init, update, drawTracks, drawParticles, drawBirds, reset, stream };
 })();

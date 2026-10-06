@@ -16,6 +16,7 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 | F | Werktuig aan-/afkoppelen (rij achteruit tegen het werktuig) |
 | Spatie | Werktuig omlaag/omhoog (ploeg, zaaimachine, maaibord) |
 | C | Zaaigoed wisselen |
+| U | Lossen: maaidorser → aanhanger, aanhanger → stortput silo of graanhandel |
 | Scroll / slepen | Zoomen / rondkijken |
 | P | Pauze |
 | 1 / 2 / 3 | Snelheid 1×, 2×, 4× |
@@ -24,8 +25,8 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 1. Je staat als boer op het erf. Loop naar de rode tractor (de ploeg hangt er al aan) en druk **E**
 2. Rij het erf af naar Veld 1 (de witte pijl wijst de weg) en druk **spatie** om te ploegen
 3. Rij terug, zet de ploeg neer (**F**), rij achteruit tegen de **zaaimachine** en koppel die aan (**F**). Kies een gewas (**C**) en zaai
-4. Is het gewas rijp, dan oogst je met de **maaidorser**. Het graan gaat naar de silo
-5. Verkoop in de **Markt**, waar de prijzen elke dag veranderen
+4. Is het gewas rijp, dan oogst je met de **maaidorser**. Het graan gaat in de **bunker**. Is die vol, zet dan een tractor met **kipper** naast de maaidorser (links, bij de losbuis) en druk **U**
+5. Rij de kipper naar de **stortput bij de silo** of naar de **graanhandel** (onderaan de kaart) en druk **U**. Bij de graanhandel krijg je de volle prijs; vanuit de silo laten ophalen (tab Markt) kost 10%
 6. Geen zin om alles zelf te doen? Huur in de tab **Veld** een **loonwerker** in
 7. Koop extra velden, tractoren en werktuigen
 8. Houd je **bodem** gezond: elke oogst put hem uit. Rij **mest** uit (van je koeien en schapen) en strooi **kunstmest** voor meer opbrengst. Wissel van gewas voor een bonus

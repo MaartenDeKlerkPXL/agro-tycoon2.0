@@ -199,10 +199,11 @@ window.AT = window.AT || {};
       <li><b>E</b>: in- of uitstappen (loop tot vlak bij de machine)</li>
       <li><b>F</b>: werktuig aan- of afkoppelen (rij achteruit tegen ploeg, zaaimachine of strooier)</li>
       <li><b>Spatie</b>: werktuig omlaag/omhoog · <b>C</b>: zaaigoed wisselen</li>
+      <li><b>U</b>: lossen. Maaidorser → aanhanger (losbuis zit links), aanhanger → stortput bij de silo of de graanhandel (verkopen)</li>
     </ul></div>`;
 
     html += `<h3>Jouw machines</h3>`;
-    const order = ['tractor', 'harvester', 'plow', 'seeder', 'spreader', 'manure'];
+    const order = ['tractor', 'harvester', 'trailer', 'plow', 'seeder', 'spreader', 'manure'];
     // (rooiers vallen onder 'harvester')
     const sorted = [...s.machines].sort((a, b) => order.indexOf(D.machines[a.type].kind) - order.indexOf(D.machines[b.type].kind));
     for (const m of sorted) {
@@ -210,7 +211,7 @@ window.AT = window.AT || {};
       const value = Math.round(d.price * 0.6);
       const sellable = !m.busy && !(m.attached && G().machine(m.attached).busy);
       html += `<div class="card row">${thumbImg(m.type)}
-        <div class="grow"><b>${esc(d.name)}</b><div class="muted">${esc(whereIs(m))}</div></div>
+        <div class="grow"><b>${esc(d.name)}</b><div class="muted">${esc(whereIs(m))}${m.load && m.load.tons > 0.01 ? ` · geladen: ${AT.fmtTons(m.load.tons)} ${D.crops[m.load.crop].name.toLowerCase()}` : ''}</div></div>
         <div class="col">
           <button class="btn small" data-action="findMachine" data-uid="${m.uid}">Zoek</button>
           <button class="btn small" data-action="sellMachine" data-uid="${m.uid}" ${sellable ? '' : 'disabled'} title="Verkoop voor 60% van de nieuwprijs">${AT.fmtMoney(value)}</button>
@@ -222,9 +223,10 @@ window.AT = window.AT || {};
   // ---------- Winkel ----------
   function machineSpecs(d) {
     if (d.kind === 'tractor') return `${d.power.toFixed(1)}× vermogen · ${d.speed} km/u · ${d.fuelPerHour} L/u`;
+    if (d.kind === 'trailer') return `${d.capacity} t graan · vereist ${d.minPower >= 3 ? '300 pk' : d.minPower >= 2 ? '150+ pk' : '75+ pk'}`;
     if (d.kind === 'harvester') {
       const what = Object.values(D.crops).filter(c => c.harvester === d.harvests).map(c => c.name.toLowerCase());
-      return `${d.width} m breed · oogst: ${what.length > 4 ? 'granen, maïs, koolzaad, zonnebloem, soja, bonen' : what.join(', ')}`;
+      return `${d.width} m breed · bunker ${d.tank} t · oogst: ${what.length > 4 ? 'granen, maïs, koolzaad, zonnebloem, soja, bonen' : what.join(', ')}`;
     }
     if (d.kind === 'spreader') return `${d.width} m breed · +25% opbrengst · ${AT.fmtMoney(D.fertCostPerHa)}/ha`;
     if (d.kind === 'manure') return `${d.width} m breed · betere bodem · ${D.manurePerHa} t mest/ha`;
@@ -233,7 +235,7 @@ window.AT = window.AT || {};
 
   function renderShop(s) {
     let html = `<h2>Winkel</h2>`;
-    const groups = [['tractor', 'Tractoren'], ['plow', 'Ploegen'], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting'], ['manure', ''], ['harvester', 'Oogstmachines']];
+    const groups = [['tractor', 'Tractoren'], ['trailer', 'Aanhangers'], ['plow', 'Ploegen'], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting'], ['manure', ''], ['harvester', 'Oogstmachines']];
     for (const [kind, title] of groups) {
       if (title) html += `<h3>${title}</h3>`;
       for (const [key, d] of Object.entries(D.machines)) {
@@ -269,6 +271,8 @@ window.AT = window.AT || {};
   function renderMarket(s) {
     let html = `<h2>Graanhandel</h2>
       <p class="muted">Silo: ${AT.fmtTons(G().siloUsed())} / ${G().siloCapacity()} t. Prijzen veranderen elke dag en per seizoen: in de oogsttijd is het goedkoop, een half jaar later duur. Bewaren kan dus lonen!</p>
+      <div class="card self"><b>Zelf wegbrengen = meer geld</b><p>Verkopen vanuit de silo kost <b>${Math.round(D.pickupFee * 100)}% ophaalkosten</b>. Breng je graan zelf met een aanhanger naar de <b>graanhandel</b> (onderaan de kaart) en los met <b>U</b> voor de volle prijs.</p>
+      <button class="btn small" data-action="look-trader">Zoek graanhandel</button></div>
       <div class="market-list">`;
     const entries = Object.entries(D.crops).filter(([, c]) => c.basePrice > 0)
       .sort(([a], [b]) => s.silo[b] - s.silo[a]);
@@ -281,7 +285,7 @@ window.AT = window.AT || {};
         <span class="grow"><b>${c.name}</b> ${seasonTag}<br><span class="muted">${stock >= 0.05 ? AT.fmtTons(stock) + ' · ≈ ' + AT.fmtMoney(stock * G().cropPrice(key)) : 'geen voorraad'}</span></span>
         ${sparkline(s.market[key].history)}
         <span class="price">${AT.fmtMoney(G().cropPrice(key))}/t ${trendOf(s.market[key])}</span>
-        <button class="btn small primary" data-action="sell" data-crop="${key}" ${stock < 0.05 ? 'disabled' : ''}>Verkoop</button>
+        <button class="btn small primary" data-action="sell" data-crop="${key}" ${stock < 0.05 ? 'disabled' : ''} title="Laten ophalen: −${Math.round(D.pickupFee * 100)}%">Laat ophalen</button>
       </div>`;
     }
     html += `</div>`;
@@ -370,7 +374,7 @@ window.AT = window.AT || {};
     </div>
     <h3>Besturing</h3><div class="card muted">
       WASD / pijltjes: lopen of rijden<br>Spatie: werktuig omlaag/omhoog · C: zaaigoed wisselen<br>
-      E: in-/uitstappen · F: werktuig aan-/afkoppelen · Shift: rennen<br>Scroll: zoomen · Slepen: rondkijken<br>P: pauze · 1 / 2 / 3: snelheid
+      E: in-/uitstappen · F: werktuig aan-/afkoppelen · U: lossen · Shift: rennen<br>Scroll: zoomen · Slepen: rondkijken<br>P: pauze · 1 / 2 / 3: snelheid
     </div>
     <button class="btn danger" data-action="reset">Nieuw spel starten</button>`;
     return html;
@@ -488,6 +492,7 @@ window.AT = window.AT || {};
       case 'sellAnimals': AT.farm.sellAnimals(a.key, Number(a.n)); break;
       case 'buyFactory': AT.farm.buyFactory(a.key); break;
       case 'toggleFactory': AT.farm.toggleFactory(a.key); break;
+      case 'look-trader': { const r = D.trader.lot; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
       case 'look-farm': { const r = D.animals[a.key].pen; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
       case 'look-factory': { const r = D.factories[a.key].lot; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
       case 'crop': AT.state.player.crop = a.crop; renderPanel(); break;
@@ -548,7 +553,8 @@ window.AT = window.AT || {};
       const w = AT.render.screenToWorld(p.x, p.y);
       const id = AT.render.fieldAt(w.x, w.y);
       if (id) return selectField(id);
-      if (AT.render.buildingAt(w.x, w.y)) { activeTab = 'farm'; renderPanel(); return; }
+      const bld = AT.render.buildingAt(w.x, w.y);
+      if (bld) { activeTab = bld.kind === 'trader' ? 'market' : 'farm'; renderPanel(); return; }
       const Y = D.yard;
       if (w.x >= Y.x && w.x <= Y.x + Y.w && w.y >= Y.y && w.y <= Y.y + Y.h) {
         activeTab = w.y > D.hall.y ? 'garage' : w.x > D.house.x + D.house.w ? 'market' : 'goals';

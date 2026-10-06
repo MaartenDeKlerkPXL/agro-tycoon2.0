@@ -4,7 +4,7 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 5,
+  version: 6,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
   world: { w: 2400, h: 1900 },
@@ -18,6 +18,7 @@ AT.data = {
       { type: 'tractor_small', slot: 0, impl: 'plow_small' },
       { type: 'seeder_small', slot: 1 },
       { type: 'harvester_old', slot: 4 },
+      { type: 'trailer_small', slot: 2 },
     ],
     farmer: { x: 338, y: 812 },
     siloLevel: 0,
@@ -140,7 +141,8 @@ AT.data = {
   //  seeder    : zaaien (geploegd -> ingezaaid)
   //  spreader  : kunstmest strooien (meer opbrengst), heeft tractor nodig
   //  manure    : mest uitrijden (betere bodem), heeft tractor nodig
-  //  harvester : oogsten (rijp -> stoppel), zelfrijdend
+  //  trailer   : aanhanger voor graan (capacity in ton), lossen met U
+  //  harvester : oogsten (rijp -> stoppel), zelfrijdend, met graanbunker (tank in ton)
   // rate   = hectare per speluur als een loonwerker het doet
   // width  = werkbreedte in px als je zelf rijdt
   // minPower = minimaal tractorvermogen
@@ -158,11 +160,15 @@ AT.data = {
     spreader_fert:   { kind: 'spreader', name: 'Kunstmeststrooier', price: 7000,  rate: 2.0, width: 40, workSpeed: 15, minPower: 1.0, color: '#e67e22' },
     manure_spreader: { kind: 'manure',   name: 'Mestverspreider',   price: 12000, rate: 0.8, width: 20, workSpeed: 10, minPower: 1.0, color: '#6d4c2f' },
 
-    harvester_old: { kind: 'harvester', harvests: 'combine', name: 'Maaidorser (oud)', price: 40000,  rate: 0.5, width: 24, speed: 20,  workSpeed: 7, fuelPerHour: 22, color: '#c9a227' },
-    harvester_mid: { kind: 'harvester', harvests: 'combine', name: 'Maaidorser 6 m',   price: 120000, rate: 1.2, width: 40, speed: 22, workSpeed: 8, fuelPerHour: 35, color: '#27ae60' },
-    harvester_big: { kind: 'harvester', harvests: 'combine', name: 'Maaidorser 9 m',   price: 260000, rate: 2.2, width: 56, speed: 25, workSpeed: 9, fuelPerHour: 50, color: '#d35400' },
-    potato_harvester: { kind: 'harvester', harvests: 'potato', name: 'Aardappelrooier', price: 90000,  rate: 0.6, width: 16, speed: 20, workSpeed: 5, fuelPerHour: 25, color: '#7d4e9e' },
-    beet_harvester:   { kind: 'harvester', harvests: 'beet',   name: 'Bietenrooier',    price: 150000, rate: 0.7, width: 24, speed: 20, workSpeed: 6, fuelPerHour: 35, color: '#2c7a7b' },
+    trailer_small: { kind: 'trailer', name: 'Kipper 8 t',          price: 6000,  capacity: 8,  width: 14, length: 16, minPower: 1.0, color: '#b03a2e' },
+    trailer_large: { kind: 'trailer', name: 'Kipper 16 t',         price: 14000, capacity: 16, width: 16, length: 20, minPower: 2.0, color: '#2e86c1' },
+    trailer_huge:  { kind: 'trailer', name: 'Overlaadwagen 30 t',  price: 38000, capacity: 30, width: 18, length: 24, minPower: 3.5, color: '#7d3c98' },
+
+    harvester_old: { kind: 'harvester', harvests: 'combine', tank: 5, name: 'Maaidorser (oud)', price: 40000,  rate: 0.5, width: 24, speed: 20,  workSpeed: 7, fuelPerHour: 22, color: '#c9a227' },
+    harvester_mid: { kind: 'harvester', harvests: 'combine', tank: 8, name: 'Maaidorser 6 m',   price: 120000, rate: 1.2, width: 40, speed: 22, workSpeed: 8, fuelPerHour: 35, color: '#27ae60' },
+    harvester_big: { kind: 'harvester', harvests: 'combine', tank: 12, name: 'Maaidorser 9 m',   price: 260000, rate: 2.2, width: 56, speed: 25, workSpeed: 9, fuelPerHour: 50, color: '#d35400' },
+    potato_harvester: { kind: 'harvester', harvests: 'potato', tank: 6, name: 'Aardappelrooier', price: 90000,  rate: 0.6, width: 16, speed: 20, workSpeed: 5, fuelPerHour: 25, color: '#7d4e9e' },
+    beet_harvester:   { kind: 'harvester', harvests: 'beet',   tank: 10, name: 'Bietenrooier',    price: 150000, rate: 0.7, width: 24, speed: 20, workSpeed: 6, fuelPerHour: 35, color: '#2c7a7b' },
   },
 
   fuelPrice: 1.6,          // € per liter diesel
@@ -172,7 +178,13 @@ AT.data = {
   yard: { x: 40, y: 600, w: 320, h: 424, gate: { y: 812, h: 52 } },
   house: { x: 56, y: 616, w: 120, h: 84 },
   silos: { x: 226, y: 636, dx: 36, dy: 42, perRow: 4, r: 15 },
-  hall: { x: 56, y: 722, w: 294, h: 72 },
+  hall: { x: 56, y: 722, w: 224, h: 72 },
+  // stortput bij de silo's: hier los je graan in de silo (rij erheen via de oprit rechts van de hal)
+  siloPit: { x: 290, y: 700, w: 62, h: 20 },
+  // graanhandel: hier verkoop je graan direct (volle prijs, geen ophaalkosten)
+  trader: { lot: { x: 1730, y: 1764, w: 140, h: 112 }, pit: { x: 1742, y: 1842, w: 70, h: 22 } },
+  pickupFee: 0.1,   // verkopen vanuit de silo (laten ophalen) kost 10%
+  unloadRate: { harvester: 2.5, trailer: 3.5 },  // ton per seconde bij lossen
   parking: { x: 52, y: 806, w: 300, h: 210 },
   // parkeerplekken (oostwaarts gericht), van de poort af gevuld
   slots: [300, 236, 172, 108].flatMap(x => [834, 884, 934, 984].map(y => ({ x, y }))).sort((a, b) => a.y - b.y || b.x - a.x),
@@ -241,6 +253,7 @@ AT.data = {
     { id: 'worker',   text: 'Laat een loonwerker een veld doen',    reward: 1000,  check: s => s.stats.workerJobs >= 1 },
     { id: 'fert',     text: 'Bemest 1 ha (kunstmest of mest) voor meer opbrengst', reward: 2000, check: s => s.stats.fertHa >= 1 },
     { id: 'rotation', text: 'Oogst 1 ha met vruchtwisseling (ander gewas dan de vorige keer)', reward: 2000, check: s => s.stats.rotationHa >= 1 },
+    { id: 'deliver',  text: 'Breng zelf graan weg: los een aanhanger bij de silo of graanhandel (U)', reward: 2000, check: s => s.stats.deliveredTons >= 1 },
     { id: 'crops3',   text: 'Oogst 3 verschillende gewassen',       reward: 3000,  check: s => Object.keys(s.stats.cropsHarvested || {}).length >= 3 },
     { id: 'clover',   text: 'Zaai klaver en ploeg het onder (groenbemester)', reward: 2000, check: s => s.stats.greenManureHa >= 1 },
     { id: 'animals',  text: 'Bouw een stal en koop dieren (tab Bedrijf)', reward: 3000, check: s => Object.values(s.animals).some(a => a.count > 0) },

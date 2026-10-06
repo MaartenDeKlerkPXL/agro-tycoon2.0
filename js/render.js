@@ -108,6 +108,7 @@ window.AT = window.AT || {};
       if (inRect(x, y, D.yard, R + 4) || inPond(x, y, R + 6)) continue;
       if (Object.values(D.animals).some(a => inRect(x, y, a.pen, R + 3))) continue;
       if (Object.values(D.factories).some(f => inRect(x, y, f.lot, R + 3))) continue;
+      if (inRect(x, y, D.trader.lot, R + 3)) continue;
       if (x < 395 && y > D.yard.y + D.yard.gate.y - D.yard.y - 30 && y < D.yard.gate.y + D.yard.gate.h + 30) continue; // inrit vrijhouden
       if (list.some(t => Math.hypot(t.x - x, t.y - y) < (t.R + R) * 0.75)) continue;
       list.push({ x, y, variant, R, seed: k });
@@ -325,6 +326,7 @@ window.AT = window.AT || {};
       if (!state.paused) updateHerd(key, list, dt);
       for (const an of list) SP().animal(ctx, key, an.x, an.y, an.a, an.step);
     }
+    SP().trader(ctx, D.trader.lot, D.trader.pit, time);
     for (const key of Object.keys(D.factories)) {
       const d = D.factories[key], f = state.factories[key];
       if (!f.owned) { SP().buildingLot(ctx, d.lot); continue; }
@@ -336,6 +338,7 @@ window.AT = window.AT || {};
   function buildingAt(x, y) {
     for (const key of Object.keys(D.animals)) if (inRect(x, y, D.animals[key].pen, 0)) return { kind: 'animal', key };
     for (const key of Object.keys(D.factories)) if (inRect(x, y, D.factories[key].lot, 0)) return { kind: 'factory', key };
+    if (inRect(x, y, D.trader.lot, 0)) return { kind: 'trader' };
     return null;
   }
 
@@ -346,6 +349,8 @@ window.AT = window.AT || {};
         const txt = !a.owned ? `${d.building} · bouw ${AT.fmtMoney(d.buildPrice)}` : `${d.building} · ${a.count}/${d.capacity}${a.count && a.fed < 0.5 ? ' · honger!' : ''}`;
         return { r: d.pen, txt, bg: !a.owned ? 'rgba(45,106,45,0.92)' : a.count && a.fed < 0.5 ? 'rgba(170,60,30,0.92)' : 'rgba(0,0,0,0.55)' };
       }),
+      { r: D.trader.lot, txt: `Graanhandel · ${AT.fmtMoney(G().cropPrice('wheat'))}/t tarwe`, bg: 'rgba(63,110,140,0.92)' },
+      { r: { x: D.siloPit.x - 20, y: D.siloPit.y - 40, w: D.siloPit.w + 40, h: 60 }, txt: 'Stortput silo', bg: 'rgba(0,0,0,0.55)', small: true },
       ...Object.keys(D.factories).map(k => {
         const d = D.factories[k], f = state.factories[k];
         const txt = !f.owned ? `${d.name} · bouw ${AT.fmtMoney(d.price)}` : `${d.name} · ${f.status || 'start op'}`;
@@ -354,7 +359,7 @@ window.AT = window.AT || {};
     ];
     for (const it of items) {
       const tl = worldToScreen(it.r.x, it.r.y), br = worldToScreen(it.r.x + it.r.w, it.r.y + it.r.h);
-      if (br.x < 0 || br.y < 0 || tl.x > vw || tl.y > vh || br.x - tl.x < 90) continue;
+      if (br.x < 0 || br.y < 0 || tl.x > vw || tl.y > vh || br.x - tl.x < (it.small ? 60 : 90)) continue;
       pill(it.txt, (tl.x + br.x) / 2, br.y - 26, true, it.bg);
     }
   }
@@ -420,6 +425,7 @@ window.AT = window.AT || {};
       ctx.fillStyle = '#5e4129';
       for (let s = 0; s <= len; s += 12) ctx.fillRect(x0 + (x1 - x0) * s / len - 1, y0 + (y1 - y0) * s / len - 1, 2, 2);
     }
+    SP().pit(ctx, D.siloPit);
     SP().house(ctx, D.house.x, D.house.y, D.house.w, D.house.h);
     SP().hall(ctx, D.hall.x, D.hall.y, D.hall.w, D.hall.h);
     const S = D.silos, fill = G().siloCapacity() ? G().siloUsed() / G().siloCapacity() : 0;
@@ -739,10 +745,18 @@ window.AT = window.AT || {};
   function drawMachines(state) {
     const lights = lightsOn();
     const p = state.player;
+    const loadOpts = (m, impl) => {
+      const L = m.load, IL = impl && impl.load;
+      return {
+        implLoad: IL, load: L,
+        grain: L && L.tons > 0 ? L.tons / G().loadCap(m) : 0,
+        grainColor: L && L.crop ? D.crops[L.crop].color : null,
+      };
+    };
     for (const m of state.machines) {
       if (m.busy || m.attached) continue;
       const impl = m.impl ? G().machine(m.impl) : null;
-      SP().machine(ctx, m.type, m.x, m.y, m.angle, { implType: impl && impl.type, lowered: false, wheel: 0, t: time });
+      SP().machine(ctx, m.type, m.x, m.y, m.angle, Object.assign({ implType: impl && impl.type, lowered: false, wheel: 0, t: time }, loadOpts(m, impl)));
     }
     // loonwerkers
     for (const f of state.fields) {
@@ -757,10 +771,11 @@ window.AT = window.AT || {};
     if (p.mode === 'drive') {
       const r = AT.vehicle.rig();
       if (r) {
-        SP().machine(ctx, r.main.type, p.x, p.y, p.angle, {
+        SP().machine(ctx, r.main.type, p.x, p.y, p.angle, Object.assign({
           implType: r.impl && r.impl.type, lowered: p.lowered, wheel: p.dist || 0, steer: p.steer || 0, t: time,
-          lights, beacon: p.lowered && (time * 2) % 1 < 0.5, grain: r.mainDef.kind === 'harvester' && G().siloUsed() > 0 ? 1 : 0,
-        });
+          lights, beacon: (p.lowered || p.unloading) && (time * 2) % 1 < 0.5,
+          auger: p.unloading && r.mainDef.kind === 'harvester', tipping: p.unloading && r.mainDef.kind === 'tractor',
+        }, loadOpts(r.main, r.impl)));
       }
     }
   }
@@ -921,6 +936,8 @@ window.AT = window.AT || {};
       ctx.fillStyle = state.factories[key].owned ? D.factories[key].roof : 'rgba(255,255,255,0.15)';
       ctx.fillRect(m.x + r.x * s, m.y + r.y * s, r.w * s, r.h * s);
     }
+    ctx.fillStyle = '#3f6e8c';
+    ctx.fillRect(m.x + D.trader.lot.x * s, m.y + D.trader.lot.y * s, D.trader.lot.w * s, D.trader.lot.h * s);
     for (const mm of state.machines) {
       if (mm.busy || mm.attached) continue;
       ctx.fillStyle = '#ffd25a'; ctx.fillRect(m.x + mm.x * s - 1, m.y + mm.y * s - 1, 2, 2);
@@ -943,7 +960,8 @@ window.AT = window.AT || {};
       if (info.tool) lines.push([`${info.tool}: ${info.lowered ? 'OMLAAG (aan het werk)' : 'omhoog'}`, info.lowered ? '#9be15d' : '#ddd', '600 13px']);
       if (info.crop) lines.push([`Zaaigoed: ${info.crop}  (C = wisselen)`, '#ddd', '600 13px']);
       if (info.extra) lines.push([info.extra, '#ddd', '600 13px']);
-      lines.push(['WASD rijden · Spatie werktuig · F koppelen · E uitstappen', '#bbb', '12px']);
+      if (info.load) lines.push([info.load, info.loadFrac > 0.95 ? '#ffb38a' : '#ffe08a', '700 13px']);
+      lines.push(['WASD rijden · Spatie werktuig · F koppelen · U lossen · E uitstappen', '#bbb', '12px']);
     } else {
       lines.push(['Te voet', '#fff', '700 14px']);
       lines.push(['WASD lopen · Shift rennen · E instappen', '#bbb', '12px']);
