@@ -14,6 +14,12 @@ window.AT = window.AT || {};
   const dayInSeason = () => Math.floor((S().time % SEASON_HOURS) / 24) + 1;
   // 0..1: hoe ver we in het huidige seizoen zijn
   const seasonProgress = () => (S().time % SEASON_HOURS) / SEASON_HOURS;
+  // maanden: 0 = maart … 11 = februari
+  const MONTH_HOURS = D.daysPerMonth * 24;
+  const monthAt = time => Math.floor(time / MONTH_HOURS) % 12;
+  const month = () => monthAt(S().time);
+  const monthName = (m = month()) => D.months[m];
+  const dayInMonth = () => Math.floor((S().time % MONTH_HOURS) / 24) + 1;
 
   function pick(probs) {
     const keys = Object.keys(probs);
@@ -72,6 +78,18 @@ window.AT = window.AT || {};
 
   function onNewWeather(type) {
     const wt = D.weatherTypes[type];
+    if (type === 'snow') {
+      // vorst: gewassen die niet winterhard zijn lopen schade op
+      for (const f of S().fields) {
+        if (!f.owned) continue;
+        const sum = AT.game.summary(f);
+        const tender = Object.keys(sum.crops).filter(k => !D.crops[k].winterHardy && D.crops[k].harvester);
+        if (!tender.length) continue;
+        const hit = 0.1 + Math.random() * 0.15;
+        f.damage = Math.min(0.6, f.damage + hit);
+        AT.game.log(`❄️ Vorstschade op Veld ${f.id} (${tender.map(k => D.crops[k].name.toLowerCase()).join(', ')}): −${Math.round(hit * 100)}%. Alleen tarwe en koolzaad zijn winterhard.`, 'warn');
+      }
+    }
     if (type === 'storm') {
       AT.game.log('⛈️ Onweer! Rijpe en groeiende gewassen kunnen schade oplopen.', 'warn');
       for (const f of S().fields) {
@@ -93,7 +111,7 @@ window.AT = window.AT || {};
     const se = season(), w = S().weather;
     let r = se === 3 ? D.crops[cropKey].winterGrowth : D.seasons[se].growth;
     r *= D.weatherTypes[w ? w.type : 'sun'].growth;
-    if (drought()) r *= 0.5;
+    if (drought() && !D.crops[cropKey].droughtProof) r *= 0.5;
     return r;
   }
 
@@ -104,6 +122,16 @@ window.AT = window.AT || {};
     const w = S().weather, h = S().time % 24;
     const base = D.seasons[season()].temp + D.weatherTypes[w ? w.type : 'sun'].temp;
     return Math.round(base + Math.sin((h - 9) / 24 * Math.PI * 2) * 4);
+  }
+
+  // prijs-vermenigvuldiger per seizoen: goedkoop in de oogsttijd, duur een half jaar later
+  function priceFactor(cropKey) {
+    const c = D.crops[cropKey];
+    if (c.cheapSeason == null) return 1;
+    const se = season();
+    if (se === c.cheapSeason) return 1 - D.seasonPrice;
+    if (se === (c.cheapSeason + 2) % 4) return 1 + D.seasonPrice;
+    return 1;
   }
 
   // voorspelling voor de komende dagen: het meest voorkomende weer per dag
@@ -129,5 +157,5 @@ window.AT = window.AT || {};
     return out;
   }
 
-  AT.weather = { init, update, season, seasonAt, year, dayInSeason, seasonProgress, growRate, drought, isWet, temperature, forecast };
+  AT.weather = { init, update, season, seasonAt, year, dayInSeason, seasonProgress, month, monthAt, monthName, dayInMonth, growRate, drought, isWet, temperature, forecast, priceFactor };
 })();

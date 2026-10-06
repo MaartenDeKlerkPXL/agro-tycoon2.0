@@ -6,6 +6,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 ## ✅ Fase 0: Basisspel
 - [x] Grote kaart (2400×1600) met 19 velden, wegen, erf, schuur, silo's en graanhandel
 - [x] **Lopen als boer** en **zelf rijden** over de hele kaart (WASD/pijltjes), camera volgt je
+- [x] Realistische snelheden: tractor 30–50 km/u, werken 5–15 km/u, lopen 6 km/u (rennen 14)
 - [x] Machines blijven staan waar je uitstapt; nieuwe machines staan op de parkeerplaats
 - [x] Werktuigen zelf aan- en afkoppelen (achteruit tegen het werktuig + F)
 - [x] Pijl die de weg wijst naar het gekozen veld
@@ -63,7 +64,10 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [ ] Automatische veldcyclus per veld (herhaal gewas X)
 
 ## 🌦️ Fase 3: Seizoenen, weer en bodem
-- [x] Seizoenen (lente, zomer, herfst, winter; 6 dagen elk): elk gewas heeft eigen zaaiseizoenen
+- [x] Seizoenen (lente, zomer, herfst, winter) met 12 maanden van 2 dagen: elk gewas heeft eigen zaaimaanden
+- [x] Zaaikalender (welk gewas wanneer, opbrengst en bijzonderheden)
+- [x] Vorst: sneeuw beschadigt gewassen die niet winterhard zijn
+- [x] Seizoensprijzen: goedkoop in de oogsttijd, duur een half jaar later (bewaren loont)
 - [x] In de winter groeit bijna niets (alleen wintertarwe, langzaam)
 - [x] Weer: zon, bewolkt, regen, onweer en sneeuw, met weersvoorspelling van 3 dagen
 - [x] Regen = snellere groei, maar oogsten kan pas als het droog is
@@ -74,15 +78,17 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Kunstmeststrooier (+25% opbrengst) en mestverspreider (betere bodem)
 - [x] Vruchtwisseling: ander gewas = +10%, steeds hetzelfde gewas = −10%
 - [ ] Bodem-pH en kalk strooien
-- [ ] Groenbemester (klaver) als rustgewas om de bodem te herstellen
+- [x] Groenbemester (klaver): onderploegen herstelt de bodem
 - [ ] Irrigatie tegen droogte
 - [ ] Onkruid, ziektes en plagen (spuitmachine)
-- [ ] Rijp gewas verwelkt als je te lang wacht
+- [x] Rijp gewas verwelkt als je te lang wacht (minder opbrengst)
 - [ ] Rijden in de regen maakt sporen/verdichting in de bodem
 
 ## 🌽 Fase 4: Meer gewassen en producten
-- [ ] Haver, koolzaad, soja, bonen, zonnebloem
-- [ ] Aardappelen en suikerbieten (aparte rooimachines)
+- [x] Haver, koolzaad (winterhard, gele bloei), zonnebloem (droogtebestendig), soja en veldbonen (verbeteren de bodem)
+- [x] Aardappelen en suikerbieten met eigen aardappelrooier en bietenrooier
+- [x] Klaver als groenbemester
+- [ ] Aardappelpootmachine en bietenzaaier (nu doet de zaaimachine alles)
 - [ ] Gras/hooi (maaier, schudder, balenpers)
 - [ ] Bomen/houtkap
 - [ ] Kassen (groenten, het hele jaar)
@@ -94,10 +100,11 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] **Fabrieken en dieren vragen specifieke gewassen**: brouwerij wil gerst, molen wil tarwe, koeien eten graag maïs
 - [ ] **Marktverzadiging**: als je veel van één gewas verkoopt, zakt de prijs daarvan tijdelijk
 - [ ] **Vraag en contracten**: opdrachten voor een bepaald gewas met een bonusprijs
-- [ ] **Groeitijd vs. opbrengst**: snelle gewassen voor tussendoor, trage voor de grote winst
-- [ ] **Stikstofbinders** (bonen, klaver, soja) maken de bodem juist béter voor het volgende gewas
-- [ ] **Risico**: sommige gewassen kunnen beter tegen droogte of storm
-- [ ] **Machines per gewas**: aardappelen en bieten vragen een eigen rooier (investering)
+- [x] **Groeitijd vs. opbrengst**: snelle gewassen voor tussendoor, trage voor de grote winst
+- [x] **Seizoensprijzen**: wie bewaart tot buiten de oogsttijd, krijgt meer
+- [x] **Stikstofbinders** (bonen, klaver, soja) maken de bodem juist béter voor het volgende gewas
+- [x] **Risico**: zonnebloem kan tegen droogte; alleen tarwe en koolzaad overleven vorst
+- [x] **Machines per gewas**: aardappelen en bieten vragen een eigen rooier (investering)
 
 ## 🐄 Fase 5: Dieren
 - [x] Koeien (melk + mest), kippen (eieren), schapen (wol + mest)
@@ -111,7 +118,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 ## 🏭 Fase 6: Productie en economie
 - [x] Fabrieken: graanmolen (meel), bakkerij (brood van meel + eieren), kaasmakerij (kaas van melk), brouwerij (bier van gerst)
 - [x] Producten verkopen op de markt met schommelende prijzen
-- [ ] Oliepers (koolzaad/zonnebloem → olie), suikerfabriek (bieten → suiker)
+- [x] Oliepers (koolzaad/zonnebloem → olie), suikerfabriek (bieten → suiker), chipsfabriek (aardappelen + olie → chips)
 - [ ] Producten zelf met een vrachtwagen naar de fabriek/winkel rijden
 - [ ] Opslagloods met beperkte ruimte voor producten
 - [ ] Contracten/orders met deadline en bonus

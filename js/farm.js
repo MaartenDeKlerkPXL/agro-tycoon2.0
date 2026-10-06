@@ -99,9 +99,16 @@ window.AT = window.AT || {};
     AT.emit('change');
   }
 
-  function missingInputs(key) {
+  // een fabriek kan meerdere recepten hebben (bijv. olie uit koolzaad óf zonnebloemen)
+  function recipes(key) {
     const d = D.factories[key];
-    return Object.entries(d.in).filter(([k, amt]) => G().stock(k) < amt).map(([k]) => k);
+    return [{ in: d.in, out: d.out }, ...(d.alt || [])];
+  }
+  const lacking = r => Object.entries(r.in).filter(([k, amt]) => G().stock(k) < amt).map(([k]) => k);
+  function usableRecipe(key) { return recipes(key).find(r => !lacking(r).length) || null; }
+  function missingInputs(key) {
+    if (usableRecipe(key)) return [];
+    return [...new Set(recipes(key).flatMap(lacking))];
   }
 
   function goodName(k) { return (D.crops[k] || D.products[k]).name.toLowerCase(); }
@@ -113,15 +120,15 @@ window.AT = window.AT || {};
       if (!f.on) { f.status = 'uit'; f.running = false; continue; }
       f.progress = Math.min(1, f.progress + d.batchesPerDay / 24 * dtHours);
       if (f.progress < 1) continue;
-      const missing = missingInputs(key);
-      if (missing.length) {
-        f.status = 'wacht op ' + missing.map(goodName).join(' en ');
+      const recipe = usableRecipe(key);
+      if (!recipe) {
+        f.status = 'wacht op ' + missingInputs(key).map(goodName).join(recipes(key).length > 1 ? ' of ' : ' en ');
         f.running = false;
         continue;
       }
       if (S().money < d.costPerBatch) { f.status = 'geen geld voor energie'; f.running = false; continue; }
-      for (const [k, amt] of Object.entries(d.in)) G().take(k, amt);
-      for (const [k, amt] of Object.entries(d.out)) G().addGood(k, amt);
+      for (const [k, amt] of Object.entries(recipe.in)) G().take(k, amt);
+      for (const [k, amt] of Object.entries(recipe.out)) G().addGood(k, amt);
       G().spend(d.costPerBatch);
       f.progress -= 1;
       f.made = (f.made || 0) + 1;
@@ -135,5 +142,5 @@ window.AT = window.AT || {};
     updateFactories(dtHours);
   }
 
-  AT.farm = { update, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName };
+  AT.farm = { update, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName, recipes };
 })();

@@ -7,7 +7,8 @@ window.AT = window.AT || {};
   AT.input = { keys, moved: 0 };
 
   const OP = { plow: 'plow', seeder: 'sow', harvester: 'harvest', spreader: 'fertilize', manure: 'manure' };
-  const KMH = 0.25; // px/s -> km/u voor de snelheidsmeter
+  const PX = D.kmhToPx;            // km/u -> pixels per seconde
+  const KMH = 1 / D.kmhToPx;       // pixels per seconde -> km/u (snelheidsmeter)
 
   const pressed = (...codes) => codes.some(c => keys.has(c));
   const G = () => AT.game;
@@ -40,7 +41,7 @@ window.AT = window.AT || {};
     let dy = (pressed('KeyS', 'ArrowDown') ? 1 : 0) - (pressed('KeyW', 'ArrowUp') ? 1 : 0);
     const len = Math.hypot(dx, dy);
     if (len) {
-      const sp = pressed('ShiftLeft', 'ShiftRight') ? D.runSpeed : D.walkSpeed;
+      const sp = (pressed('ShiftLeft', 'ShiftRight') ? D.runSpeed : D.walkSpeed) * PX;
       p.x += dx / len * sp * dt;
       p.y += dy / len * sp * dt;
       p.angle = Math.atan2(dy, dx);
@@ -58,18 +59,18 @@ window.AT = window.AT || {};
     if (!r) { p.mode = 'foot'; return; }
 
     const working = p.lowered && r.toolDef;
-    const maxSpeed = working ? r.toolDef.workSpeed : r.mainDef.speed;
+    const maxSpeed = (working ? r.toolDef.workSpeed : r.mainDef.speed) * PX;
     const throttle = (pressed('KeyW', 'ArrowUp') ? 1 : 0) - (pressed('KeyS', 'ArrowDown') ? 1 : 0);
     const steerIn = (pressed('KeyD', 'ArrowRight') ? 1 : 0) - (pressed('KeyA', 'ArrowLeft') ? 1 : 0);
     if (throttle || steerIn) AT.input.moved = 1;
 
-    // gas/rem
-    const accel = 90;
+    // gas/rem: zware machines trekken rustig op
+    const accel = 9;
     if (throttle !== 0) {
       const braking = Math.sign(throttle) !== Math.sign(p.speed) && Math.abs(p.speed) > 1;
       p.speed += throttle * accel * (braking ? 2.2 : 1) * dt;
     } else {
-      const drag = 120 * dt;
+      const drag = 14 * dt;
       p.speed = Math.abs(p.speed) <= drag ? 0 : p.speed - Math.sign(p.speed) * drag;
     }
     p.speed = Math.max(-maxSpeed * 0.4, Math.min(maxSpeed, p.speed));
@@ -78,7 +79,7 @@ window.AT = window.AT || {};
     // sturen (wielen draaien zichtbaar mee)
     p.steer = (p.steer || 0) + (steerIn * 0.45 - (p.steer || 0)) * Math.min(1, dt * 8);
     const turnRate = r.mainDef.kind === 'harvester' ? 1.6 : 2.0;
-    p.angle += steerIn * turnRate * dt * Math.max(-1, Math.min(1, p.speed / 35));
+    p.angle += steerIn * turnRate * dt * Math.max(-1, Math.min(1, p.speed / (8 * PX)));
 
     const step = p.speed * dt;
     p.x = Math.max(8, Math.min(D.world.w - 8, p.x + Math.cos(p.angle) * step));
@@ -110,12 +111,17 @@ window.AT = window.AT || {};
       const hit = G().cellAt(cx - sin * s, cy + cos * s);
       if (!hit) continue;
       if (!hit.f.owned) { notOwned = true; continue; }
-      const res = G().workCell(hit.f, hit.i, op, p.crop, 'player', dir);
+      const res = G().workCell(hit.f, hit.i, op, p.crop, 'player', dir, r.toolDef);
       if (res === 'nomoney') { warn(op === 'fertilize' ? 'Geen geld voor kunstmest!' : 'Geen geld voor zaaigoed!'); break; }
       if (res === 'full') { warn('Silo vol! Verkoop graan of vergroot de silo.'); break; }
-      if (res === 'season') { warn(`${D.crops[p.crop].name} kun je nu niet zaaien (wel in: ${D.crops[p.crop].sow.map(i => D.seasons[i].name.toLowerCase()).join(', ')}). Kies ander zaaigoed met C.`); break; }
+      if (res === 'season') { warn(`${D.crops[p.crop].name} kun je nu niet zaaien (wel in: ${D.crops[p.crop].sow.map(i => D.months[i].toLowerCase()).join(', ')}). Kies ander zaaigoed met C.`); break; }
       if (res === 'wet') { warn('Te nat om te oogsten. Wacht tot het droog is.'); break; }
       if (res === 'nomanure') { warn('Geen mest meer. Koeien en schapen maken mest.'); break; }
+      if (res === 'wrongtool') {
+        const ck = G().CROP_KEYS[hit.f.cells.crop[hit.i] - 1], need = D.crops[ck].harvester;
+        warn(need ? `${D.crops[ck].name} oogst je met een ${G().HARVESTER_NAMES[need]}.` : `${D.crops[ck].name} oogst je niet: ploeg het onder (groenbemester).`);
+        break;
+      }
     }
     if (notOwned) warn('Dit veld is niet van jou. Koop het eerst.');
   }
@@ -128,8 +134,11 @@ window.AT = window.AT || {};
   }
 
   function cycleCrop() {
-    const list = G().CROP_KEYS, p = AT.state.player;
-    p.crop = list[(list.indexOf(p.crop) + 1) % list.length];
+    const all = G().CROP_KEYS, p = AT.state.player;
+    const now = all.filter(k => G().canSowNow(k));
+    const list = now.length ? now : all;
+    const idx = list.indexOf(p.crop);
+    p.crop = list[(idx + 1) % list.length];
     AT.emit('change');
   }
 

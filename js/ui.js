@@ -12,6 +12,28 @@ window.AT = window.AT || {};
   const JOB_NAMES = { plow: 'Ploegen', sow: 'Zaaien', harvest: 'Oogsten', fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden' };
   const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser', spreader: 'Kunstmeststrooier', manure: 'Mestverspreider' };
   const seasonName = i => D.seasons[i].name.toLowerCase();
+  const monthShort = i => D.months[i].slice(0, 3).toLowerCase();
+  // maanden als korte reeks: "mrt–apr, sep–okt"
+  function monthRanges(list) {
+    const sorted = [...list].sort((a, b) => a - b), parts = [];
+    for (let i = 0; i < sorted.length; i++) {
+      let j = i;
+      while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+      parts.push(i === j ? monthShort(sorted[i]) : `${monthShort(sorted[i])}–${monthShort(sorted[j])}`);
+      i = j;
+    }
+    return parts.join(', ');
+  }
+  function cropTraits(c) {
+    const t = [];
+    if (c.winterHardy) t.push('winterhard');
+    if (c.droughtProof) t.push('kan tegen droogte');
+    if (c.soilDemand < 0) t.push('verbetert de bodem');
+    if (c.greenManure) t.push('groenbemester: onderploegen');
+    if (c.harvester === 'potato') t.push('aardappelrooier nodig');
+    if (c.harvester === 'beet') t.push('bietenrooier nodig');
+    return t;
+  }
   const pct = (n, total) => Math.round(n / total * 100);
 
   // ---------- Veld ----------
@@ -41,7 +63,9 @@ window.AT = window.AT || {};
         html += `<h3>Of: loonwerker inhuren</h3><p class="muted">Een loonwerker doet het hele veld voor je met jouw vrije machines (+${AT.fmtMoney(D.workerWagePerHour)}/u loon).</p>`;
         if (sum.stubble) html += workerButton(s, f, 'plow', 'Laat ploegen');
         if (sum.plowed) html += cropChoice(s, f, def, sum);
-        if (sum.ready) html += workerButton(s, f, 'harvest', `Laat oogsten (±${AT.fmtTons(sum.readyTons)})`);
+        const rc = G().mainCrop({ crops: sum.readyCrops });
+        if (sum.ready && rc && !D.crops[rc].greenManure) html += workerButton(s, f, 'harvest', `Laat oogsten (±${AT.fmtTons(sum.readyTons)})`);
+        if (sum.clover && sum.stubble === 0) html += workerButton(s, f, 'plow', 'Laat klaver onderploegen');
         if (sum.needFert && G().bestRig('fertilize', f.id)) html += workerButton(s, f, 'fertilize', 'Laat kunstmest strooien');
         if (sum.needManure && G().bestRig('manure', f.id)) html += workerButton(s, f, 'manure', 'Laat mest uitrijden');
         if (!sum.stubble && !sum.plowed && !sum.ready) html += `<p class="muted">Niets te doen: het gewas groeit.</p>`;
@@ -72,7 +96,9 @@ window.AT = window.AT || {};
     if (f.soil < 0.5) tips.push('Bodem raakt uitgeput: rij <b>mest</b> uit (van koeien/schapen).');
     if (sum.fert < sum.total * 0.5) tips.push('<b>Kunstmest</b> geeft +25% opbrengst.');
     if (prev) tips.push(`Vorig gewas: <b>${D.crops[prev].name}</b>. Zaai iets anders voor +10% (vruchtwisseling), hetzelfde geeft −10%.`);
-    if (f.damage > 0) tips.push(`Stormschade: −${Math.round(f.damage * 100)}% op dit gewas.`);
+    if (f.damage > 0) tips.push(`Storm-/vorstschade: −${Math.round(f.damage * 100)}% op dit gewas.`);
+    if (sum.withering) tips.push(`<b>${pct(sum.withering, sum.total)}% verwelkt</b>: hoe langer je wacht, hoe minder opbrengst.`);
+    if (f.soil < 0.6) tips.push('Zaai <b>klaver</b> of <b>bonen/soja</b> om de bodem te herstellen.');
     return `<div class="card soil">
       <div class="row"><b class="grow">Bodemkwaliteit</b><span>${soilPct}%</span></div>
       <div class="bar"><div class="fill" style="width:${soilPct}%;background:${col}"></div></div>
@@ -84,7 +110,9 @@ window.AT = window.AT || {};
   // uitleg om het zelf te doen, afhankelijk van wat er op het veld moet gebeuren
   function selfHelp(sum) {
     let step = '';
-    if (sum.ready) step = 'Loop naar je <b>maaidorser</b>, stap in (E), rij naar dit veld en zet het maaibord omlaag (spatie).' + (AT.weather.isWet() ? ' <b>Let op: het is nu te nat om te oogsten.</b>' : '');
+    const readyCrop = G().mainCrop({ crops: sum.readyCrops });
+    if (sum.ready && readyCrop && D.crops[readyCrop].greenManure) step = `De <b>klaver</b> is volgroeid. Ploeg hem onder met je <b>ploeg</b>: dat maakt de bodem veel beter.`;
+    else if (sum.ready) step = `Loop naar je <b>${G().HARVESTER_NAMES[D.crops[readyCrop].harvester]}</b>, stap in (E), rij naar dit veld en zet hem omlaag (spatie).` + (AT.weather.isWet() ? ' <b>Let op: het is nu te nat om te oogsten.</b>' : '') + (sum.withering ? ' <b>Het gewas verwelkt: oogst snel!</b>' : '');
     else if (sum.plowed) step = 'Koppel een <b>zaaimachine</b> aan je tractor (achteruit ertegen rijden + F), kies het zaaigoed (C), rij hierheen en zet hem omlaag (spatie).';
     else if (sum.stubble) step = 'Stap in je <b>tractor met ploeg</b> (E), rij hierheen en zet de ploeg omlaag (spatie).';
     else return '';
@@ -111,7 +139,7 @@ window.AT = window.AT || {};
 
   function workerButton(s, f, task, label) {
     const rig = G().bestRig(task, f.id);
-    if (!rig) return `<p class="warn">${esc(G().missingFor(task))}</p>`;
+    if (!rig) return `<p class="warn">${esc(G().missingFor(task, f.id))}</p>`;
     const names = rig.machines.map(m => D.machines[m.type].name).join(' + ');
     return `<div class="card row"><div class="grow"><b>${esc(names)}</b>
       <div class="muted">${AT.fmtHours(rig.hours)} · ${AT.fmtMoney(rig.cost)}</div></div>
@@ -123,11 +151,12 @@ window.AT = window.AT || {};
     if (!rig) return `<p class="warn">${esc(G().missingFor('sow'))}</p>`;
     const ha = def.ha * sum.plowed / sum.total;
     let html = `<div class="card"><b>Laat zaaien</b> <span class="muted">· ${esc(rig.machines.map(m => D.machines[m.type].name).join(' + '))} · ${AT.fmtHours(rig.hours)}</span>`;
-    for (const [key, c] of Object.entries(D.crops)) {
+    const entries = Object.entries(D.crops).sort(([a], [b]) => G().canSowNow(b) - G().canSowNow(a));
+    for (const [key, c] of entries) {
       const cost = rig.cost + c.seedCostPerHa * ha;
       const ok = G().canSowNow(key);
-      html += `<div class="row crop-row"><span class="dot" style="background:${c.color}"></span>
-        <span class="grow">${c.name} <span class="muted">${c.growDays} d · ${ok ? AT.fmtMoney(cost) : 'zaaien in ' + c.sow.map(seasonName).join('/')}</span></span>
+      html += `<div class="row crop-row ${ok ? '' : 'off'}"><span class="dot" style="background:${c.color}"></span>
+        <span class="grow">${c.name} <span class="muted">${c.growDays} d · ${ok ? AT.fmtMoney(cost) : 'zaaien: ' + monthRanges(c.sow)}</span></span>
         <button class="btn small primary" data-action="sow" data-crop="${key}" data-id="${f.id}" ${!ok || s.money < cost ? 'disabled' : ''}>Zaai</button></div>`;
     }
     return html + '</div>';
@@ -158,7 +187,8 @@ window.AT = window.AT || {};
       if (r.toolDef && r.toolDef.kind === 'seeder') {
         html += `<div class="row crop-pick">Zaaigoed (C):`;
         for (const [key, c] of Object.entries(D.crops)) {
-          html += `<button class="btn small ${p.crop === key ? 'primary' : ''}" data-action="crop" data-crop="${key}" title="Zaaien in: ${c.sow.map(seasonName).join(', ')}">${c.name}${G().canSowNow(key) ? '' : ' ✕'}</button>`;
+          if (!G().canSowNow(key) && p.crop !== key) continue;
+          html += `<button class="btn small ${p.crop === key ? 'primary' : ''}" data-action="crop" data-crop="${key}" title="Zaaien: ${monthRanges(c.sow)}">${c.name}${G().canSowNow(key) ? '' : ' ✕'}</button>`;
         }
         html += `</div>`;
       }
@@ -173,6 +203,7 @@ window.AT = window.AT || {};
 
     html += `<h3>Jouw machines</h3>`;
     const order = ['tractor', 'harvester', 'plow', 'seeder', 'spreader', 'manure'];
+    // (rooiers vallen onder 'harvester')
     const sorted = [...s.machines].sort((a, b) => order.indexOf(D.machines[a.type].kind) - order.indexOf(D.machines[b.type].kind));
     for (const m of sorted) {
       const d = D.machines[m.type];
@@ -190,16 +221,19 @@ window.AT = window.AT || {};
 
   // ---------- Winkel ----------
   function machineSpecs(d) {
-    if (d.kind === 'tractor') return `${d.power.toFixed(1)}× vermogen · ${Math.round(d.speed * 0.25)} km/u · ${d.fuelPerHour} L/u`;
-    if (d.kind === 'harvester') return `${d.width} m breed · ${d.fuelPerHour} L/u`;
+    if (d.kind === 'tractor') return `${d.power.toFixed(1)}× vermogen · ${d.speed} km/u · ${d.fuelPerHour} L/u`;
+    if (d.kind === 'harvester') {
+      const what = Object.values(D.crops).filter(c => c.harvester === d.harvests).map(c => c.name.toLowerCase());
+      return `${d.width} m breed · oogst: ${what.length > 4 ? 'granen, maïs, koolzaad, zonnebloem, soja, bonen' : what.join(', ')}`;
+    }
     if (d.kind === 'spreader') return `${d.width} m breed · +25% opbrengst · ${AT.fmtMoney(D.fertCostPerHa)}/ha`;
     if (d.kind === 'manure') return `${d.width} m breed · betere bodem · ${D.manurePerHa} t mest/ha`;
-    return `${d.width} m breed · vereist ${d.minPower >= 2 ? '150+ pk' : '75+ pk'}`;
+    return `${d.width} m breed · ${d.workSpeed} km/u · vereist ${d.minPower >= 2 ? '150+ pk' : '75+ pk'}`;
   }
 
   function renderShop(s) {
     let html = `<h2>Winkel</h2>`;
-    const groups = [['tractor', 'Tractoren'], ['plow', 'Ploegen'], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting'], ['manure', ''], ['harvester', 'Maaidorsers']];
+    const groups = [['tractor', 'Tractoren'], ['plow', 'Ploegen'], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting'], ['manure', ''], ['harvester', 'Oogstmachines']];
     for (const [kind, title] of groups) {
       if (title) html += `<h3>${title}</h3>`;
       for (const [key, d] of Object.entries(D.machines)) {
@@ -227,22 +261,30 @@ window.AT = window.AT || {};
     return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
   }
 
+  function trendOf(m) {
+    const prev = m.history[m.history.length - 2] ?? m.factor;
+    return m.factor > prev + 0.005 ? '<span class="up">▲</span>' : m.factor < prev - 0.005 ? '<span class="down">▼</span>' : '<span class="muted">■</span>';
+  }
+
   function renderMarket(s) {
     let html = `<h2>Graanhandel</h2>
-      <p class="muted">Silo: ${AT.fmtTons(G().siloUsed())} / ${G().siloCapacity()} t. Prijzen veranderen elke dag.</p>`;
-    for (const [key, c] of Object.entries(D.crops)) {
-      const m = s.market[key];
-      const prev = m.history[m.history.length - 2] ?? m.factor;
-      const trend = m.factor > prev + 0.005 ? '<span class="up">▲</span>' : m.factor < prev - 0.005 ? '<span class="down">▼</span>' : '<span class="muted">■</span>';
+      <p class="muted">Silo: ${AT.fmtTons(G().siloUsed())} / ${G().siloCapacity()} t. Prijzen veranderen elke dag en per seizoen: in de oogsttijd is het goedkoop, een half jaar later duur. Bewaren kan dus lonen!</p>
+      <div class="market-list">`;
+    const entries = Object.entries(D.crops).filter(([, c]) => c.basePrice > 0)
+      .sort(([a], [b]) => s.silo[b] - s.silo[a]);
+    for (const [key, c] of entries) {
       const stock = s.silo[key];
-      html += `<div class="card">
-        <div class="row"><span class="dot" style="background:${c.color}"></span><b class="grow">${c.name}</b>
-          ${sparkline(m.history)} <span class="price">${AT.fmtMoney(G().cropPrice(key))}/t ${trend}</span></div>
-        <div class="row"><span class="grow muted">In silo: ${AT.fmtTons(stock)} (≈ ${AT.fmtMoney(stock * G().cropPrice(key))})</span>
-          <button class="btn small" data-action="sell" data-crop="${key}" data-tons="10" ${stock < 0.05 ? 'disabled' : ''}>Verkoop 10 t</button>
-          <button class="btn small primary" data-action="sell" data-crop="${key}" ${stock < 0.05 ? 'disabled' : ''}>Alles</button></div>
+      const sf = AT.weather.priceFactor(key);
+      const seasonTag = sf > 1 ? '<span class="tag up">duur</span>' : sf < 1 ? '<span class="tag down">oogsttijd</span>' : '';
+      html += `<div class="mrow ${stock < 0.05 ? 'empty' : ''}">
+        <span class="dot" style="background:${c.color}"></span>
+        <span class="grow"><b>${c.name}</b> ${seasonTag}<br><span class="muted">${stock >= 0.05 ? AT.fmtTons(stock) + ' · ≈ ' + AT.fmtMoney(stock * G().cropPrice(key)) : 'geen voorraad'}</span></span>
+        ${sparkline(s.market[key].history)}
+        <span class="price">${AT.fmtMoney(G().cropPrice(key))}/t ${trendOf(s.market[key])}</span>
+        <button class="btn small primary" data-action="sell" data-crop="${key}" ${stock < 0.05 ? 'disabled' : ''}>Verkoop</button>
       </div>`;
     }
+    html += `</div>`;
     html += `<h3>Producten</h3>`;
     let any = false;
     for (const [key, d] of Object.entries(D.products)) {
@@ -251,10 +293,8 @@ window.AT = window.AT || {};
       if (st < 0.01) continue;
       any = true;
       const m = s.market[key];
-      const prev = m.history[m.history.length - 2] ?? m.factor;
-      const trend = m.factor > prev + 0.005 ? '<span class="up">▲</span>' : m.factor < prev - 0.005 ? '<span class="down">▼</span>' : '<span class="muted">■</span>';
       html += `<div class="card">
-        <div class="row"><b class="grow">${d.name}</b>${sparkline(m.history)} <span class="price">${AT.fmtPrice(key)}/${d.unit} ${trend}</span></div>
+        <div class="row"><b class="grow">${d.name}</b>${sparkline(m.history)} <span class="price">${AT.fmtPrice(key)}/${d.unit} ${trendOf(m)}</span></div>
         <div class="row"><span class="grow muted">Voorraad: ${AT.fmtAmount(st, key)} (≈ ${AT.fmtMoney(st * G().price(key))})</span>
           <button class="btn small primary" data-action="sellGood" data-good="${key}">Verkoop alles</button></div>
       </div>`;
@@ -295,7 +335,7 @@ window.AT = window.AT || {};
     html += `<h3>Fabrieken</h3>`;
     for (const [key, d] of Object.entries(D.factories)) {
       const f = s.factories[key];
-      const line = `${recipe(d.in)} → ${recipe(d.out)}`;
+      const line = AT.farm.recipes(key).map(r => `${recipe(r.in)} → ${recipe(r.out)}`).join('<br>of ');
       if (!f.owned) {
         html += `<div class="card"><div class="row"><b class="grow">${d.name}</b>
           <button class="btn small primary" data-action="buyFactory" data-key="${key}" ${s.money < d.price ? 'disabled' : ''}>Bouw ${AT.fmtMoney(d.price)}</button></div>
@@ -355,7 +395,25 @@ window.AT = window.AT || {};
     $('#forecast').innerHTML = '<span class="muted">Verwachting:</span> ' + fc.map(d => {
       const w = D.weatherTypes[d.type];
       return `<span class="fc" title="Dag ${d.day}: ${w.name} (${D.seasons[d.season].name})">Dag ${d.day} ${w.icon}</span>`;
-    }).join('');
+    }).join('') + '<button class="btn small" data-open="calendar" title="Wanneer zaai je wat?">📅 Zaaikalender</button>';
+  }
+
+  // zaaikalender: welke gewassen wanneer
+  function renderCalendar() {
+    const now = AT.weather.month();
+    let html = `<div class="modal-card"><div class="row"><h2 class="grow">📅 Zaaikalender</h2><button class="btn small" data-close>Sluiten</button></div>
+      <p class="muted">Groen = zaaimaand. Een maand duurt ${D.daysPerMonth} dagen. In de winter groeit bijna niets, behalve winterharde gewassen.
+      Rijpe gewassen die te lang blijven staan verwelken.</p>
+      <table class="cal"><thead><tr><th></th>${D.months.map((m, i) => `<th class="${i === now ? 'now' : ''} ${i >= 9 || i === 11 ? 'winter' : ''}">${m.slice(0, 3)}</th>`).join('')}<th>Groei</th><th>Opbrengst</th><th>Bijzonder</th></tr></thead><tbody>`;
+    for (const [key, c] of Object.entries(D.crops)) {
+      html += `<tr><td><span class="dot" style="background:${c.color}"></span> ${c.name}</td>`;
+      for (let m = 0; m < 12; m++) html += `<td class="${c.sow.includes(m) ? 'sow' : ''} ${m === now ? 'now' : ''}"></td>`;
+      const value = c.yieldPerHa * c.basePrice - c.seedCostPerHa;
+      html += `<td>${c.growDays} d</td><td>${c.yieldPerHa ? '±' + AT.fmtMoney(value) + '/ha' : '—'}</td><td class="muted">${cropTraits(c).join(', ') || '—'}</td></tr>`;
+    }
+    html += `</tbody></table></div>`;
+    $('#modal').innerHTML = html;
+    $('#modal').hidden = false;
   }
 
   function renderLog() {
@@ -370,7 +428,8 @@ window.AT = window.AT || {};
     $('#money').textContent = AT.fmtMoney(s.money);
     const h = Math.floor(G().hour()), min = Math.floor((G().hour() % 1) * 6) * 10;
     const W = AT.weather, se = D.seasons[W.season()];
-    $('#clock').textContent = `${se.icon} ${se.name} dag ${W.dayInSeason()} · ${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    $('#clock').textContent = `${se.icon} ${W.monthName()} dag ${W.dayInMonth()} · ${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    $('#clock').title = `${se.name}, jaar ${W.year()}`;
     const wt = D.weatherTypes[s.weather ? s.weather.type : 'sun'];
     $('#weather').textContent = `${wt.icon} ${W.temperature()}°C${W.drought() ? ' · droog!' : ''}`;
     $('#weather').title = `${wt.name} · bodemvocht ${Math.round((s.weather ? s.weather.moisture : 0.6) * 100)}% · jaar ${W.year()}`;
@@ -517,6 +576,11 @@ window.AT = window.AT || {};
       if (b) { setSpeed(b.dataset.speed); b.blur(); }
     });
     initCanvas();
+    document.addEventListener('click', e => {
+      if (e.target.closest('[data-open="calendar"]')) renderCalendar();
+      if (e.target.closest('[data-close]') || e.target.id === 'modal') $('#modal').hidden = true;
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').hidden = true; });
 
     document.addEventListener('keydown', e => {
       if (e.target.closest && e.target.closest('input, select, textarea')) return;

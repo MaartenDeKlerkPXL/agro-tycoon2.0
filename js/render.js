@@ -188,6 +188,7 @@ window.AT = window.AT || {};
   function seasonBlend() {
     if (!AT.weather) return [[0, 1]];
     const se = AT.weather.season(), p = AT.weather.seasonProgress();
+    if (AT.state.time < D.daysPerSeason * 24) return [[se, 1]]; // nieuw spel: meteen lente
     const k = Math.min(1, p * D.daysPerSeason); // eerste dag = overgang
     return k < 1 ? [[(se + 3) % 4, 1 - k], [se, k]] : [[se, 1]];
   }
@@ -436,7 +437,7 @@ window.AT = window.AT || {};
   function visKey(f, i) {
     const st = f.cells.state[i], dir = f.cells.dir[i], fe = f.cells.fert[i] & 3;
     if (st !== G().ST.SOWN) return (st * 2 + dir) * 4 + fe;
-    const stage = G().isReady(f, i) ? 5 : Math.min(4, Math.floor(G().cellGrowth(f, i) * 5));
+    const stage = G().isReady(f, i) ? (G().isWithering(f, i) ? 6 : 5) : Math.min(4, Math.floor(G().cellGrowth(f, i) * 5));
     return (10 + (f.cells.crop[i] * 8 + stage) * 2 + dir) * 4 + fe;
   }
 
@@ -445,7 +446,159 @@ window.AT = window.AT || {};
   const READY = {
     wheat: { base: ['#dcb44c', '#d6ad45', '#e2bc55', '#d9b24a'], dark: '#b38a2c', light: '#f4da86' },
     barley: { base: ['#d9c98d', '#d3c283', '#dfd096', '#d6c689'], dark: '#b4a266', light: '#f4e9bf' },
+    oats:   { base: ['#e3d9a8', '#dcd19c', '#e8dfb2', '#d8cd96'], dark: '#b8aa70', light: '#f7f0d0' },
   };
+
+  // ---------- gewassen tekenen per stijl (p = { g, x, y, h, R, stage, crop, cropKey }) ----------
+  const hp = (p, k) => ((p.h >> k) & 7);   // plekje binnen de cel uit de hash
+  function sprouts(p) {
+    p.g.fillStyle = p.crop.growColor;
+    for (let a = 0.5; a < C; a += 2) { p.R(a, 1.75, 0.5, 0.5); p.R(a + 1, 5.75, 0.5, 0.5); }
+  }
+  function grainLike(p) {
+    const { g, R, stage, crop, cropKey, h } = p;
+    if (stage === 0) return sprouts(p);
+    if (stage === 5) {
+      const look = READY[cropKey] || READY.wheat;
+      g.fillStyle = look.base[h & 3]; g.fillRect(p.x, p.y, C, C);
+      for (const c of [1, 3, 5, 7]) {
+        for (let a = (c % 4 === 1 ? 0 : 1.2); a < C; a += 2.5) {
+          g.fillStyle = look.dark;
+          if (cropKey === 'oats') { R(a, c - 0.6, 0.6, 0.6); R(a + 0.8, c + 0.2, 0.6, 0.6); }
+          else R(a, c - 0.4, cropKey === 'barley' ? 1.8 : 1.3, cropKey === 'barley' ? 0.4 : 0.8);
+          g.fillStyle = look.light; R(a + 0.4, c + 0.4, 0.6, 0.5);
+        }
+      }
+      return;
+    }
+    const w = [0, 1, 1.8, 2.8, 3.7][stage];
+    const col = stage === 4 ? SP().mix(crop.growColor, crop.color, 0.35) : crop.growColor;
+    for (const c of [2, 6]) {
+      g.fillStyle = col; R(0, c - w / 2, C, w);
+      g.fillStyle = 'rgba(255,255,220,0.25)';
+      for (let a = (h >> c) & 1; a < C; a += 2) R(a, c - w / 2 + ((h >> (a + 2)) & 1) * w * 0.5, 0.6, 0.6);
+      g.fillStyle = 'rgba(0,40,0,0.18)'; R(hp(p, 5), c + w / 2 - 0.6, 1, 0.6);
+    }
+  }
+  // plant op positie langs (a) en dwars (c) de rij
+  const at = (p, a, c) => p.dir ? { px: p.x + a, py: p.y + c } : { px: p.x + c, py: p.y + a };
+
+  const CROP_DRAW = {
+    grain: grainLike, barley: grainLike, oats: grainLike,
+    corn(p) {
+      const { g, stage, crop, h } = p;
+      if (stage === 5) { g.fillStyle = '#7b6a3c'; g.fillRect(p.x, p.y, C, C); }
+      const size = [0.6, 1.3, 2.2, 3.1, 3.8, 4][stage];
+      g.lineCap = 'round';
+      for (const a of [2, 6]) {
+        const { px, py } = at(p, a, 4);
+        if (stage === 0) { g.fillStyle = crop.growColor; g.fillRect(px - 0.4, py - 0.4, 0.8, 0.8); continue; }
+        g.strokeStyle = stage === 5 ? '#9aa04e' : SP().shade(crop.growColor, ((h >> a) & 1) ? 0.1 : -0.1);
+        g.lineWidth = 0.9;
+        const rotA = ((h >> (a * 2)) & 15) / 16 * Math.PI;
+        g.beginPath();
+        for (let leaf = 0; leaf < 3; leaf++) {
+          const la = rotA + leaf * Math.PI / 3, ls = size * (leaf === 1 ? 0.8 : 1);
+          g.moveTo(px - Math.cos(la) * ls, py - Math.sin(la) * ls);
+          g.lineTo(px + Math.cos(la) * ls, py + Math.sin(la) * ls);
+        }
+        g.stroke();
+        if (stage >= 4) { g.fillStyle = stage === 5 ? '#f0d98a' : '#d7e08a'; g.fillRect(px - 0.6, py - 0.6, 1.2, 1.2); }
+        if (stage === 5) { g.fillStyle = '#d4b04a'; g.fillRect(px + 1, py + 0.5, 1.4, 0.8); }
+      }
+    },
+    canola(p) {
+      const { g, R, stage, h } = p;
+      if (stage === 0) return sprouts(p);
+      if (stage === 5) {
+        g.fillStyle = ['#8a8f3c', '#858a37', '#909642', '#7f8434'][h & 3]; g.fillRect(p.x, p.y, C, C);
+        g.fillStyle = '#6b5a2c'; for (let k = 0; k < 6; k++) R(hp(p, k * 2), hp(p, k * 2 + 13), 1.2, 0.5);
+        return;
+      }
+      const w = [0, 1.6, 2.8, 3.8, 4][stage];
+      for (const c of [2, 6]) { g.fillStyle = '#5e9c3a'; R(0, c - w / 2, C, w); g.fillStyle = '#4b8530'; R(hp(p, c), c, 1, 0.7); }
+      if (stage >= 3) {
+        // bloei: knalgele velden
+        g.fillStyle = stage === 4 ? 'rgba(242,210,46,0.85)' : 'rgba(242,210,46,0.35)'; g.fillRect(p.x, p.y, C, C);
+        g.fillStyle = '#ffe766'; for (let k = 0; k < 8; k++) g.fillRect(p.x + hp(p, k * 3), p.y + hp(p, k * 3 + 1), 0.8, 0.8);
+      }
+    },
+    sunflower(p) {
+      const { g, stage, h } = p;
+      if (stage === 0) return sprouts(p);
+      const size = [0, 1.2, 2, 2.8, 3.1, 3.1][stage];
+      for (const a of [2, 6]) {
+        const { px, py } = at(p, a, 4);
+        g.fillStyle = stage === 5 ? '#8f8a4f' : (((h >> a) & 1) ? '#5a9a3c' : '#4f8c34');
+        for (let k = 0; k < 4; k++) {
+          const la = k * Math.PI / 2 + ((h >> a) & 3) * 0.3;
+          g.beginPath(); g.ellipse(px + Math.cos(la) * size * 0.5, py + Math.sin(la) * size * 0.5, size * 0.55, size * 0.3, la, 0, Math.PI * 2); g.fill();
+        }
+        if (stage >= 4) {
+          g.fillStyle = stage === 5 ? '#6b4a22' : '#f5b800'; g.beginPath(); g.arc(px, py, 1.7, 0, Math.PI * 2); g.fill();
+          g.fillStyle = stage === 5 ? '#3d2a14' : '#5b3a1a'; g.beginPath(); g.arc(px, py, 0.9, 0, Math.PI * 2); g.fill();
+        }
+      }
+    },
+    soy(p) { legume(p, '#3f7f3a', '#c2a35e', '#a3854a'); },
+    beans(p) { legume(p, '#4a8a3f', '#5b4a32', '#3d3122'); },
+    potato(p) {
+      const { g, R, stage } = p;
+      for (const c of [2, 6]) { g.fillStyle = '#8a6040'; R(0, c - 1.6, C, 3.2); g.fillStyle = '#5a3a22'; R(0, c + 1.6, C, 0.6); g.fillStyle = '#9c7050'; R(0, c - 1.6, C, 0.5); }
+      if (stage === 0) return;
+      const r = [0, 0.9, 1.5, 2, 2.3, 1.6][stage];
+      for (const c of [2, 6]) for (const a of [2, 6]) {
+        const { px, py } = at(p, a, c);
+        g.fillStyle = stage === 5 ? '#a8a24a' : '#4f8f3a';
+        g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.fill();
+        g.fillStyle = stage === 5 ? '#c4bb5e' : '#6aa84f'; g.beginPath(); g.arc(px - r * 0.3, py - r * 0.3, r * 0.45, 0, Math.PI * 2); g.fill();
+        if (stage === 5) { g.fillStyle = '#d8b47a'; g.beginPath(); g.ellipse(px + 1.6, py + 1.2, 0.7, 0.5, 0, 0, Math.PI * 2); g.fill(); }
+      }
+    },
+    beet(p) {
+      const { g, stage } = p;
+      if (stage === 0) return sprouts(p);
+      const len = [0, 0.9, 1.4, 1.9, 2.2, 2.2][stage];
+      g.lineCap = 'round';
+      for (const c of [2, 6]) for (const a of [2, 6]) {
+        const { px, py } = at(p, a, c);
+        g.strokeStyle = stage === 5 ? '#4f7a3a' : '#3d7a35'; g.lineWidth = 1;
+        g.beginPath();
+        for (let k = 0; k < 5; k++) { const la = k / 5 * Math.PI * 2 + ((p.h >> (a + c)) & 3); g.moveTo(px, py); g.lineTo(px + Math.cos(la) * len, py + Math.sin(la) * len); }
+        g.stroke();
+        if (stage === 5) {
+          g.fillStyle = '#d9a7b0'; g.beginPath(); g.arc(px, py, 1.1, 0, Math.PI * 2); g.fill();
+          g.fillStyle = '#efe2d8'; g.beginPath(); g.arc(px, py, 0.8, 0, Math.PI * 2); g.fill();
+        }
+      }
+    },
+    clover(p) {
+      const { g, stage, h } = p;
+      if (stage === 0) return sprouts(p);
+      if (stage >= 3) { g.fillStyle = '#5fa14a'; g.fillRect(p.x, p.y, C, C); }
+      const n = [0, 8, 16, 14, 14, 14][stage];
+      for (let k = 0; k < n; k++) {
+        g.fillStyle = k % 3 ? '#4c8a3a' : '#7cbf5f';
+        g.beginPath(); g.arc(p.x + hp(p, k) + 0.5, p.y + hp(p, k + 9) + 0.5, stage >= 3 ? 0.7 : 0.6, 0, Math.PI * 2); g.fill();
+      }
+      if (stage >= 4) for (let k = 0; k < 4; k++) {
+        g.fillStyle = k % 2 ? '#f5f5f5' : '#e8a3c7';
+        g.beginPath(); g.arc(p.x + hp(p, k * 4 + 2) + 0.5, p.y + hp(p, k * 4 + 15) + 0.5, 0.6, 0, Math.PI * 2); g.fill();
+      }
+    },
+  };
+  function legume(p, green, ripe, ripeDark) {
+    const { g, stage } = p;
+    if (stage === 0) return sprouts(p);
+    const r = [0, 0.8, 1.2, 1.6, 1.9, 1.7][stage];
+    for (const c of [2, 6]) for (const a of [1, 3, 5, 7]) {
+      const { px, py } = at(p, a + ((p.h >> (a + c)) & 1) * 0.4, c);
+      g.fillStyle = stage === 5 ? ripe : green;
+      g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.fill();
+      g.fillStyle = stage === 5 ? ripeDark : SP().shade(green, 0.18);
+      g.beginPath(); g.arc(px - r * 0.3, py - r * 0.3, r * 0.4, 0, Math.PI * 2); g.fill();
+    }
+  }
 
   function drawCell(id, i) {
     const def = G().fieldDef(id), f = G().field(id), L = layers[id], g = L.ctx;
@@ -492,61 +645,16 @@ window.AT = window.AT || {};
     }
 
     const v = (key - 10) >> 1;
-    const cropIdx = Math.floor(v / 8), stage = v % 8;
+    const cropIdx = Math.floor(v / 8), rawStage = v % 8;
     const cropKey = G().CROP_KEYS[cropIdx - 1], crop = D.crops[cropKey];
     // fijne zaairijen
     g.fillStyle = '#5f3f26'; R(0, 2, C, 0.6); R(0, 6, C, 0.6);
-
-    if (cropKey === 'corn') {
-      g.save(); g.beginPath(); g.rect(x, y, C, C); g.clip();
-      if (stage === 5) { g.fillStyle = '#7b6a3c'; g.fillRect(x, y, C, C); }
-      const size = [0.6, 1.3, 2.2, 3.1, 3.8, 4][stage];
-      g.lineCap = 'round';
-      for (const a of [2, 6]) {
-        const px = dir ? x + a : x + 4, py = dir ? y + 4 : y + a;
-        if (stage === 0) { g.fillStyle = crop.growColor; g.fillRect(px - 0.4, py - 0.4, 0.8, 0.8); continue; }
-        g.strokeStyle = stage === 5 ? '#9aa04e' : SP().shade(crop.growColor, ((h >> a) & 1) ? 0.1 : -0.1);
-        g.lineWidth = 0.9;
-        // bladeren in een willekeurige richting per plant
-        const rotA = ((h >> (a * 2)) & 15) / 16 * Math.PI;
-        g.beginPath();
-        for (let leaf = 0; leaf < 3; leaf++) {
-          const la = rotA + leaf * Math.PI / 3, ls = size * (leaf === 1 ? 0.8 : 1);
-          g.moveTo(px - Math.cos(la) * ls, py - Math.sin(la) * ls);
-          g.lineTo(px + Math.cos(la) * ls, py + Math.sin(la) * ls);
-        }
-        g.stroke();
-        if (stage >= 4) { g.fillStyle = stage === 5 ? '#f0d98a' : '#d7e08a'; g.fillRect(px - 0.6, py - 0.6, 1.2, 1.2); }
-        if (stage === 5) { g.fillStyle = '#d4b04a'; g.fillRect(px + 1, py + 0.5, 1.4, 0.8); }
-      }
-      g.restore();
-      return;
-    }
-
-    // graan (tarwe/gerst)
-    if (stage === 5) {
-      const look = READY[cropKey] || READY.wheat;
-      g.fillStyle = look.base[h & 3]; g.fillRect(x, y, C, C);
-      for (const c of [1, 3, 5, 7]) {
-        for (let a = (c % 4 === 1 ? 0 : 1.2); a < C; a += 2.5) {
-          g.fillStyle = look.dark; R(a, c - 0.4, cropKey === 'barley' ? 1.8 : 1.3, cropKey === 'barley' ? 0.4 : 0.8);
-          g.fillStyle = look.light; R(a + 0.4, c + 0.4, 0.6, 0.5);
-        }
-      }
-      return;
-    }
-    if (stage === 0) {
-      g.fillStyle = crop.growColor;
-      for (let a = 0.5; a < C; a += 2) { R(a, 1.75, 0.5, 0.5); R(a + 1, 5.75, 0.5, 0.5); }
-      return;
-    }
-    const w = [0, 1, 1.8, 2.8, 3.7][stage];
-    const col = stage === 4 ? SP().mix(crop.growColor, crop.color, 0.35) : crop.growColor;
-    for (const c of [2, 6]) {
-      g.fillStyle = col; R(0, c - w / 2, C, w);
-      g.fillStyle = 'rgba(255,255,220,0.25)';
-      for (let a = (h >> c) & 1; a < C; a += 2) R(a, c - w / 2 + ((h >> (a + 2)) & 1) * w * 0.5, 0.6, 0.6);
-      g.fillStyle = 'rgba(0,40,0,0.18)'; R(((h >> 5) & 7), c + w / 2 - 0.6, 1, 0.6);
+    g.save(); g.beginPath(); g.rect(x, y, C, C); g.clip();
+    (CROP_DRAW[crop.style] || grainLike)({ g, x, y, h, dir, R, stage: Math.min(rawStage, 5), crop, cropKey });
+    g.restore();
+    if (rawStage === 6) { // verwelkt: dof en bruin
+      g.fillStyle = 'rgba(85,62,35,0.5)'; g.fillRect(x, y, C, C);
+      g.fillStyle = 'rgba(40,28,15,0.45)'; R((h >> 2) & 7, (h >> 5) & 7, 1.6, 0.6); R((h >> 8) & 7, (h >> 11) & 7, 1.6, 0.6);
     }
   }
 

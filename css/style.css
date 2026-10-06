@@ -223,3 +223,20 @@ body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; m
 .card.soil .bar { margin: 6px 0; }
 .tips { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
 .tips li { margin: 2px 0; }
+.crop-row.off { opacity: .55; }
+.market-list { display: flex; flex-direction: column; gap: 6px; }
+.mrow { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; }
+.mrow.empty { opacity: .7; }
+.mrow .spark { width: 60px; }
+.tag { font-size: 11px; font-weight: 700; padding: 0 5px; border-radius: 6px; background: var(--panel-2); }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.modal[hidden] { display: none; }
+.modal-card { background: var(--panel); border-radius: 12px; padding: 18px 20px; max-width: 1100px; width: calc(100% - 40px); max-height: calc(100vh - 60px); overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+.modal-card h2 { margin: 0; }
+.cal { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; }
+.cal th, .cal td { border: 1px solid var(--line); padding: 4px 6px; text-align: left; }
+.cal th { background: var(--panel-2); font-weight: 600; }
+.cal td.sow { background: #8bc34a; }
+.cal td.now, .cal th.now { outline: 2px solid #e0b84c; outline-offset: -2px; }
+.cal th.winter { color: #4a78a8; }
+.forecast .btn.small { margin-left: 4px; }

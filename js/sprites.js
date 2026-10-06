@@ -167,12 +167,23 @@ window.AT = window.AT || {};
     // maaibord
     ctx.fillStyle = '#4a4d50'; rr(ctx, 12.5, -W / 2, 5.5, W, 1.2); ctx.fill();
     ctx.fillStyle = '#2e3133'; ctx.fillRect(17.4, -W / 2, 0.8, W);
-    // haspel (draait als het maaibord omlaag is)
-    const ph = o.lowered ? o.t * 6 : 0;
-    ctx.fillStyle = '#e8b923';
-    for (let k = 0; k < 4; k++) {
-      const xx = 13 + ((k * 1.25 + ph) % 5);
-      ctx.fillRect(xx, -W / 2 + 1, 0.55, W - 2);
+    const root = d.harvests && d.harvests !== 'combine';
+    if (root) {
+      // rooier: schijven die de grond openen en een transportband naar binnen
+      const ph = o.lowered ? o.t * 4 : 0;
+      ctx.fillStyle = '#6b6f73';
+      for (let s2 = -W / 2 + 2; s2 < W / 2 - 1; s2 += 4) { circle(ctx, 16.5, s2 + 1, 1.3); }
+      ctx.fillStyle = '#2f3234'; ctx.fillRect(13, -2, 4, 4);
+      ctx.fillStyle = '#8a8f93';
+      for (let k = 0; k < 4; k++) ctx.fillRect(13 + ((k + ph) % 4), -1.8, 0.5, 3.6);
+    } else {
+      // haspel (draait als het maaibord omlaag is)
+      const ph = o.lowered ? o.t * 6 : 0;
+      ctx.fillStyle = '#e8b923';
+      for (let k = 0; k < 4; k++) {
+        const xx = 13 + ((k * 1.25 + ph) % 5);
+        ctx.fillRect(xx, -W / 2 + 1, 0.55, W - 2);
+      }
     }
     ctx.fillStyle = shade(c, -0.1);
     ctx.beginPath(); ctx.moveTo(18.2, -W / 2); ctx.lineTo(20, -W / 2 + 0.7); ctx.lineTo(18.2, -W / 2 + 1.6); ctx.fill();
@@ -191,7 +202,8 @@ window.AT = window.AT || {};
     // graantank
     ctx.fillStyle = shade(c, -0.35); rr(ctx, -12.5, -4.7, 12, 9.4, 1.6); ctx.fill();
     if (o.grain > 0) {
-      ctx.fillStyle = '#e2bf55'; rr(ctx, -12, -4.2, 11, 8.4, 1.4); ctx.fill();
+      ctx.fillStyle = d.harvests === 'potato' ? '#c9a46a' : d.harvests === 'beet' ? '#e9dccd' : '#e2bf55';
+      rr(ctx, -12, -4.2, 11, 8.4, 1.4); ctx.fill();
       ctx.fillStyle = 'rgba(255,240,180,0.6)'; circle(ctx, -6.5, -0.8, 2.2);
     }
     // losbuis langs de zijkant
@@ -478,9 +490,9 @@ window.AT = window.AT || {};
         for (let s2 = 10; s2 < 37; s2 += 4) { ctx.beginPath(); ctx.moveTo(s2, 0.8); ctx.lineTo(s2, 6.3); ctx.stroke(); }
         ctx.restore();
       }
-    } else if (key === 'dairy' || key === 'brewery') {
-      // opslagtanks (melk = wit, bier = koper)
-      const col = key === 'dairy' ? ['#ffffff', '#c9d2d8'] : ['#f0b27a', '#a0522d'];
+    } else if (['dairy', 'brewery', 'oilpress', 'sugar'].includes(key)) {
+      // opslagtanks: melk = wit, bier = koper, olie = goud, suiker = grote witte silo's
+      const col = { dairy: ['#ffffff', '#c9d2d8'], brewery: ['#f0b27a', '#a0522d'], oilpress: ['#ffe8a0', '#b8962e'], sugar: ['#ffffff', '#cfc9bb'] }[key];
       for (let k = 0; k < 3; k++) {
         const tx = sx + 12 + (k % 2) * 26, ty = r.y + 24 + Math.floor(k / 2) * 34 + (k % 2) * 6;
         ctx.fillStyle = 'rgba(0,0,0,0.28)'; circle(ctx, tx + 4, ty + 5, 11);
@@ -490,7 +502,7 @@ window.AT = window.AT || {};
         ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(tx, ty, 11, 0, Math.PI * 2); ctx.stroke();
         ctx.fillStyle = 'rgba(0,0,0,0.3)'; circle(ctx, tx, ty, 2);
       }
-    } else if (key === 'bakery') {
+    } else if (key === 'bakery' || key === 'chips') {
       // oven-schoorsteen en kratten brood
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(sx + 4, r.y + 22, 14, 14);
       ctx.fillStyle = '#8d4b3b'; ctx.fillRect(sx, r.y + 18, 14, 14);

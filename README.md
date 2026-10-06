@@ -29,8 +29,9 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 6. Geen zin om alles zelf te doen? Huur in de tab **Veld** een **loonwerker** in
 7. Koop extra velden, tractoren en werktuigen
 8. Houd je **bodem** gezond: elke oogst put hem uit. Rij **mest** uit (van je koeien en schapen) en strooi **kunstmest** voor meer opbrengst. Wissel van gewas voor een bonus
-9. Let op **seizoenen en weer**: niet elk gewas mag in elk seizoen gezaaid worden, in de winter groeit bijna niets, en bij regen kun je niet oogsten
-10. In de tab **Bedrijf** bouw je **stallen** (koeien, kippen, schapen) en **fabrieken** (molen, bakkerij, kaasmakerij, brouwerij) die je oogst meer waard maken
+9. Let op **seizoenen en weer**: elk gewas heeft eigen zaaimaanden (zie de 📅 Zaaikalender), in de winter groeit bijna niets en vorst beschadigt gewassen die niet winterhard zijn. Bij regen kun je niet oogsten, en rijpe gewassen verwelken als je te lang wacht
+10. **11 gewassen**: tarwe, gerst, haver, maïs, koolzaad, zonnebloem, soja, veldbonen, aardappelen, suikerbieten en klaver. Elk heeft een eigen reden om te verbouwen: prijs, groeitijd, bodem, droogte/vorst of een fabriek die erom vraagt
+11. In de tab **Bedrijf** bouw je **stallen** (koeien, kippen, schapen) en **fabrieken** (molen, bakkerij, kaasmakerij, brouwerij, oliepers, suikerfabriek, chipsfabriek) die je oogst meer waard maken
 
 ## Projectstructuur
 ```
