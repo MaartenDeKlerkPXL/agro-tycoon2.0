@@ -22,6 +22,18 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Automatisch opslaan (localStorage)
 - [x] Live link via GitHub Pages
 
+## 🎨 Mooiere game graphics
+- [ ] Eigen sprites voor tractoren, maaidorsers en werktuigen (in plaats van blokjes), met draaiende wielen
+- [ ] Gedetailleerde gebouwen: boerderij, schuur, silo's en graanhandel met schaduwen
+- [ ] Mooiere veldtexturen: voren die de rijrichting volgen, gewassen die wiegen in de wind
+- [ ] Elk gewas herkenbaar: tarwe, gerst en maïs zien er echt anders uit, ook tijdens het groeien
+- [ ] Natuur rond de velden: bomen, struiken, hagen, sloten, hekken en een vijver
+- [ ] Schaduwen en licht: zachte schaduw onder machines en gebouwen, mooiere zonsopgang en -ondergang
+- [ ] Effecten: stofwolken, graanstroom bij lossen, bandensporen, uitlaatrook, vogels boven het veld
+- [ ] Mooiere wegen (asfalt/grind met randen) en een erf met bestrating
+- [ ] Stijlkeuze maken: pixel-art of isometrisch (zoals Agro Tycoon)
+- [ ] Mooiere interface: iconen voor geld, tijd en silo, en afbeeldingen van machines in de winkel
+
 ## 🚜 Fase 1: Meer machines en vervoer
 - [ ] **Extra tractormodellen** (50 pk oldtimer, 200 pk, 400 pk rupstrekker)
 - [ ] **Graanbunker in de maaidorser**: als hij vol is, moet je lossen
@@ -79,9 +91,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [ ] Prestaties (achievements)
 
 ## 🎨 Fase 8: Presentatie
-- [ ] Pixel-art sprites (isometrisch?)
 - [ ] Geluid: motoren, ambient, muziek
-- [ ] Animaties: graanstroom, bandensporen, vogels
 - [ ] Opslaan exporteren/importeren (bestand) + meerdere saves
 
 ## 🛠️ Techniek
