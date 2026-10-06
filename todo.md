@@ -79,7 +79,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 
 ## 🌦️ Fase 3: Seizoenen, weer en bodem
 - [x] Seizoenen (lente, zomer, herfst, winter) met 12 maanden van 2 dagen: elk gewas heeft eigen zaaimaanden
-- [x] Zaaikalender (welk gewas wanneer, opbrengst en bijzonderheden)
+- [x] Zaai- en oogstkalender: zaaimaanden, oogstmaanden, opbrengst per ha per oogstmaand en per maand op het veld
 - [x] Vorst: sneeuw beschadigt gewassen die niet winterhard zijn
 - [x] Seizoensprijzen: goedkoop in de oogsttijd, duur een half jaar later (bewaren loont)
 - [x] In de winter groeit bijna niets (alleen wintertarwe, langzaam)

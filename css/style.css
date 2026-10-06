@@ -237,6 +237,15 @@ body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; m
 .cal th, .cal td { border: 1px solid var(--line); padding: 4px 6px; text-align: left; }
 .cal th { background: var(--panel-2); font-weight: 600; }
 .cal td.sow { background: #8bc34a; }
+.cal td.harvest { background: #e8b84a; }
+.cal td.both { background: linear-gradient(135deg, #8bc34a 0 50%, #e8b84a 50% 100%); }
+.crop-cal td { font-size: 11px; white-space: nowrap; text-align: center; padding: 4px 3px; }
+.crop-cal td.rowh, .crop-cal td:nth-last-child(-n+3) { text-align: left; font-size: 13px; padding: 4px 6px; }
+.crop-cal td:last-child { white-space: normal; font-size: 12px; }
+.cal-legend { display: flex; gap: 14px; font-size: 13px; margin-top: 6px; }
+.cal-legend .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; border: 1px solid var(--line); }
+.cal-legend .sw.sow { background: #8bc34a; } .cal-legend .sw.harvest { background: #e8b84a; }
+.cal-legend .sw.both { background: linear-gradient(135deg, #8bc34a 0 50%, #e8b84a 50% 100%); }
 .cal td.now, .cal th.now { outline: 2px solid #e0b84c; outline-offset: -2px; }
 .cal th.winter { color: #4a78a8; }
 .forecast .btn.small { margin-left: 4px; }

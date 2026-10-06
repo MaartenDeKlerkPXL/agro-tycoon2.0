@@ -161,5 +161,51 @@ window.AT = window.AT || {};
     return out;
   }
 
-  AT.weather = { init, update, season, seasonAt, year, dayInSeason, seasonProgress, month, monthAt, monthName, dayInMonth, growRate, drought, isWet, temperature, forecast, priceFactor, monthFactor };
+  // verwachte groeisnelheid per seizoen (gemiddeld weer, zonder droogte)
+  function expectedRate(cropKey, se) {
+    const c = D.crops[cropKey];
+    let r = se === 3 ? (c.winterGrowth || 0) : D.seasons[se].growth;
+    const w = D.seasons[se].weather;
+    let sum = 0, tot = 0;
+    for (const [type, p] of Object.entries(w)) { sum += p * D.weatherTypes[type].growth; tot += p; }
+    return r * (tot ? sum / tot : 1);
+  }
+
+  // oogstplanning: voor elke zaaimaand wanneer het gewas rijp is en wanneer het begint te verwelken
+  const planCache = {};
+  function harvestPlan(cropKey) {
+    if (planCache[cropKey]) return planCache[cropKey];
+    const c = D.crops[cropKey], need = c.growDays * 24, step = 2;
+    const plan = { harvest: [], bySow: {}, avgMonths: 0 };
+    if (!c.harvester) return (planCache[cropKey] = plan);
+    const months = new Set();
+    if (c.perennial) {
+      // grasland groeit steeds weer aan: maaien kan in elke maand waarin het groeit
+      for (let m = 0; m < 12; m++) if (expectedRate(cropKey, Math.floor(m / 3)) > 0) months.add(m);
+      plan.avgMonths = need / (MONTH_HOURS * expectedRate(cropKey, 0));
+    } else {
+      let total = 0;
+      for (const sm of c.sow) {
+        // zaaien halverwege de maand, dan uur voor uur groeien
+        let t = sm * MONTH_HOURS + MONTH_HOURS / 2, g = 0, ripe = null, wither = null;
+        while (t < sm * MONTH_HOURS + 24 * MONTH_HOURS) {
+          g += expectedRate(cropKey, Math.floor(((t / MONTH_HOURS) % 12) / 3)) * step;
+          t += step;
+          if (ripe == null && g >= need) ripe = t;
+          if (g >= need * (1 + D.witherAfter)) { wither = t; break; }
+        }
+        if (ripe == null) continue;
+        const from = Math.floor(ripe / MONTH_HOURS), to = Math.floor((wither || ripe) / MONTH_HOURS);
+        const list = [];
+        for (let m = from; m <= to; m++) { list.push(m % 12); months.add(m % 12); }
+        plan.bySow[sm] = { ripe: from % 12, months: list, fieldMonths: (ripe - (sm * MONTH_HOURS + MONTH_HOURS / 2)) / MONTH_HOURS };
+        total += plan.bySow[sm].fieldMonths;
+      }
+      plan.avgMonths = c.sow.length ? total / Object.keys(plan.bySow).length : 0;
+    }
+    plan.harvest = [...months].sort((a, b) => a - b);
+    return (planCache[cropKey] = plan);
+  }
+
+  AT.weather = { harvestPlan, init, update, season, seasonAt, year, dayInSeason, seasonProgress, month, monthAt, monthName, dayInMonth, growRate, drought, isWet, temperature, forecast, priceFactor, monthFactor };
 })();

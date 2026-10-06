@@ -643,24 +643,52 @@ window.AT = window.AT || {};
     $('#forecast').innerHTML = '<span class="muted">Verwachting:</span> ' + fc.map(d => {
       const w = D.weatherTypes[d.type];
       return `<span class="fc" title="Dag ${d.day}: ${w.name} (${D.seasons[d.season].name})">Dag ${d.day} ${w.icon}</span>`;
-    }).join('') + '<button class="btn small" data-open="calendar" title="Wanneer zaai je wat?">📅 Zaaikalender</button>';
+    }).join('') + '<button class="btn small" data-open="calendar" title="Wanneer zaai en oogst je wat, en wat levert het op?">📅 Zaai- en oogstkalender</button>';
   }
 
-  // zaaikalender: welke gewassen wanneer
+  // zaaikalender: wanneer zaaien, wanneer oogsten en wat het per maand opbrengt
+  const kEuro = v => (Math.abs(v) >= 1000 ? '€' + (Math.round(v / 100) / 10).toLocaleString('nl-NL') + 'k' : '€' + Math.round(v));
+  // opbrengst per ha als je in maand m oogst en meteen verkoopt (min zaaigoed)
+  function harvestValue(key, m) {
+    const c = D.crops[key];
+    if (c.perennial) return c.yieldPerHa * D.products.hay.basePrice * AT.weather.monthFactor('hay', m);
+    return c.yieldPerHa * c.basePrice * AT.weather.monthFactor(key, m) - c.seedCostPerHa;
+  }
   function renderCalendar() {
     const now = AT.weather.month();
-    let html = `<div class="modal-card"><div class="row"><h2 class="grow">📅 Zaaikalender</h2><button class="btn small" data-close>Sluiten</button></div>
-      <p class="muted">Groen = zaaimaand. Een maand duurt ${D.daysPerMonth} dagen. In de winter groeit bijna niets, behalve winterharde gewassen.
-      Rijpe gewassen die te lang blijven staan verwelken.</p>
-      <table class="cal"><thead><tr><th></th>${D.months.map((m, i) => `<th class="${i === now ? 'now' : ''} ${i >= 9 || i === 11 ? 'winter' : ''}">${m.slice(0, 3)}</th>`).join('')}<th>Groei</th><th>Opbrengst</th><th>Bijzonder</th></tr></thead><tbody>`;
+    let html = `<div class="modal-card"><div class="row"><h2 class="grow">📅 Zaai- en oogstkalender</h2><button class="btn small" data-close>Sluiten</button></div>
+      <p class="muted">Een maand duurt ${D.daysPerMonth} dagen. Oogstmaanden gelden bij gemiddeld weer (regen = sneller, droogte = trager). In de winter groeit bijna niets, behalve winterharde gewassen.
+      Het bedrag is de opbrengst per hectare als je in die maand oogst en meteen verkoopt (min zaaigoed, bij een gewone bodem). Bewaren tot een dure maand levert meer op (zie 📈 Prijskalender).</p>
+      <div class="cal-legend"><span><i class="sw sow"></i> zaaien</span><span><i class="sw harvest"></i> oogsten (€ per ha)</span><span><i class="sw both"></i> allebei</span></div>
+      <table class="cal crop-cal"><thead><tr><th></th>${D.months.map((m, i) => `<th class="${i === now ? 'now' : ''} ${i >= 9 ? 'winter' : ''}">${m.slice(0, 3)}</th>`).join('')}<th>Op het veld</th><th>Per maand</th><th>Bijzonder</th></tr></thead><tbody>`;
     for (const [key, c] of Object.entries(D.crops)) {
-      html += `<tr><td><span class="dot" style="background:${c.color}"></span> ${c.name}</td>`;
-      for (let m = 0; m < 12; m++) html += `<td class="${c.sow.includes(m) ? 'sow' : ''} ${m === now ? 'now' : ''}"></td>`;
-      const value = c.yieldPerHa * c.basePrice - c.seedCostPerHa;
-      const v2 = c.perennial ? c.yieldPerHa * D.products.hay.basePrice - c.seedCostPerHa : value;
-      html += `<td>${c.growDays} d</td><td>${c.yieldPerHa ? '±' + AT.fmtMoney(v2) + '/ha' : '—'}</td><td class="muted">${cropTraits(c).join(', ') || '—'}</td></tr>`;
+      const plan = AT.weather.harvestPlan(key), hv = new Set(plan.harvest);
+      html += `<tr><td class="rowh"><span class="dot" style="background:${c.color}"></span> ${c.name}</td>`;
+      let best = -Infinity;
+      for (let m = 0; m < 12; m++) {
+        const sow = c.sow.includes(m), har = hv.has(m);
+        const cls = [sow && har ? 'both' : sow ? 'sow' : har ? 'harvest' : '', m === now ? 'now' : ''].join(' ');
+        let text = '', title = `${c.name} in ${D.months[m].toLowerCase()}:`;
+        if (sow) title += ' zaaien.';
+        if (har) {
+          const v = harvestValue(key, m); best = Math.max(best, v);
+          text = kEuro(v);
+          title += ` oogsten${c.perennial ? ' (maaien → hooi)' : ''}: ±${AT.fmtMoney(v)} per ha.`;
+        }
+        if (sow) {
+          const bs = plan.bySow[m];
+          if (bs) title += ` Gezaaid in ${D.months[m].toLowerCase()} → rijp in ${D.months[bs.ripe].toLowerCase()}.`;
+        }
+        html += `<td class="${cls}" title="${title}">${text}</td>`;
+      }
+      const months = plan.avgMonths;
+      const perMonth = best > -Infinity && months > 0 ? best / Math.max(0.5, months) : null;
+      html += `<td>${months ? '±' + months.toLocaleString('nl-NL', { maximumFractionDigits: 1 }) + ' mnd' : '—'}</td>
+        <td>${perMonth != null ? '<b>' + AT.fmtMoney(perMonth) + '</b>/ha' : '—'}</td>
+        <td class="muted">${cropTraits(c).join(', ') || '—'}</td></tr>`;
     }
-    html += `</tbody></table></div>`;
+    html += `</tbody></table>
+      <p class="muted">“Per maand” = de beste opbrengst per ha gedeeld door de tijd dat het gewas op het veld staat. Snelle gewassen kun je vaker per jaar telen; trage gewassen leveren per keer meer op.</p></div>`;
     $('#modal').innerHTML = html;
     $('#modal').hidden = false;
   }
