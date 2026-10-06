@@ -1,6 +1,7 @@
 // Agro Tycoon 2.0 — opstarten en game loop
 (function () {
   AT.state = AT.game.load();
+  AT.weather.init();
   if (!AT.state.log.length) {
     AT.state.log.push({ day: 1, hour: 6, text: 'Welkom bij Agro Tycoon 2.0! Loop met WASD naar je rode tractor en druk E om in te stappen.', type: 'goal' });
   }

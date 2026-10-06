@@ -7,6 +7,9 @@ window.AT = window.AT || {};
   const SAVE_KEY = 'agro-tycoon-2-save';
   const CROP_KEYS = Object.keys(D.crops);           // index+1 = gewas-id in cellen (0 = geen)
   const ST = { STUBBLE: 0, PLOWED: 1, SOWN: 2 };    // celtoestanden
+  const FERT = 1, MANURE = 2;                        // bits in cells.fert
+  const IMPLEMENT_KINDS = ['plow', 'seeder', 'spreader', 'manure'];
+  const isImplement = kind => IMPLEMENT_KINDS.includes(kind);
 
   // ---------- kleine event-bus zodat UI kan reageren ----------
   const listeners = {};
@@ -19,7 +22,8 @@ window.AT = window.AT || {};
   // ---------- nieuw spel ----------
   function newCells(def) {
     const n = def.cols * def.rows;
-    return { state: new Uint8Array(n), crop: new Uint8Array(n), planted: new Float32Array(n), dir: new Uint8Array(n) };
+    // planted = stand van de groeiklok bij het zaaien, fert = kunstmest/mest-bits, prev = vorig gewas
+    return { state: new Uint8Array(n), crop: new Uint8Array(n), planted: new Float32Array(n), dir: new Uint8Array(n), fert: new Uint8Array(n), prev: new Uint8Array(n) };
   }
 
   function startMachines() {
@@ -38,8 +42,12 @@ window.AT = window.AT || {};
   }
 
   function createState() {
-    const market = {}, silo = {};
-    for (const key of CROP_KEYS) { market[key] = { factor: 1, history: [1] }; silo[key] = 0; }
+    const market = {}, silo = {}, goods = {}, growClock = {};
+    for (const key of CROP_KEYS) { market[key] = { factor: 1, history: [1] }; silo[key] = 0; growClock[key] = 0; }
+    for (const key of Object.keys(D.products)) { market[key] = { factor: 1, history: [1] }; goods[key] = 0; }
+    const animals = {}, factories = {};
+    for (const key of Object.keys(D.animals)) animals[key] = { owned: false, count: 0, fed: 1, produced: {} };
+    for (const key of Object.keys(D.factories)) factories[key] = { owned: false, on: true, progress: 0, status: '', made: 0 };
 
     return {
       version: D.version,
@@ -49,12 +57,17 @@ window.AT = window.AT || {};
       paused: false,
       siloLevel: D.start.siloLevel,
       silo,
+      goods,      // producten van dieren en fabrieken
       market,
-      fields: D.fields.map(f => ({ id: f.id, owned: !!f.owned, cells: newCells(f), job: null, readyNotified: false })),
+      growClock,  // per gewas: opgetelde "effectieve groei-uren" (seizoen + weer)
+      weather: null,
+      animals,
+      factories,
+      fields: D.fields.map(f => ({ id: f.id, owned: !!f.owned, cells: newCells(f), job: null, readyNotified: false, soil: D.startSoil, damage: 0 })),
       machines: startMachines(),
       // speler: te voet (mode 'foot') of in een machine (mode 'drive', vehicle = uid)
       player: { mode: 'foot', x: D.start.farmer.x, y: D.start.farmer.y, angle: Math.PI, speed: 0, vehicle: null, lowered: false, crop: CROP_KEYS[0] },
-      stats: { drove: false, plowedHa: 0, sownHa: 0, harvestedHa: 0, tonsHarvested: 0, earned: 0, spent: 0, workerJobs: 0 },
+      stats: { drove: false, plowedHa: 0, sownHa: 0, harvestedHa: 0, tonsHarvested: 0, earned: 0, spent: 0, workerJobs: 0, fertHa: 0, rotationHa: 0 },
       goalsDone: {},
       log: [],
     };
@@ -87,19 +100,45 @@ window.AT = window.AT || {};
   function siloUsed() { return Object.values(S().silo).reduce((a, b) => a + b, 0); }
   function siloRoom() { return siloCapacity() - siloUsed(); }
   function cropPrice(crop) { return Math.round(D.crops[crop].basePrice * S().market[crop].factor); }
+  // prijs per eenheid van een gewas (per ton) of product (per L, st, kg, t)
+  function price(key) {
+    if (D.crops[key]) return cropPrice(key);
+    return D.products[key].basePrice * S().market[key].factor;
+  }
+  // voorraad: gewassen zitten in de silo, producten in de opslag
+  function stock(key) { return D.crops[key] ? S().silo[key] : S().goods[key]; }
+  function take(key, amount) { if (D.crops[key]) S().silo[key] = Math.max(0, S().silo[key] - amount); else S().goods[key] = Math.max(0, S().goods[key] - amount); }
+  function addGood(key, amount) { S().goods[key] += amount; }
   function fieldPrice(id) { return fieldDef(id).ha * D.landPricePerHa; }
 
   // ---------- cellen ----------
+  const clock = cropIdx => S().growClock[CROP_KEYS[cropIdx - 1]];
   function isReady(f, i) {
     const c = f.cells;
-    return c.state[i] === ST.SOWN && S().time >= c.planted[i] + growHours(c.crop[i]);
+    return c.state[i] === ST.SOWN && clock(c.crop[i]) >= c.planted[i] + growHours(c.crop[i]);
   }
 
   // 0..1 groei van een ingezaaide cel
   function cellGrowth(f, i) {
     const c = f.cells;
     if (c.state[i] !== ST.SOWN) return 0;
-    return Math.min(1, (S().time - c.planted[i]) / growHours(c.crop[i]));
+    return Math.min(1, (clock(c.crop[i]) - c.planted[i]) / growHours(c.crop[i]));
+  }
+
+  // ---------- bodem & opbrengst ----------
+  // vermenigvuldiger op de basisopbrengst van één cel
+  function yieldFactor(f, i) {
+    const c = f.cells, crop = c.crop[i];
+    let k = 0.6 + 0.6 * f.soil;                       // bodemkwaliteit 0..1 → ×0,6..×1,2
+    if (c.fert[i] & FERT) k *= D.fertBonus;
+    if (c.fert[i] & MANURE) k *= D.manureBonus;
+    if (c.prev[i]) k *= c.prev[i] !== crop ? D.rotationBonus : D.monoculturePenalty;
+    if (AT.weather && AT.weather.drought()) k *= 0.85;
+    return k * (1 - f.damage);
+  }
+  function cellYield(f, i) {
+    const def = fieldDef(f.id);
+    return cellHa(def) * D.crops[CROP_KEYS[f.cells.crop[i] - 1]].yieldPerHa * yieldFactor(f, i);
   }
 
   function cellAt(x, y) {
@@ -112,19 +151,29 @@ window.AT = window.AT || {};
   // Telling per toestand (voor UI, minimap en loonwerkers)
   function summary(f) {
     const c = f.cells, n = c.state.length;
-    const out = { total: n, stubble: 0, plowed: 0, growing: 0, ready: 0, crops: {}, readyTons: 0, minGrowth: 1 };
-    const def = fieldDef(f.id), ha = cellHa(def);
+    const out = { total: n, stubble: 0, plowed: 0, growing: 0, ready: 0, crops: {}, readyTons: 0, minGrowth: 1,
+      fert: 0, manure: 0, needFert: 0, needManure: 0, prev: {}, factorSum: 0, factorN: 0 };
     for (let i = 0; i < n; i++) {
       const s = c.state[i];
+      const fe = c.fert[i];
+      if (fe & FERT) out.fert++;
+      if (fe & MANURE) out.manure++;
+      if (c.prev[i]) { const pk = CROP_KEYS[c.prev[i] - 1]; out.prev[pk] = (out.prev[pk] || 0) + 1; }
       if (s === ST.STUBBLE) out.stubble++;
       else if (s === ST.PLOWED) out.plowed++;
       else {
         const key = CROP_KEYS[c.crop[i] - 1];
         out.crops[key] = (out.crops[key] || 0) + 1;
-        if (isReady(f, i)) { out.ready++; out.readyTons += ha * D.crops[key].yieldPerHa; }
+        const fac = yieldFactor(f, i);
+        out.factorSum += fac; out.factorN++;
+        if (isReady(f, i)) { out.ready++; out.readyTons += cellYield(f, i); }
         else { out.growing++; out.minGrowth = Math.min(out.minGrowth, cellGrowth(f, i)); }
       }
+      const ready = s === ST.SOWN && isReady(f, i);
+      if (!ready && (s === ST.PLOWED || s === ST.SOWN) && !(fe & FERT)) out.needFert++;
+      if (!ready && !(fe & MANURE)) out.needManure++;
     }
+    out.avgFactor = out.factorN ? out.factorSum / out.factorN : null;
     return out;
   }
 
@@ -134,8 +183,11 @@ window.AT = window.AT || {};
     return best;
   }
 
+  function canSowNow(cropKey) { return !AT.weather || D.crops[cropKey].sow.includes(AT.weather.season()); }
+  function tooWet() { return AT.weather && AT.weather.isWet(); }
+
   // Bewerk één cel. mode = 'player' (betaal direct) of 'worker' (vooruitbetaald).
-  // Geeft 'ok', 'skip', 'nomoney' of 'full' terug.
+  // Geeft 'ok', 'skip', 'nomoney', 'full', 'season', 'wet' of 'nomanure' terug.
   function workCell(f, i, op, cropKey, mode, dir = 0) {
     const c = f.cells, def = fieldDef(f.id), s = S();
     if (!f.owned) return 'skip';
@@ -148,6 +200,7 @@ window.AT = window.AT || {};
       s.stats.plowedHa += ha;
     } else if (op === 'sow') {
       if (c.state[i] !== ST.PLOWED) return 'skip';
+      if (!canSowNow(cropKey)) return 'season';
       if (mode === 'player') {
         const cost = D.crops[cropKey].seedCostPerHa * ha;
         if (s.money < cost) return 'nomoney';
@@ -155,13 +208,36 @@ window.AT = window.AT || {};
       }
       c.state[i] = ST.SOWN;
       c.crop[i] = CROP_KEYS.indexOf(cropKey) + 1;
-      c.planted[i] = s.time;
+      c.planted[i] = s.growClock[cropKey];
       c.dir[i] = dir;
       s.stats.sownHa += ha;
+    } else if (op === 'fertilize') {
+      const ready = c.state[i] === ST.SOWN && isReady(f, i);
+      if (c.state[i] === ST.STUBBLE || ready || (c.fert[i] & FERT)) return 'skip';
+      if (mode === 'player') {
+        const cost = D.fertCostPerHa * ha;
+        if (s.money < cost) return 'nomoney';
+        spend(cost);
+      }
+      c.fert[i] |= FERT;
+      f.soil = Math.min(1, f.soil + 0.05 / (def.cols * def.rows));
+      s.stats.fertHa += ha;
+    } else if (op === 'manure') {
+      const ready = c.state[i] === ST.SOWN && isReady(f, i);
+      if (ready || (c.fert[i] & MANURE)) return 'skip';
+      if (mode === 'player') {
+        const need = D.manurePerHa * ha;
+        if (s.goods.manure < need) return 'nomanure';
+        s.goods.manure -= need;
+      }
+      c.fert[i] |= MANURE;
+      f.soil = Math.min(1, f.soil + D.manureSoil / (def.cols * def.rows));
+      s.stats.fertHa += ha;
     } else if (op === 'harvest') {
       if (!isReady(f, i)) return 'skip';
+      if (mode === 'player' && tooWet()) return 'wet';
       const key = CROP_KEYS[c.crop[i] - 1];
-      const tons = ha * D.crops[key].yieldPerHa * (0.9 + Math.random() * 0.2);
+      const tons = cellYield(f, i) * (0.95 + Math.random() * 0.1);
       if (siloRoom() < tons) {
         if (mode === 'player') return 'full';
         if (f.job) f.job.lost += tons; // loonwerker: overschot gaat verloren
@@ -169,8 +245,12 @@ window.AT = window.AT || {};
         s.silo[key] += tons;
         s.stats.tonsHarvested += tons;
       }
+      if (c.prev[i] && c.prev[i] !== c.crop[i]) s.stats.rotationHa += ha;
+      f.soil = Math.max(0.05, f.soil - D.crops[key].soilDemand / (def.cols * def.rows));
+      c.prev[i] = c.crop[i];
       c.state[i] = ST.STUBBLE;
       c.crop[i] = 0;
+      c.fert[i] = 0;
       c.dir[i] = dir;
       s.stats.harvestedHa += ha;
     }
@@ -179,8 +259,9 @@ window.AT = window.AT || {};
   }
 
   // ---------- loonwerkers (automatische taken) ----------
-  const TASK_IMPLEMENT = { plow: 'plow', sow: 'seeder' };
-  const TASK_OP = { plow: 'plow', sow: 'sow', harvest: 'harvest' };
+  const TASK_IMPLEMENT = { plow: 'plow', sow: 'seeder', fertilize: 'spreader', manure: 'manure' };
+  const TASK_OP = { plow: 'plow', sow: 'sow', harvest: 'harvest', fertilize: 'fertilize', manure: 'manure' };
+  const IMPL_NAMES = { plow: 'ploeg', seeder: 'zaaimachine', spreader: 'kunstmeststrooier', manure: 'mestverspreider' };
 
   // snelheidsbonus als de tractor sterker is dan het werktuig nodig heeft
   function speedFactor(tractorDef, implDef) {
@@ -212,7 +293,7 @@ window.AT = window.AT || {};
       for (const i of free) {
         const id = machineDef(i);
         if (id.kind !== implKind || td.power < id.minPower) continue;
-        if (t.impl && t.impl !== i.uid) continue;          // tractor heeft al iets anders aan de haak
+        if (t.impl && t.impl !== i.uid && machine(t.impl).busy) continue; // ander werktuig in gebruik
         if (i.attached && i.attached !== t.uid) continue;  // werktuig hangt aan een andere tractor
         const hours = ha / (id.rate * speedFactor(td, id));
         if (!best || hours < best.hours) best = { machines: [t, i], hours, width: id.width, cost: hours * (td.fuelPerHour * D.fuelPrice + wage) };
@@ -229,7 +310,7 @@ window.AT = window.AT || {};
     const has = kind => all.some(m => machineDef(m).kind === kind);
     if (task === 'harvest') return has('harvester') ? 'Alle maaidorsers zijn bezig.' : 'Je hebt geen maaidorser.';
     const implKind = TASK_IMPLEMENT[task];
-    const implName = implKind === 'plow' ? 'ploeg' : 'zaaimachine';
+    const implName = IMPL_NAMES[implKind];
     if (!has('tractor')) return 'Je hebt geen tractor.';
     if (!has(implKind)) return `Je hebt geen ${implName}.`;
     return `Geen vrije tractor + ${implName} (of tractor te zwak).`;
@@ -266,8 +347,9 @@ window.AT = window.AT || {};
     const f = field(fieldId);
     if (!f || !f.owned || f.job) return false;
     const sum = summary(f);
-    const eligible = { plow: sum.stubble, sow: sum.plowed, harvest: sum.ready }[task];
+    const eligible = { plow: sum.stubble, sow: sum.plowed, harvest: sum.ready, fertilize: sum.needFert, manure: sum.needManure }[task];
     if (!eligible) return false;
+    if (task === 'sow' && !canSowNow(crop)) { log(`${D.crops[crop].name} kun je nu niet zaaien.`, 'warn'); return false; }
 
     const rig = bestRig(task, fieldId);
     if (!rig) { log(missingFor(task), 'warn'); return false; }
@@ -278,6 +360,12 @@ window.AT = window.AT || {};
       if (!D.crops[crop]) return false;
       cost += D.crops[crop].seedCostPerHa * cellHa(def) * eligible;
     }
+    if (task === 'fertilize') cost += D.fertCostPerHa * cellHa(def) * eligible;
+    const manureNeed = task === 'manure' ? D.manurePerHa * cellHa(def) * eligible : 0;
+    if (manureNeed && S().goods.manure < manureNeed) {
+      log(`Niet genoeg mest (nodig: ${AT.fmtTons(manureNeed)}). Koeien en schapen maken mest.`, 'warn');
+      return false;
+    }
     if (task === 'harvest' && siloRoom() < sum.readyTons) {
       log(`Silo te vol om Veld ${fieldId} te oogsten. Verkoop graan of vergroot de silo.`, 'warn');
       return false;
@@ -285,7 +373,19 @@ window.AT = window.AT || {};
     if (S().money < cost) { log(`Niet genoeg geld (nodig: ${AT.fmtMoney(cost)}).`, 'warn'); return false; }
 
     spend(cost);
-    const snapshot = rig.machines.map(m => ({ uid: m.uid, x: m.x, y: m.y, angle: m.angle, impl: m.impl, attached: m.attached }));
+    if (manureNeed) S().goods.manure -= manureNeed;
+    const snap = m => ({ uid: m.uid, x: m.x, y: m.y, angle: m.angle, impl: m.impl, attached: m.attached });
+    const snapshot = rig.machines.map(snap);
+    // loonwerker koppelt zo nodig het juiste werktuig aan (en zet het oude even neer)
+    const [tr, im] = rig.machines;
+    if (im && tr.impl !== im.uid) {
+      if (tr.impl) {
+        const old = machine(tr.impl), h = hitchPoint(tr);
+        snapshot.push(snap(old));
+        Object.assign(old, { attached: null, x: h.x, y: h.y, angle: tr.angle });
+      }
+      tr.impl = im.uid; im.attached = tr.uid;
+    }
     rig.machines.forEach(m => { m.busy = fieldId; });
     f.job = {
       snapshot,
@@ -293,7 +393,7 @@ window.AT = window.AT || {};
       progress: 0, idx: 0, laneCols: Math.max(1, Math.round(rig.width / D.CELL)), lost: 0,
     };
     const names = rig.machines.map(m => machineDef(m).name).join(' + ');
-    const verb = { plow: 'ploegt', sow: 'zaait', harvest: 'oogst' }[task];
+    const verb = { plow: 'ploegt', sow: 'zaait', harvest: 'oogst', fertilize: 'strooit kunstmest op', manure: 'rijdt mest uit op' }[task];
     log(`Loonwerker ${verb} Veld ${fieldId} met ${names} (${AT.fmtHours(rig.hours)}, ${AT.fmtMoney(cost)}).`);
     AT.emit('change');
     return true;
@@ -301,6 +401,8 @@ window.AT = window.AT || {};
 
   function advanceJob(f, dtHours) {
     const job = f.job, def = fieldDef(f.id);
+    if (job.type === 'harvest' && tooWet()) { job.waiting = true; return; } // wacht tot het droog is
+    job.waiting = false;
     job.progress = Math.min(1, job.progress + dtHours / job.hours);
     const N = jobLength(def, job.laneCols);
     const target = job.progress >= 1 ? N : Math.floor(job.progress * N);
@@ -314,13 +416,12 @@ window.AT = window.AT || {};
   function finishJob(f) {
     const job = f.job, s = S();
     s.machines.forEach(m => {
-      if (!job.machines.includes(m.uid)) return;
-      m.busy = null;
+      if (job.machines.includes(m.uid)) m.busy = null;
       const snap = (job.snapshot || []).find(x => x.uid === m.uid);
-      if (snap) Object.assign(m, snap);
+      if (snap && !m.busy) Object.assign(m, snap);
     });
     s.stats.workerJobs++;
-    const done = { plow: 'geploegd', sow: 'ingezaaid', harvest: 'geoogst' }[job.type];
+    const done = { plow: 'geploegd', sow: 'ingezaaid', harvest: 'geoogst', fertilize: 'bemest met kunstmest', manure: 'bemest met mest' }[job.type];
     log(`Loonwerker klaar: Veld ${f.id} is ${done}.`, 'good');
     if (job.lost > 0) log(`Silo vol! ${AT.fmtTons(job.lost)} ging verloren.`, 'warn');
     f.job = null;
@@ -332,7 +433,7 @@ window.AT = window.AT || {};
   const HITCH = -12.5; // trekhaak achter de tractor
 
   function canPull(tractor, impl) {
-    return machineDef(tractor).kind === 'tractor' && ['plow', 'seeder'].includes(machineDef(impl).kind) &&
+    return machineDef(tractor).kind === 'tractor' && isImplement(machineDef(impl).kind) &&
       machineDef(tractor).power >= machineDef(impl).minPower;
   }
 
@@ -402,7 +503,7 @@ window.AT = window.AT || {};
     const h = hitchPoint(t);
     let best = null, bd = maxDist;
     for (const m of S().machines) {
-      if (m.busy || m.attached || !['plow', 'seeder'].includes(machineDef(m).kind)) continue;
+      if (m.busy || m.attached || !isImplement(machineDef(m).kind)) continue;
       const d = Math.hypot(m.x - h.x, m.y - h.y);
       if (d < bd) { bd = d; best = m; }
     }
@@ -440,6 +541,18 @@ window.AT = window.AT || {};
     if (s.silo[crop] < 0.001) s.silo[crop] = 0;
     earn(revenue);
     log(`${AT.fmtTons(tons)} ${D.crops[crop].name.toLowerCase()} verkocht voor ${AT.fmtMoney(revenue)}.`, 'money');
+    AT.emit('change');
+  }
+
+  function sellGood(key, amount) {
+    const s = S(), d = D.products[key];
+    amount = Math.min(amount ?? s.goods[key], s.goods[key]);
+    if (amount <= 0.0001) return;
+    const revenue = amount * price(key);
+    s.goods[key] -= amount;
+    if (s.goods[key] < 0.0001) s.goods[key] = 0;
+    earn(revenue);
+    log(`${AT.fmtAmount(amount, key)} ${d.name.toLowerCase()} verkocht voor ${AT.fmtMoney(revenue)}.`, 'money');
     AT.emit('change');
   }
 
@@ -492,7 +605,7 @@ window.AT = window.AT || {};
   // ---------- tijd ----------
   function updateMarket() {
     const { minFactor, maxFactor, volatility } = D.market;
-    for (const key of CROP_KEYS) {
+    for (const key of Object.keys(S().market)) {
       const m = S().market[key];
       const drift = (1 - m.factor) * 0.1; // lichte trek terug naar 1.0
       m.factor = Math.min(maxFactor, Math.max(minFactor, m.factor + drift + (Math.random() * 2 - 1) * volatility));
@@ -523,6 +636,7 @@ window.AT = window.AT || {};
         AT.emit('change');
       }
       if (sum.ready === 0) f.readyNotified = false;
+      if (sum.ready + sum.growing === 0) f.damage = 0;
     }
   }
 
@@ -534,6 +648,8 @@ window.AT = window.AT || {};
     const dtHours = dtSeconds * D.hoursPerSecond * s.speed;
     const prevDay = day();
     s.time += dtHours;
+    if (AT.weather) AT.weather.update(dtHours);
+    if (AT.farm) AT.farm.update(dtHours);
 
     for (const f of s.fields) if (f.job) advanceJob(f, dtHours);
     if (AT.vehicle) AT.vehicle.update(dtSeconds, dtHours);
@@ -557,8 +673,9 @@ window.AT = window.AT || {};
     const s = S();
     const out = Object.assign({}, s, {
       fields: s.fields.map(f => ({
-        id: f.id, owned: f.owned, job: f.job, readyNotified: f.readyNotified,
+        id: f.id, owned: f.owned, job: f.job, readyNotified: f.readyNotified, soil: f.soil, damage: f.damage,
         state: packBytes(f.cells.state), crop: packBytes(f.cells.crop), dir: packBytes(f.cells.dir),
+        fert: packBytes(f.cells.fert), prev: packBytes(f.cells.prev),
         planted: Array.from(f.cells.planted, (v, i) => f.cells.state[i] === ST.SOWN ? Math.round(v * 10) / 10 : 0),
       })),
     });
@@ -574,10 +691,13 @@ window.AT = window.AT || {};
     const state = Object.assign(fresh, saved);
     state.fields = D.fields.map(def => {
       const sf = (saved.fields || []).find(x => x.id === def.id);
-      const f = { id: def.id, owned: !!def.owned, cells: newCells(def), job: null, readyNotified: false };
+      const f = { id: def.id, owned: !!def.owned, cells: newCells(def), job: null, readyNotified: false, soil: D.startSoil, damage: 0 };
       if (!sf) return f;
       const n = def.cols * def.rows;
       f.owned = sf.owned; f.job = sf.job; f.readyNotified = sf.readyNotified;
+      f.soil = sf.soil ?? D.startSoil; f.damage = sf.damage || 0;
+      f.cells.fert = unpackBytes(sf.fert || '', n);
+      f.cells.prev = unpackBytes(sf.prev || '', n);
       f.cells.state = unpackBytes(sf.state || '', n);
       f.cells.crop = unpackBytes(sf.crop || '', n);
       f.cells.dir = unpackBytes(sf.dir || '', n);
@@ -587,6 +707,10 @@ window.AT = window.AT || {};
     const base = createState();
     state.silo = Object.assign(base.silo, saved.silo);
     state.market = Object.assign(base.market, saved.market);
+    state.goods = Object.assign(base.goods, saved.goods);
+    state.growClock = Object.assign(base.growClock, saved.growClock);
+    for (const k in base.animals) state.animals[k] = Object.assign(base.animals[k], (saved.animals || {})[k]);
+    for (const k in base.factories) state.factories[k] = Object.assign(base.factories[k], (saved.factories || {})[k]);
     state.stats = Object.assign(base.stats, saved.stats);
     state.machines = (saved.machines || []).filter(m => D.machines[m.type]);
     uidCounter = state.machines.reduce((max, m) => Math.max(max, m.uid), 0) + 1;
@@ -597,6 +721,7 @@ window.AT = window.AT || {};
     try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ok */ }
     uidCounter = 1;
     AT.state = createState();
+    if (AT.weather) AT.weather.init();
     log('Welkom bij Agro Tycoon 2.0! Loop met WASD naar je rode tractor en druk E om in te stappen.', 'goal');
     AT.emit('reset');
     AT.emit('change');
@@ -607,9 +732,21 @@ window.AT = window.AT || {};
   AT.fmtTons = n => n.toFixed(1).replace('.', ',') + ' t';
   AT.fmtHa = n => String(n).replace('.', ',') + ' ha';
   AT.fmtHours = n => n.toFixed(1).replace('.', ',') + ' u';
+  AT.fmtNum = (n, dec = 0) => n.toLocaleString('nl-NL', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  // hoeveelheid met eenheid voor een gewas (t) of product
+  AT.fmtAmount = (n, key) => {
+    if (D.crops[key]) return AT.fmtTons(n);
+    const p = D.products[key];
+    return AT.fmtNum(n, p.decimals) + ' ' + p.unit;
+  };
+  AT.fmtPrice = key => {
+    const v = price(key);
+    return '€' + v.toLocaleString('nl-NL', { minimumFractionDigits: v < 10 ? 2 : 0, maximumFractionDigits: v < 10 ? 2 : 0 });
+  };
 
   AT.game = {
-    ST, CROP_KEYS,
+    ST, CROP_KEYS, FERT, MANURE, isImplement, IMPL_NAMES,
+    price, stock, take, addGood, sellGood, yieldFactor, canSowNow, spend, earn,
     tick, startJob, sell, buyField, buyMachine, sellMachine, upgradeSilo, enterVehicle, exitVehicle,
     toggleHitch, nearestImplement, nearestVehicle, hitchPoint, machine, HITCH,
     save, load, reset, bestRig, missingFor, canPull, workCell, cellAt, summary, mainCrop,

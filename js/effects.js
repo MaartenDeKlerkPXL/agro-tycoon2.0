@@ -62,7 +62,7 @@ window.AT = window.AT || {};
     }
     if (!working || speed < 3) return;
     // stof achter het werktuig / kaf achter de maaidorser
-    const back = kind === 'harvester' ? -16 : -21;
+    const back = kind === 'harvester' ? -16 : toolKind === 'manure' ? -32 : -21;
     for (let k = 0; k < 2; k++) {
       if (Math.random() > 14 * dt) continue;
       const s = (Math.random() - 0.5) * toolWidth;
@@ -71,7 +71,13 @@ window.AT = window.AT || {};
         spawn({ x: p.x, y: p.y, vx: -Math.cos(angle) * 10 + Math.random() * 6, vy: -Math.sin(angle) * 10 + Math.random() * 6, life: 0, max: 1.2, r0: 0.6, r1: 1.4, c: '236,206,120', a: 0.7 });
         if (Math.random() < 0.5) spawn({ x: p.x, y: p.y, vx: 4, vy: 3, life: 0, max: 1.6, r0: 2, r1: 8, c: '200,175,110', a: 0.18 });
       } else {
-        spawn({ x: p.x, y: p.y, vx: 5 + Math.random() * 5, vy: 3 + Math.random() * 4, life: 0, max: 1.3, r0: 2, r1: 8, c: toolKind === 'plow' ? '120,88,52' : '150,120,80', a: 0.22 });
+        if (toolKind === 'spreader') {
+          spawn({ x: p.x, y: p.y, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 40, life: 0, max: 0.5, r0: 0.6, r1: 0.6, c: '250,250,250', a: 0.9 });
+        } else if (toolKind === 'manure') {
+          spawn({ x: p.x, y: p.y, vx: -Math.cos(angle) * 25 + (Math.random() - 0.5) * 20, vy: -Math.sin(angle) * 25 + (Math.random() - 0.5) * 20, life: 0, max: 0.7, r0: 1.2, r1: 0.8, c: '74,50,28', a: 0.85 });
+        } else {
+          spawn({ x: p.x, y: p.y, vx: 5 + Math.random() * 5, vy: 3 + Math.random() * 4, life: 0, max: 1.3, r0: 2, r1: 8, c: toolKind === 'plow' ? '120,88,52' : '150,120,80', a: 0.22 });
+        }
       }
     }
   }
@@ -95,7 +101,8 @@ window.AT = window.AT || {};
       const main = s.machines.find(m => f.job.machines.includes(m.uid) && ['tractor', 'harvester'].includes(D.machines[m.type].kind));
       if (!main) continue;
       const kind = D.machines[main.type].kind;
-      machineFx('job' + f.id, kind, pos.x, pos.y, pos.angle, 30, true, f.job.type === 'plow' ? 'plow' : 'seeder', 24, dt, false);
+      const tk = { plow: 'plow', sow: 'seeder', fertilize: 'spreader', manure: 'manure', harvest: 'harvester' }[f.job.type];
+      machineFx('job' + f.id, kind, pos.x, pos.y, pos.angle, 30, !f.job.waiting, tk, 24, dt, false);
     }
 
     for (let i = particles.length - 1; i >= 0; i--) {

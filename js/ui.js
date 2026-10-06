@@ -9,8 +9,9 @@ window.AT = window.AT || {};
 
   let activeTab = 'field';
 
-  const JOB_NAMES = { plow: 'Ploegen', sow: 'Zaaien', harvest: 'Oogsten' };
-  const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser' };
+  const JOB_NAMES = { plow: 'Ploegen', sow: 'Zaaien', harvest: 'Oogsten', fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden' };
+  const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser', spreader: 'Kunstmeststrooier', manure: 'Mestverspreider' };
+  const seasonName = i => D.seasons[i].name.toLowerCase();
   const pct = (n, total) => Math.round(n / total * 100);
 
   // ---------- Veld ----------
@@ -29,6 +30,7 @@ window.AT = window.AT || {};
     } else {
       html += `<div data-live="fieldsum">${fieldSummaryHtml(f)}</div>`;
       const sum = G().summary(f);
+      html += soilHtml(f, sum);
       if (f.job) {
         const machines = s.machines.filter(m => f.job.machines.includes(m.uid)).map(m => D.machines[m.type].name).join(' + ');
         html += `<div class="card"><b>Loonwerker: ${JOB_NAMES[f.job.type]}</b>
@@ -40,6 +42,8 @@ window.AT = window.AT || {};
         if (sum.stubble) html += workerButton(s, f, 'plow', 'Laat ploegen');
         if (sum.plowed) html += cropChoice(s, f, def, sum);
         if (sum.ready) html += workerButton(s, f, 'harvest', `Laat oogsten (±${AT.fmtTons(sum.readyTons)})`);
+        if (sum.needFert && G().bestRig('fertilize', f.id)) html += workerButton(s, f, 'fertilize', 'Laat kunstmest strooien');
+        if (sum.needManure && G().bestRig('manure', f.id)) html += workerButton(s, f, 'manure', 'Laat mest uitrijden');
         if (!sum.stubble && !sum.plowed && !sum.ready) html += `<p class="muted">Niets te doen: het gewas groeit.</p>`;
       }
     }
@@ -59,10 +63,28 @@ window.AT = window.AT || {};
     return html + `</div>`;
   }
 
+  // bodemkwaliteit, bemesting en vruchtwisseling: bepalen samen de opbrengst
+  function soilHtml(f, sum) {
+    const soilPct = Math.round(f.soil * 100);
+    const col = f.soil > 0.66 ? '#4caf50' : f.soil > 0.4 ? '#e0b84c' : '#d9534f';
+    const prev = G().mainCrop({ crops: sum.prev });
+    const tips = [];
+    if (f.soil < 0.5) tips.push('Bodem raakt uitgeput: rij <b>mest</b> uit (van koeien/schapen).');
+    if (sum.fert < sum.total * 0.5) tips.push('<b>Kunstmest</b> geeft +25% opbrengst.');
+    if (prev) tips.push(`Vorig gewas: <b>${D.crops[prev].name}</b>. Zaai iets anders voor +10% (vruchtwisseling), hetzelfde geeft −10%.`);
+    if (f.damage > 0) tips.push(`Stormschade: −${Math.round(f.damage * 100)}% op dit gewas.`);
+    return `<div class="card soil">
+      <div class="row"><b class="grow">Bodemkwaliteit</b><span>${soilPct}%</span></div>
+      <div class="bar"><div class="fill" style="width:${soilPct}%;background:${col}"></div></div>
+      <div class="muted">Kunstmest op ${pct(sum.fert, sum.total)}% · mest op ${pct(sum.manure, sum.total)}%${sum.avgFactor ? ` · opbrengst ×${sum.avgFactor.toFixed(2).replace('.', ',')}` : ''}</div>
+      ${tips.length ? `<ul class="tips">${tips.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}
+    </div>`;
+  }
+
   // uitleg om het zelf te doen, afhankelijk van wat er op het veld moet gebeuren
   function selfHelp(sum) {
     let step = '';
-    if (sum.ready) step = 'Loop naar je <b>maaidorser</b>, stap in (E), rij naar dit veld en zet het maaibord omlaag (spatie).';
+    if (sum.ready) step = 'Loop naar je <b>maaidorser</b>, stap in (E), rij naar dit veld en zet het maaibord omlaag (spatie).' + (AT.weather.isWet() ? ' <b>Let op: het is nu te nat om te oogsten.</b>' : '');
     else if (sum.plowed) step = 'Koppel een <b>zaaimachine</b> aan je tractor (achteruit ertegen rijden + F), kies het zaaigoed (C), rij hierheen en zet hem omlaag (spatie).';
     else if (sum.stubble) step = 'Stap in je <b>tractor met ploeg</b> (E), rij hierheen en zet de ploeg omlaag (spatie).';
     else return '';
@@ -103,9 +125,10 @@ window.AT = window.AT || {};
     let html = `<div class="card"><b>Laat zaaien</b> <span class="muted">· ${esc(rig.machines.map(m => D.machines[m.type].name).join(' + '))} · ${AT.fmtHours(rig.hours)}</span>`;
     for (const [key, c] of Object.entries(D.crops)) {
       const cost = rig.cost + c.seedCostPerHa * ha;
+      const ok = G().canSowNow(key);
       html += `<div class="row crop-row"><span class="dot" style="background:${c.color}"></span>
-        <span class="grow">${c.name} <span class="muted">${c.growDays} d · ${AT.fmtMoney(cost)}</span></span>
-        <button class="btn small primary" data-action="sow" data-crop="${key}" data-id="${f.id}" ${s.money < cost ? 'disabled' : ''}>Zaai</button></div>`;
+        <span class="grow">${c.name} <span class="muted">${c.growDays} d · ${ok ? AT.fmtMoney(cost) : 'zaaien in ' + c.sow.map(seasonName).join('/')}</span></span>
+        <button class="btn small primary" data-action="sow" data-crop="${key}" data-id="${f.id}" ${!ok || s.money < cost ? 'disabled' : ''}>Zaai</button></div>`;
     }
     return html + '</div>';
   }
@@ -135,7 +158,7 @@ window.AT = window.AT || {};
       if (r.toolDef && r.toolDef.kind === 'seeder') {
         html += `<div class="row crop-pick">Zaaigoed (C):`;
         for (const [key, c] of Object.entries(D.crops)) {
-          html += `<button class="btn small ${p.crop === key ? 'primary' : ''}" data-action="crop" data-crop="${key}">${c.name}</button>`;
+          html += `<button class="btn small ${p.crop === key ? 'primary' : ''}" data-action="crop" data-crop="${key}" title="Zaaien in: ${c.sow.map(seasonName).join(', ')}">${c.name}${G().canSowNow(key) ? '' : ' ✕'}</button>`;
         }
         html += `</div>`;
       }
@@ -144,12 +167,12 @@ window.AT = window.AT || {};
     html += `<div class="card howto"><b>Zo werkt het</b><ul>
       <li><b>WASD</b>: lopen of rijden · <b>Shift</b>: rennen</li>
       <li><b>E</b>: in- of uitstappen (loop tot vlak bij de machine)</li>
-      <li><b>F</b>: werktuig aan- of afkoppelen (rij achteruit tegen de ploeg/zaaimachine)</li>
+      <li><b>F</b>: werktuig aan- of afkoppelen (rij achteruit tegen ploeg, zaaimachine of strooier)</li>
       <li><b>Spatie</b>: werktuig omlaag/omhoog · <b>C</b>: zaaigoed wisselen</li>
     </ul></div>`;
 
     html += `<h3>Jouw machines</h3>`;
-    const order = ['tractor', 'harvester', 'plow', 'seeder'];
+    const order = ['tractor', 'harvester', 'plow', 'seeder', 'spreader', 'manure'];
     const sorted = [...s.machines].sort((a, b) => order.indexOf(D.machines[a.type].kind) - order.indexOf(D.machines[b.type].kind));
     for (const m of sorted) {
       const d = D.machines[m.type];
@@ -169,14 +192,16 @@ window.AT = window.AT || {};
   function machineSpecs(d) {
     if (d.kind === 'tractor') return `${d.power.toFixed(1)}× vermogen · ${Math.round(d.speed * 0.25)} km/u · ${d.fuelPerHour} L/u`;
     if (d.kind === 'harvester') return `${d.width} m breed · ${d.fuelPerHour} L/u`;
+    if (d.kind === 'spreader') return `${d.width} m breed · +25% opbrengst · ${AT.fmtMoney(D.fertCostPerHa)}/ha`;
+    if (d.kind === 'manure') return `${d.width} m breed · betere bodem · ${D.manurePerHa} t mest/ha`;
     return `${d.width} m breed · vereist ${d.minPower >= 2 ? '150+ pk' : '75+ pk'}`;
   }
 
   function renderShop(s) {
     let html = `<h2>Winkel</h2>`;
-    const groups = [['tractor', 'Tractoren'], ['plow', 'Ploegen'], ['seeder', 'Zaaimachines'], ['harvester', 'Maaidorsers']];
+    const groups = [['tractor', 'Tractoren'], ['plow', 'Ploegen'], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting'], ['manure', ''], ['harvester', 'Maaidorsers']];
     for (const [kind, title] of groups) {
-      html += `<h3>${title}</h3>`;
+      if (title) html += `<h3>${title}</h3>`;
       for (const [key, d] of Object.entries(D.machines)) {
         if (d.kind !== kind) continue;
         const owned = s.machines.filter(m => m.type === key).length;
@@ -218,6 +243,75 @@ window.AT = window.AT || {};
           <button class="btn small primary" data-action="sell" data-crop="${key}" ${stock < 0.05 ? 'disabled' : ''}>Alles</button></div>
       </div>`;
     }
+    html += `<h3>Producten</h3>`;
+    let any = false;
+    for (const [key, d] of Object.entries(D.products)) {
+      const st = s.goods[key];
+      if (st < 0.01 && !s.market[key]) continue;
+      if (st < 0.01) continue;
+      any = true;
+      const m = s.market[key];
+      const prev = m.history[m.history.length - 2] ?? m.factor;
+      const trend = m.factor > prev + 0.005 ? '<span class="up">▲</span>' : m.factor < prev - 0.005 ? '<span class="down">▼</span>' : '<span class="muted">■</span>';
+      html += `<div class="card">
+        <div class="row"><b class="grow">${d.name}</b>${sparkline(m.history)} <span class="price">${AT.fmtPrice(key)}/${d.unit} ${trend}</span></div>
+        <div class="row"><span class="grow muted">Voorraad: ${AT.fmtAmount(st, key)} (≈ ${AT.fmtMoney(st * G().price(key))})</span>
+          <button class="btn small primary" data-action="sellGood" data-good="${key}">Verkoop alles</button></div>
+      </div>`;
+    }
+    if (!any) html += `<p class="muted">Nog geen producten. Bouw stallen en fabrieken in de tab Bedrijf.</p>`;
+    return html;
+  }
+
+  // ---------- Bedrijf: dieren & fabrieken ----------
+  const recipe = obj => Object.entries(obj).map(([k, v]) => `${AT.fmtAmount(v, k)} ${AT.farm.goodName(k)}`).join(' + ');
+
+  function renderFarm(s) {
+    let html = `<h2>Bedrijf</h2><p class="muted">Dieren eten graan uit je silo. Fabrieken maken van je oogst iets dat meer waard is.</p><h3>Dieren</h3>`;
+    for (const [key, d] of Object.entries(D.animals)) {
+      const a = s.animals[key];
+      const prod = Object.entries(d.produce).map(([k, v]) => `${AT.fmtAmount(v, k)} ${AT.farm.goodName(k)}`).join(', ');
+      if (!a.owned) {
+        html += `<div class="card"><div class="row"><b class="grow">${d.building}</b>
+          <button class="btn small primary" data-action="buyBuilding" data-key="${key}" ${s.money < d.buildPrice ? 'disabled' : ''}>Bouw ${AT.fmtMoney(d.buildPrice)}</button></div>
+          <div class="muted">Plek voor ${d.capacity} ${d.name.toLowerCase()} · per ${d.one} per dag: ${prod}</div></div>`;
+        continue;
+      }
+      const fi = AT.farm.feedInfo(key);
+      const fedPct = Math.round(a.fed * 100);
+      const days = fi.days === Infinity ? '—' : fi.days > 99 ? '99+' : fi.days.toFixed(1).replace('.', ',');
+      html += `<div class="card"><div class="row"><b class="grow">${d.building}: ${a.count}/${d.capacity} ${d.name.toLowerCase()}</b>
+          <button class="btn small" data-action="look-farm" data-key="${key}">Zoek</button></div>
+        <div class="muted">Per ${d.one} per dag: ${prod} · eet ${AT.fmtNum(d.feedPerDay * 1000, d.feedPerDay < 0.01 ? 1 : 0)} kg ${d.feeds.map(k => D.crops[k].name.toLowerCase()).join('/')}</div>
+        <div class="row"><span class="grow">Gevoerd</span><span class="${fedPct < 60 ? 'warn' : ''}">${fedPct}%</span></div>
+        <div class="bar"><div class="fill grow" style="width:${fedPct}%"></div></div>
+        <div class="muted">${a.count ? `Voer nodig: ${AT.fmtTons(fi.perDay)}/dag · silo genoeg voor ${days} dagen` : 'Nog geen dieren.'}</div>
+        <div class="row wrap">
+          <button class="btn small primary" data-action="buyAnimals" data-key="${key}" data-n="1" ${s.money < d.price || a.count >= d.capacity ? 'disabled' : ''}>+1 (${AT.fmtMoney(d.price)})</button>
+          <button class="btn small primary" data-action="buyAnimals" data-key="${key}" data-n="10" ${s.money < d.price * 10 || a.count >= d.capacity ? 'disabled' : ''}>+10</button>
+          <button class="btn small" data-action="sellAnimals" data-key="${key}" data-n="1" ${a.count ? '' : 'disabled'}>Verkoop 1</button>
+        </div></div>`;
+    }
+    html += `<h3>Fabrieken</h3>`;
+    for (const [key, d] of Object.entries(D.factories)) {
+      const f = s.factories[key];
+      const line = `${recipe(d.in)} → ${recipe(d.out)}`;
+      if (!f.owned) {
+        html += `<div class="card"><div class="row"><b class="grow">${d.name}</b>
+          <button class="btn small primary" data-action="buyFactory" data-key="${key}" ${s.money < d.price ? 'disabled' : ''}>Bouw ${AT.fmtMoney(d.price)}</button></div>
+          <div class="muted">${line} · max ${d.batchesPerDay}× per dag</div></div>`;
+        continue;
+      }
+      html += `<div class="card"><div class="row"><b class="grow">${d.name}</b>
+          <button class="btn small" data-action="look-factory" data-key="${key}">Zoek</button>
+          <button class="btn small ${f.on ? '' : 'primary'}" data-action="toggleFactory" data-key="${key}">${f.on ? 'Zet uit' : 'Zet aan'}</button></div>
+        <div class="muted">${line} · max ${d.batchesPerDay}× per dag · €${d.costPerBatch} energie per keer</div>
+        <div class="${f.running ? '' : 'warn'}">Status: ${esc(f.status || 'start op')}</div></div>`;
+    }
+    html += `<h3>Opslag</h3><div class="card">`;
+    const stocked = Object.entries(D.products).filter(([k]) => s.goods[k] > 0.01);
+    html += stocked.length ? stocked.map(([k, d]) => `<div class="row"><span class="grow">${d.name}</span><span>${AT.fmtAmount(s.goods[k], k)}</span></div>`).join('') : '<span class="muted">Leeg</span>';
+    html += `</div>`;
     return html;
   }
 
@@ -242,7 +336,7 @@ window.AT = window.AT || {};
     return html;
   }
 
-  const TABS = { field: renderField, garage: renderGarage, shop: renderShop, market: renderMarket, goals: renderGoals };
+  const TABS = { field: renderField, garage: renderGarage, shop: renderShop, farm: renderFarm, market: renderMarket, goals: renderGoals };
 
   function renderPanel() {
     const s = AT.state;
@@ -252,7 +346,16 @@ window.AT = window.AT || {};
     el.scrollTop = scroll;
     const next = D.goals.find(g => !s.goalsDone[g.id]);
     $('#goal').innerHTML = next ? `🎯 ${esc(next.text)}` : '🏆 Alle doelen behaald!';
+    renderForecast();
     updateLive();
+  }
+
+  function renderForecast() {
+    const fc = AT.weather.forecast(3);
+    $('#forecast').innerHTML = '<span class="muted">Verwachting:</span> ' + fc.map(d => {
+      const w = D.weatherTypes[d.type];
+      return `<span class="fc" title="Dag ${d.day}: ${w.name} (${D.seasons[d.season].name})">Dag ${d.day} ${w.icon}</span>`;
+    }).join('');
   }
 
   function renderLog() {
@@ -266,7 +369,11 @@ window.AT = window.AT || {};
     const s = AT.state;
     $('#money').textContent = AT.fmtMoney(s.money);
     const h = Math.floor(G().hour()), min = Math.floor((G().hour() % 1) * 6) * 10;
-    $('#clock').textContent = `Dag ${G().day()} · ${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    const W = AT.weather, se = D.seasons[W.season()];
+    $('#clock').textContent = `${se.icon} ${se.name} dag ${W.dayInSeason()} · ${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    const wt = D.weatherTypes[s.weather ? s.weather.type : 'sun'];
+    $('#weather').textContent = `${wt.icon} ${W.temperature()}°C${W.drought() ? ' · droog!' : ''}`;
+    $('#weather').title = `${wt.name} · bodemvocht ${Math.round((s.weather ? s.weather.moisture : 0.6) * 100)}% · jaar ${W.year()}`;
     $('#silo').textContent = `${Math.round(G().siloUsed())} / ${G().siloCapacity()} t`;
     document.querySelectorAll('.speed button').forEach(b => {
       const v = b.dataset.speed;
@@ -316,6 +423,14 @@ window.AT = window.AT || {};
         break;
       }
       case 'exit': G().exitVehicle(); break;
+      case 'sellGood': G().sellGood(a.good); break;
+      case 'buyBuilding': AT.farm.buyBuilding(a.key); break;
+      case 'buyAnimals': AT.farm.buyAnimals(a.key, Number(a.n)); break;
+      case 'sellAnimals': AT.farm.sellAnimals(a.key, Number(a.n)); break;
+      case 'buyFactory': AT.farm.buyFactory(a.key); break;
+      case 'toggleFactory': AT.farm.toggleFactory(a.key); break;
+      case 'look-farm': { const r = D.animals[a.key].pen; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
+      case 'look-factory': { const r = D.factories[a.key].lot; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
       case 'crop': AT.state.player.crop = a.crop; renderPanel(); break;
       case 'reset':
         if (confirm('Weet je zeker dat je opnieuw wilt beginnen? Je voortgang gaat verloren.')) G().reset();
@@ -374,6 +489,7 @@ window.AT = window.AT || {};
       const w = AT.render.screenToWorld(p.x, p.y);
       const id = AT.render.fieldAt(w.x, w.y);
       if (id) return selectField(id);
+      if (AT.render.buildingAt(w.x, w.y)) { activeTab = 'farm'; renderPanel(); return; }
       const Y = D.yard;
       if (w.x >= Y.x && w.x <= Y.x + Y.w && w.y >= Y.y && w.y <= Y.y + Y.h) {
         activeTab = w.y > D.hall.y ? 'garage' : w.x > D.house.x + D.house.w ? 'market' : 'goals';
@@ -412,7 +528,8 @@ window.AT = window.AT || {};
     });
 
     AT.on('change', renderPanel);
-    AT.on('newday', () => { if (activeTab === 'market') renderPanel(); });
+    AT.on('newday', () => { if (activeTab === 'market' || activeTab === 'farm') renderPanel(); else renderForecast(); });
+    AT.on('weather', renderForecast);
     AT.on('log', renderLog);
     renderPanel();
     renderLog();

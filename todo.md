@@ -63,13 +63,22 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [ ] Automatische veldcyclus per veld (herhaal gewas X)
 
 ## 🌦️ Fase 3: Seizoenen, weer en bodem
-- [ ] Seizoenen: zaaien alleen in bepaalde maanden per gewas
-- [ ] Weer: regen (niet ploegen), droogte (lagere opbrengst), hagel/storm (schade)
-- [ ] Weersvoorspelling van 3 dagen
-- [ ] Bodemkwaliteit per veld (voedingsstoffen, bonus bij vruchtwisseling)
-- [ ] Irrigatie
-- [ ] Onkruid, ziektes en plagen
+- [x] Seizoenen (lente, zomer, herfst, winter; 6 dagen elk): elk gewas heeft eigen zaaiseizoenen
+- [x] In de winter groeit bijna niets (alleen wintertarwe, langzaam)
+- [x] Weer: zon, bewolkt, regen, onweer en sneeuw, met weersvoorspelling van 3 dagen
+- [x] Regen = snellere groei, maar oogsten kan pas als het droog is
+- [x] Droogte (lang zonnig in de zomer) = tragere groei en minder opbrengst
+- [x] Onweer geeft stormschade op groeiende/rijpe gewassen
+- [x] Seizoenen zichtbaar: herfstbomen, sneeuw en ijs in de winter; regen, sneeuw, bliksem en wolkenschaduwen
+- [x] Bodemkwaliteit per veld: elke oogst put de bodem uit, mest maakt hem weer beter
+- [x] Kunstmeststrooier (+25% opbrengst) en mestverspreider (betere bodem)
+- [x] Vruchtwisseling: ander gewas = +10%, steeds hetzelfde gewas = −10%
+- [ ] Bodem-pH en kalk strooien
+- [ ] Groenbemester (klaver) als rustgewas om de bodem te herstellen
+- [ ] Irrigatie tegen droogte
+- [ ] Onkruid, ziektes en plagen (spuitmachine)
 - [ ] Rijp gewas verwelkt als je te lang wacht
+- [ ] Rijden in de regen maakt sporen/verdichting in de bodem
 
 ## 🌽 Fase 4: Meer gewassen en producten
 - [ ] Haver, koolzaad, soja, bonen, zonnebloem
@@ -78,13 +87,33 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [ ] Bomen/houtkap
 - [ ] Kassen (groenten, het hele jaar)
 
+**Waarom zou je niet altijd het duurste gewas kiezen?** Elk gewas moet een eigen reden hebben:
+- [x] **Seizoenen**: niet elk gewas mag in elk seizoen gezaaid worden (tarwe in lente/herfst, gerst en maïs in lente/zomer)
+- [x] **Vruchtwisseling**: steeds hetzelfde gewas geeft −10%, wisselen geeft +10%
+- [x] **Bodem**: elk gewas put de bodem anders uit (maïs het meest)
+- [x] **Fabrieken en dieren vragen specifieke gewassen**: brouwerij wil gerst, molen wil tarwe, koeien eten graag maïs
+- [ ] **Marktverzadiging**: als je veel van één gewas verkoopt, zakt de prijs daarvan tijdelijk
+- [ ] **Vraag en contracten**: opdrachten voor een bepaald gewas met een bonusprijs
+- [ ] **Groeitijd vs. opbrengst**: snelle gewassen voor tussendoor, trage voor de grote winst
+- [ ] **Stikstofbinders** (bonen, klaver, soja) maken de bodem juist béter voor het volgende gewas
+- [ ] **Risico**: sommige gewassen kunnen beter tegen droogte of storm
+- [ ] **Machines per gewas**: aardappelen en bieten vragen een eigen rooier (investering)
+
 ## 🐄 Fase 5: Dieren
-- [ ] Koeien (melk), varkens, kippen (eieren), schapen (wol)
-- [ ] Voer maken van eigen oogst (kuilvoer, hooi)
-- [ ] Dierengezondheid en stallen uitbreiden
+- [x] Koeien (melk + mest), kippen (eieren), schapen (wol + mest)
+- [x] Stallen bouwen, dieren kopen/verkopen, dieren lopen rond in de wei
+- [x] Dieren eten graan uit de silo; honger = minder productie
+- [ ] Varkens
+- [ ] Voer zelf naar de stal rijden (voerwagen) in plaats van automatisch
+- [ ] Voer maken van eigen oogst (kuilvoer, hooi, veevoermengerij)
+- [ ] Dierengezondheid, jongen en stallen uitbreiden
 
 ## 🏭 Fase 6: Productie en economie
-- [ ] Fabrieken: bakkerij (meel → brood), molen, oliepers, zuivel
+- [x] Fabrieken: graanmolen (meel), bakkerij (brood van meel + eieren), kaasmakerij (kaas van melk), brouwerij (bier van gerst)
+- [x] Producten verkopen op de markt met schommelende prijzen
+- [ ] Oliepers (koolzaad/zonnebloem → olie), suikerfabriek (bieten → suiker)
+- [ ] Producten zelf met een vrachtwagen naar de fabriek/winkel rijden
+- [ ] Opslagloods met beperkte ruimte voor producten
 - [ ] Contracten/orders met deadline en bonus
 - [ ] Meerdere verkooppunten op de kaart met verschillende prijzen
 - [ ] Leningen bij de bank + rente

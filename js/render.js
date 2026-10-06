@@ -27,13 +27,13 @@ window.AT = window.AT || {};
       c.width = def.w * FS; c.height = def.h * FS;
       const g = c.getContext('2d');
       g.setTransform(FS, 0, 0, FS, 0, 0);
-      layers[def.id] = { canvas: c, ctx: g, vis: new Uint8Array(def.cols * def.rows).fill(255) };
+      layers[def.id] = { canvas: c, ctx: g, vis: new Uint16Array(def.cols * def.rows).fill(65535) };
     }
     trees = placeTrees();
     bg = paintBackground();
     AT.fx.init();
     AT.cellChanged = (id, i) => drawCell(id, i);
-    AT.on('reset', () => { for (const id in layers) layers[id].vis.fill(255); refreshAll(); AT.fx.reset(); cam.free = false; });
+    AT.on('reset', () => { for (const id in layers) layers[id].vis.fill(65535); refreshAll(); AT.fx.reset(); cam.free = false; });
     new ResizeObserver(resize).observe(canvas);
     resize();
     refreshAll();
@@ -106,6 +106,8 @@ window.AT = window.AT || {};
       if (D.fields.some(f => inRect(x, y, f, R * 0.55))) continue;
       if (D.roads.some(r => inRect(x, y, r, R * 0.3))) continue;
       if (inRect(x, y, D.yard, R + 4) || inPond(x, y, R + 6)) continue;
+      if (Object.values(D.animals).some(a => inRect(x, y, a.pen, R + 3))) continue;
+      if (Object.values(D.factories).some(f => inRect(x, y, f.lot, R + 3))) continue;
       if (x < 395 && y > D.yard.y + D.yard.gate.y - D.yard.y - 30 && y < D.yard.gate.y + D.yard.gate.h + 30) continue; // inrit vrijhouden
       if (list.some(t => Math.hypot(t.x - x, t.y - y) < (t.R + R) * 0.75)) continue;
       list.push({ x, y, variant, R, seed: k });
@@ -152,6 +154,12 @@ window.AT = window.AT || {};
       g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rnd() - 0.5) * 3, y - 4 - rnd() * 4); g.stroke();
     }
 
+    // weides voor de dieren: wat frisser gras
+    for (const a of Object.values(D.animals)) {
+      g.fillStyle = 'rgba(140,200,90,0.25)'; g.fillRect(a.pen.x, a.pen.y, a.pen.w, a.pen.h);
+      for (let i = 0; i < 300; i++) { g.fillStyle = i % 2 ? 'rgba(90,150,60,0.4)' : 'rgba(180,220,120,0.4)'; g.fillRect(a.pen.x + rnd() * a.pen.w, a.pen.y + rnd() * a.pen.h, 2, 1); }
+    }
+
     // erf: bestrating met tegels
     const Y = D.yard;
     g.fillStyle = '#bdb6a7'; g.fillRect(Y.x, Y.y, Y.w, Y.h);
@@ -172,6 +180,182 @@ window.AT = window.AT || {};
     g.fillStyle = '#5f9e44'; g.fillRect(H.x - 4, H.y + H.h + 6, H.w + 8, 10);
     for (let i = 0; i < 40; i++) { g.fillStyle = flowers[i % 4]; g.fillRect(H.x + rnd() * H.w, H.y + H.h + 7 + rnd() * 8, 1.6, 1.6); }
     return c;
+  }
+
+  // ---------- seizoenen ----------
+  // kleurlaag over gras/akkers per seizoen; de eerste dag van een seizoen loopt over
+  const SEASON_TINT = [null, 'rgba(230,200,90,0.10)', 'rgba(190,125,45,0.24)', 'rgba(242,246,250,0.78)'];
+  function seasonBlend() {
+    if (!AT.weather) return [[0, 1]];
+    const se = AT.weather.season(), p = AT.weather.seasonProgress();
+    const k = Math.min(1, p * D.daysPerSeason); // eerste dag = overgang
+    return k < 1 ? [[(se + 3) % 4, 1 - k], [se, k]] : [[se, 1]];
+  }
+  function drawSeasonTint(alphaScale = 1) {
+    const v = visibleRect(10);
+    for (const [se, k] of seasonBlend()) {
+      const tint = SEASON_TINT[se];
+      if (!tint || k <= 0) continue;
+      ctx.globalAlpha = k * alphaScale;
+      ctx.fillStyle = tint; ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // de bomen tonen het seizoen waar we het meest in zitten
+  function treeSeason() { const b = seasonBlend(); return b.length > 1 && b[1][1] < 0.5 ? b[0][0] : b[b.length - 1][0]; }
+
+  function drawPondIce() {
+    const ice = seasonBlend().reduce((a, [se, k]) => a + (se === 3 ? k : 0), 0);
+    if (!ice) return;
+    const P = D.pond;
+    ctx.globalAlpha = ice * 0.85;
+    ctx.fillStyle = '#dcebf3'; ctx.beginPath(); ctx.ellipse(P.x, P.y, P.rx, P.ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 0.8;
+    for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(P.x - 80 + k * 30, P.y - 20); ctx.lineTo(P.x - 60 + k * 30, P.y + 15); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- weer ----------
+  const clouds = Array.from({ length: 16 }, (_, k) => ({ x: (k * 397) % WW, y: (k * 613) % WH, r: 90 + (k * 37) % 120, s: 0.6 + (k % 5) * 0.12 }));
+  const drops = Array.from({ length: 450 }, () => ({ x: Math.random(), y: Math.random(), l: 0.6 + Math.random() * 0.6 }));
+  let flash = 0, flashTimer = 3;
+
+  function weatherType() { return AT.state.weather ? AT.state.weather.type : 'sun'; }
+
+  // wolkenschaduwen die over de kaart drijven
+  function drawCloudShadows(dt) {
+    const type = weatherType();
+    const count = { sun: 4, clouds: 12, rain: 16, storm: 16, snow: 14 }[type];
+    for (let k = 0; k < count; k++) {
+      const c = clouds[k];
+      c.x += 14 * c.s * dt; c.y += 5 * c.s * dt;
+      if (c.x - c.r > WW) c.x = -c.r;
+      if (c.y - c.r > WH) c.y = -c.r;
+      const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.r);
+      g.addColorStop(0, 'rgba(20,30,40,0.16)'); g.addColorStop(1, 'rgba(20,30,40,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.ellipse(c.x, c.y, c.r * 1.4, c.r, 0.3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // regen, sneeuw, onweer: in schermcoördinaten
+  function drawPrecipitation(dt) {
+    const type = weatherType();
+    const tint = { clouds: 'rgba(60,70,85,0.10)', rain: 'rgba(40,50,70,0.22)', storm: 'rgba(20,25,45,0.36)', snow: 'rgba(210,220,235,0.12)' }[type];
+    if (tint) { ctx.fillStyle = tint; ctx.fillRect(0, 0, vw, vh); }
+    const paused = AT.state.paused;
+    if (type === 'rain' || type === 'storm') {
+      const n = type === 'storm' ? 450 : 260;
+      ctx.strokeStyle = 'rgba(200,215,235,0.45)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let k = 0; k < n; k++) {
+        const d = drops[k];
+        if (!paused) { d.y += dt * 1.6 * d.l; d.x += dt * 0.25; }
+        if (d.y > 1) { d.y -= 1; d.x = Math.random(); }
+        if (d.x > 1) d.x -= 1;
+        const x = d.x * vw, y = d.y * vh;
+        ctx.moveTo(x, y); ctx.lineTo(x - 4 * d.l, y - 14 * d.l);
+      }
+      ctx.stroke();
+    }
+    if (type === 'snow') {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (let k = 0; k < 220; k++) {
+        const d = drops[k];
+        if (!paused) { d.y += dt * 0.12 * d.l; d.x += Math.sin(time + k) * dt * 0.02; }
+        if (d.y > 1) { d.y -= 1; d.x = Math.random(); }
+        if (d.x > 1) d.x -= 1; if (d.x < 0) d.x += 1;
+        ctx.beginPath(); ctx.arc(d.x * vw, d.y * vh, 1 + d.l, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    if (type === 'storm' && !paused) {
+      flashTimer -= dt;
+      if (flashTimer <= 0) { flash = 1; flashTimer = 3 + Math.random() * 6; }
+    }
+    if (flash > 0) {
+      ctx.fillStyle = `rgba(235,240,255,${(flash * 0.55).toFixed(3)})`; ctx.fillRect(0, 0, vw, vh);
+      flash = Math.max(0, flash - dt * 3);
+    }
+  }
+
+  // ---------- dieren & fabrieken ----------
+  const herds = {};
+  function herd(key) {
+    const d = D.animals[key], a = AT.state.animals[key];
+    const shown = Math.min(a.count, key === 'chickens' ? 40 : 25);
+    const list = herds[key] = herds[key] || [];
+    const P = d.pen, B = d.barn;
+    while (list.length < shown) {
+      let x, y;
+      do { x = P.x + 10 + Math.random() * (P.w - 20); y = P.y + 10 + Math.random() * (P.h - 20); } while (inRect(x, y, B, 6));
+      list.push({ x, y, tx: x, ty: y, a: Math.random() * 6, step: 0, wait: Math.random() * 4 });
+    }
+    list.length = shown;
+    return list;
+  }
+
+  function updateHerd(key, list, dt) {
+    const d = D.animals[key], P = d.pen, B = d.barn;
+    const speed = key === 'chickens' ? 10 : 5;
+    for (const an of list) {
+      if (an.wait > 0) { an.wait -= dt; continue; }
+      const dx = an.tx - an.x, dy = an.ty - an.y, dist = Math.hypot(dx, dy);
+      if (dist < 1) {
+        an.wait = 1 + Math.random() * (key === 'chickens' ? 2 : 6);
+        let x, y;
+        do { x = P.x + 10 + Math.random() * (P.w - 20); y = P.y + 10 + Math.random() * (P.h - 20); } while (inRect(x, y, B, 6));
+        an.tx = an.x + (x - an.x) * 0.3; an.ty = an.y + (y - an.y) * 0.3;
+        continue;
+      }
+      an.a = Math.atan2(dy, dx);
+      an.x += dx / dist * speed * dt; an.y += dy / dist * speed * dt;
+      an.step += dt * 8;
+    }
+  }
+
+  function drawFarmZone(state, dt) {
+    for (const key of Object.keys(D.animals)) {
+      const d = D.animals[key], a = state.animals[key];
+      SP().fence(ctx, d.pen);
+      if (!a.owned) { SP().buildingLot(ctx, d.barn); continue; }
+      SP().barn(ctx, d.barn, key === 'cows' ? '#9c3b2c' : key === 'chickens' ? '#a8834f' : '#7d8a8f');
+      SP().trough(ctx, d.barn.x + d.barn.w + 8, d.barn.y + 10, 34, a.fed > 0.5 && a.count > 0);
+      const list = herd(key);
+      if (!state.paused) updateHerd(key, list, dt);
+      for (const an of list) SP().animal(ctx, key, an.x, an.y, an.a, an.step);
+    }
+    for (const key of Object.keys(D.factories)) {
+      const d = D.factories[key], f = state.factories[key];
+      if (!f.owned) { SP().buildingLot(ctx, d.lot); continue; }
+      SP().factory(ctx, key, d.lot, d.roof, time, f.running && f.on);
+    }
+  }
+
+  // klik op een stal of fabriek
+  function buildingAt(x, y) {
+    for (const key of Object.keys(D.animals)) if (inRect(x, y, D.animals[key].pen, 0)) return { kind: 'animal', key };
+    for (const key of Object.keys(D.factories)) if (inRect(x, y, D.factories[key].lot, 0)) return { kind: 'factory', key };
+    return null;
+  }
+
+  function drawFarmLabels(state) {
+    const items = [
+      ...Object.keys(D.animals).map(k => {
+        const d = D.animals[k], a = state.animals[k];
+        const txt = !a.owned ? `${d.building} · bouw ${AT.fmtMoney(d.buildPrice)}` : `${d.building} · ${a.count}/${d.capacity}${a.count && a.fed < 0.5 ? ' · honger!' : ''}`;
+        return { r: d.pen, txt, bg: !a.owned ? 'rgba(45,106,45,0.92)' : a.count && a.fed < 0.5 ? 'rgba(170,60,30,0.92)' : 'rgba(0,0,0,0.55)' };
+      }),
+      ...Object.keys(D.factories).map(k => {
+        const d = D.factories[k], f = state.factories[k];
+        const txt = !f.owned ? `${d.name} · bouw ${AT.fmtMoney(d.price)}` : `${d.name} · ${f.status || 'start op'}`;
+        return { r: d.lot, txt, bg: !f.owned ? 'rgba(45,106,45,0.92)' : f.running ? 'rgba(0,0,0,0.55)' : 'rgba(150,100,20,0.92)' };
+      }),
+    ];
+    for (const it of items) {
+      const tl = worldToScreen(it.r.x, it.r.y), br = worldToScreen(it.r.x + it.r.w, it.r.y + it.r.h);
+      if (br.x < 0 || br.y < 0 || tl.x > vw || tl.y > vh || br.x - tl.x < 90) continue;
+      pill(it.txt, (tl.x + br.x) / 2, br.y - 26, true, it.bg);
+    }
   }
 
   // ---------- wegen ----------
@@ -250,10 +434,10 @@ window.AT = window.AT || {};
 
   // ---------- velden: cellen tekenen (offscreen) ----------
   function visKey(f, i) {
-    const st = f.cells.state[i], dir = f.cells.dir[i];
-    if (st !== G().ST.SOWN) return st * 2 + dir;
+    const st = f.cells.state[i], dir = f.cells.dir[i], fe = f.cells.fert[i] & 3;
+    if (st !== G().ST.SOWN) return (st * 2 + dir) * 4 + fe;
     const stage = G().isReady(f, i) ? 5 : Math.min(4, Math.floor(G().cellGrowth(f, i) * 5));
-    return 10 + (f.cells.crop[i] * 8 + stage) * 2 + dir;
+    return (10 + (f.cells.crop[i] * 8 + stage) * 2 + dir) * 4 + fe;
   }
 
   const STUBBLE = ['#c9ae6b', '#c3a764', '#cfb576', '#c6aa69'];
@@ -265,8 +449,18 @@ window.AT = window.AT || {};
 
   function drawCell(id, i) {
     const def = G().fieldDef(id), f = G().field(id), L = layers[id], g = L.ctx;
-    const key = visKey(f, i);
-    L.vis[i] = key;
+    const full = visKey(f, i);
+    L.vis[i] = full;
+    drawCellBase(def, g, id, i, full >> 2);
+    // bemesting zichtbaar: witte korrels (kunstmest) en donkere plukjes (mest)
+    const fe = full & 3;
+    if (!fe) return;
+    const x = (i % def.cols) * C, y = Math.floor(i / def.cols) * C, h = hash(id * 7919 + i);
+    if (fe & 2) { g.fillStyle = 'rgba(60,38,20,0.55)'; for (let k = 0; k < 3; k++) g.fillRect(x + ((h >> (k * 3)) & 7), y + ((h >> (k * 3 + 9)) & 7), 1.2, 0.8); }
+    if (fe & 1) { g.fillStyle = 'rgba(255,255,255,0.85)'; for (let k = 0; k < 3; k++) g.fillRect(x + ((h >> (k * 4 + 1)) & 7) + 0.25, y + ((h >> (k * 4 + 13)) & 7) + 0.25, 0.5, 0.5); }
+  }
+
+  function drawCellBase(def, g, id, i, key) {
     const x = (i % def.cols) * C, y = Math.floor(i / def.cols) * C;
     const h = hash(id * 100003 + i);
     const dir = key & 1;
@@ -424,9 +618,11 @@ window.AT = window.AT || {};
   function drawTrees() {
     const v = visibleRect(30);
     const vis = trees.filter(t => t.x > v.x0 && t.x < v.x1 && t.y > v.y0 && t.y < v.y1);
+    const se = treeSeason();
+    const windy = weatherType() === 'storm' ? 4 : weatherType() === 'rain' ? 1.6 : 1;
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    for (const t of vis) SP().treeShadow(ctx, t.x, t.y, t.variant);
-    for (const t of vis) SP().tree(ctx, t.x, t.y, t.variant, Math.sin(time * 1.3 + t.seed) * 0.35);
+    for (const t of vis) SP().treeShadow(ctx, t.x, t.y, t.variant, se);
+    for (const t of vis) SP().tree(ctx, t.x, t.y, t.variant, Math.sin(time * 1.3 * windy + t.seed) * 0.35 * windy, se);
   }
 
   // ---------- machines en boer ----------
@@ -568,7 +764,7 @@ window.AT = window.AT || {};
       const cx = (tl.x + br.x) / 2, cy = (tl.y + br.y) / 2 + 8;
       const sum = sums[def.id];
       if (!f.owned) pill('Te koop ' + AT.fmtMoney(G().fieldPrice(def.id)), cx, cy - 9, true, 'rgba(45,106,45,0.92)');
-      else if (f.job) pill('Loonwerker bezig ' + Math.floor(f.job.progress * 100) + '%', cx, cy - 9, true, 'rgba(44,127,184,0.9)');
+      else if (f.job) pill(f.job.waiting ? 'Loonwerker wacht tot het droog is' : 'Loonwerker bezig ' + Math.floor(f.job.progress * 100) + '%', cx, cy - 9, true, 'rgba(44,127,184,0.9)');
       else if (sum && sum.ready > 0 && sum.growing === 0) pill('Klaar om te oogsten', cx, cy - 9, true, 'rgba(183,121,31,0.92)');
     }
   }
@@ -607,6 +803,16 @@ window.AT = window.AT || {};
       ctx.fillRect(m.x + def.x * s, m.y + def.y * s, def.w * s, def.h * s);
       if (view.selected === def.id) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(m.x + def.x * s, m.y + def.y * s, def.w * s, def.h * s); }
     }
+    for (const key of Object.keys(D.animals)) {
+      const r = D.animals[key].pen;
+      ctx.fillStyle = state.animals[key].owned ? 'rgba(160,110,60,0.8)' : 'rgba(255,255,255,0.15)';
+      ctx.fillRect(m.x + r.x * s, m.y + r.y * s, r.w * s, r.h * s);
+    }
+    for (const key of Object.keys(D.factories)) {
+      const r = D.factories[key].lot;
+      ctx.fillStyle = state.factories[key].owned ? D.factories[key].roof : 'rgba(255,255,255,0.15)';
+      ctx.fillRect(m.x + r.x * s, m.y + r.y * s, r.w * s, r.h * s);
+    }
     for (const mm of state.machines) {
       if (mm.busy || mm.attached) continue;
       ctx.fillStyle = '#ffd25a'; ctx.fillRect(m.x + mm.x * s - 1, m.y + mm.y * s - 1, 2, 2);
@@ -628,6 +834,7 @@ window.AT = window.AT || {};
       lines.push([`${info.kmh} km/u`, '#ffe08a', '700 20px']);
       if (info.tool) lines.push([`${info.tool}: ${info.lowered ? 'OMLAAG (aan het werk)' : 'omhoog'}`, info.lowered ? '#9be15d' : '#ddd', '600 13px']);
       if (info.crop) lines.push([`Zaaigoed: ${info.crop}  (C = wisselen)`, '#ddd', '600 13px']);
+      if (info.extra) lines.push([info.extra, '#ddd', '600 13px']);
       lines.push(['WASD rijden · Spatie werktuig · F koppelen · E uitstappen', '#bbb', '12px']);
     } else {
       lines.push(['Te voet', '#fff', '700 14px']);
@@ -682,27 +889,34 @@ window.AT = window.AT || {};
     ctx.setTransform(dpr * cam.zoom, 0, 0, dpr * cam.zoom, dpr * (vw / 2 - cam.x * cam.zoom), dpr * (vh / 2 - cam.y * cam.zoom));
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(bg, 0, 0);
+    drawSeasonTint();
+    drawPondIce();
     drawRoads();
     drawFields(state, sums);
+    drawSeasonTint(0.45); // rijp/sneeuw ook een beetje op de akkers
     AT.fx.drawTracks(ctx);
     drawWind(sums);
     drawYard(state);
+    drawFarmZone(state, dt);
     drawTrees();
     drawMachines(state);
     drawFarmer(state.player);
     AT.fx.drawParticles(ctx);
+    drawCloudShadows(dt);
     AT.fx.drawBirds(ctx);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawPrecipitation(dt);
     drawLighting(state);
     drawFieldLabels(state, sums);
+    drawFarmLabels(state);
     drawWaypoint(state);
     drawMinimap(state, sums);
     drawHud();
   }
 
   AT.render = {
-    init, draw, view, cam, screenToWorld, eventPos, fieldAt, zoomAt, centerOn,
+    init, draw, view, cam, screenToWorld, eventPos, fieldAt, zoomAt, centerOn, buildingAt,
     inMinimap, minimapToWorld, refreshAll,
   };
 })();

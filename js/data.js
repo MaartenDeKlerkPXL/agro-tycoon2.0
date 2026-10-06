@@ -4,10 +4,10 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 3,
+  version: 4,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
-  world: { w: 2400, h: 1600 },
+  world: { w: 2400, h: 1900 },
   CELL: 8,
 
   start: {
@@ -27,16 +27,92 @@ AT.data = {
   hoursPerSecond: 0.5,
 
   // Gewassen. Prijzen in € per ton, opbrengst in ton per hectare.
+  // sow = seizoenen waarin je mag zaaien (0 lente, 1 zomer, 2 herfst, 3 winter)
+  // winterGrowth = groeisnelheid in de winter (wintertarwe groeit langzaam door)
+  // soilDemand = hoeveel bodemkwaliteit een volledige oogst kost
   crops: {
-    wheat:  { name: 'Tarwe', seedCostPerHa: 120, growDays: 3, yieldPerHa: 8,   basePrice: 220, color: '#e0b84c', growColor: '#7fb24a' },
-    barley: { name: 'Gerst', seedCostPerHa: 100, growDays: 2, yieldPerHa: 6.5, basePrice: 200, color: '#d6c27a', growColor: '#8cbf5a' },
-    corn:   { name: 'Maïs',  seedCostPerHa: 220, growDays: 5, yieldPerHa: 11,  basePrice: 210, color: '#f2cf3a', growColor: '#4f9a3a' },
+    wheat:  { name: 'Tarwe', seedCostPerHa: 120, growDays: 3, yieldPerHa: 8,   basePrice: 220, color: '#e0b84c', growColor: '#7fb24a', sow: [0, 2], winterGrowth: 0.3, soilDemand: 0.08 },
+    barley: { name: 'Gerst', seedCostPerHa: 100, growDays: 2, yieldPerHa: 6.5, basePrice: 200, color: '#d6c27a', growColor: '#8cbf5a', sow: [0, 1], winterGrowth: 0, soilDemand: 0.06 },
+    corn:   { name: 'Maïs',  seedCostPerHa: 220, growDays: 5, yieldPerHa: 11,  basePrice: 210, color: '#f2cf3a', growColor: '#4f9a3a', sow: [0, 1], winterGrowth: 0, soilDemand: 0.12 },
+  },
+
+  // ---------- seizoenen & weer ----------
+  daysPerSeason: 6,
+  seasons: [
+    { name: 'Lente',  icon: '🌱', growth: 1.0,  temp: 13, weather: { sun: 0.35, clouds: 0.3,  rain: 0.3,  storm: 0.05 } },
+    { name: 'Zomer',  icon: '☀️', growth: 1.15, temp: 24, weather: { sun: 0.55, clouds: 0.2,  rain: 0.15, storm: 0.1 } },
+    { name: 'Herfst', icon: '🍂', growth: 0.8,  temp: 12, weather: { sun: 0.2,  clouds: 0.35, rain: 0.38, storm: 0.07 } },
+    { name: 'Winter', icon: '❄️', growth: 0,    temp: 2,  weather: { sun: 0.2,  clouds: 0.35, rain: 0.15, snow: 0.3 } },
+  ],
+  // growth = groeibonus, moisture = verandering bodemvocht per uur, wet = te nat om te oogsten
+  weatherTypes: {
+    sun:    { name: 'Zonnig',  icon: '☀️', growth: 1.0,  moisture: -0.010, temp: 3,  wet: false },
+    clouds: { name: 'Bewolkt', icon: '⛅', growth: 1.0,  moisture: -0.004, temp: 0,  wet: false },
+    rain:   { name: 'Regen',   icon: '🌧️', growth: 1.25, moisture: 0.04,   temp: -3, wet: true },
+    storm:  { name: 'Onweer',  icon: '⛈️', growth: 1.1,  moisture: 0.06,   temp: -4, wet: true, damage: true },
+    snow:   { name: 'Sneeuw',  icon: '🌨️', growth: 0,    moisture: 0.01,   temp: -4, wet: true },
+  },
+  droughtBelow: 0.2, // bodemvocht onder deze waarde = droogte (trage groei, minder opbrengst)
+
+  // ---------- bodem ----------
+  startSoil: 0.75,          // bodemkwaliteit van een nieuw veld (0..1)
+  fertCostPerHa: 90,        // kunstmest per hectare
+  fertBonus: 1.25,          // opbrengst ×1,25 met kunstmest
+  manurePerHa: 3,           // ton mest per hectare
+  manureSoil: 0.3,          // bodemkwaliteit erbij per volledig bemest veld
+  manureBonus: 1.1,
+  rotationBonus: 1.1,       // ander gewas dan vorige keer
+  monoculturePenalty: 0.9,  // zelfde gewas als vorige keer
+
+  // ---------- producten (dieren en fabrieken) ----------
+  products: {
+    milk:   { name: 'Melk',   unit: 'L',  basePrice: 0.55, decimals: 0 },
+    eggs:   { name: 'Eieren', unit: 'st', basePrice: 0.6,  decimals: 0 },
+    wool:   { name: 'Wol',    unit: 'kg', basePrice: 6,    decimals: 0 },
+    manure: { name: 'Mest',   unit: 't',  basePrice: 15,   decimals: 1 },
+    flour:  { name: 'Meel',   unit: 't',  basePrice: 480,  decimals: 1 },
+    bread:  { name: 'Brood',  unit: 'st', basePrice: 1.4,  decimals: 0 },
+    cheese: { name: 'Kaas',   unit: 'kg', basePrice: 9,    decimals: 0 },
+    beer:   { name: 'Bier',   unit: 'L',  basePrice: 1.2,  decimals: 0 },
+  },
+
+  // Dieren: eten graan uit de silo (feeds = voorkeur), produceren per dier per dag
+  animals: {
+    cows: {
+      name: 'Koeien', one: 'koe', building: 'Koeienstal', buildPrice: 25000, capacity: 20, price: 900,
+      feedPerDay: 0.04, feeds: ['corn', 'barley', 'wheat'], produce: { milk: 80, manure: 0.08 },
+      pen: { x: 48, y: 1608, w: 400, h: 272 }, barn: { x: 60, y: 1620, w: 130, h: 80 },
+    },
+    chickens: {
+      name: 'Kippen', one: 'kip', building: 'Kippenhok', buildPrice: 8000, capacity: 200, price: 10,
+      feedPerDay: 0.0006, feeds: ['wheat', 'barley', 'corn'], produce: { eggs: 1.5 },
+      pen: { x: 470, y: 1608, w: 240, h: 272 }, barn: { x: 482, y: 1620, w: 84, h: 56 },
+    },
+    sheep: {
+      name: 'Schapen', one: 'schaap', building: 'Schaapskooi', buildPrice: 12000, capacity: 40, price: 150,
+      feedPerDay: 0.006, feeds: ['barley', 'wheat', 'corn'], produce: { wool: 1, manure: 0.01 },
+      pen: { x: 732, y: 1608, w: 492, h: 272 }, barn: { x: 744, y: 1620, w: 110, h: 70 },
+    },
+  },
+
+  // Fabrieken: verwerken per "batch" in → uit, batchesPerDay als alles op voorraad is
+  factories: {
+    mill:    { name: 'Graanmolen',  price: 45000, in: { wheat: 1 },                out: { flour: 0.85 }, batchesPerDay: 8, costPerBatch: 20,
+               lot: { x: 1290, y: 1612, w: 180, h: 130 }, roof: '#b9a27a' },
+    bakery:  { name: 'Bakkerij',    price: 70000, in: { flour: 0.2, eggs: 40 },   out: { bread: 250 },  batchesPerDay: 6, costPerBatch: 10,
+               lot: { x: 1500, y: 1612, w: 170, h: 120 }, roof: '#c0704a' },
+    dairy:   { name: 'Kaasmakerij', price: 55000, in: { milk: 200 },              out: { cheese: 22 },  batchesPerDay: 8, costPerBatch: 5,
+               lot: { x: 1690, y: 1612, w: 170, h: 120 }, roof: '#7f9cb0' },
+    brewery: { name: 'Brouwerij',   price: 60000, in: { barley: 0.5 },            out: { beer: 300 },   batchesPerDay: 5, costPerBatch: 20,
+               lot: { x: 1930, y: 1612, w: 200, h: 130 }, roof: '#8a5a3c' },
   },
 
   // Machines. kind bepaalt wat ze doen:
   //  tractor   : rijdt en trekt een werktuig (power = vermogen)
   //  plow      : ploegen (stoppel -> geploegd)
   //  seeder    : zaaien (geploegd -> ingezaaid)
+  //  spreader  : kunstmest strooien (meer opbrengst), heeft tractor nodig
+  //  manure    : mest uitrijden (betere bodem), heeft tractor nodig
   //  harvester : oogsten (rijp -> stoppel), zelfrijdend
   // rate   = hectare per speluur als een loonwerker het doet
   // width  = werkbreedte in px als je zelf rijdt
@@ -51,6 +127,9 @@ AT.data = {
     plow_large:   { kind: 'plow',   name: 'Ploeg 6-schaar',  price: 14000, rate: 1.1, width: 32, workSpeed: 50, minPower: 2.0, color: '#566573' },
     seeder_small: { kind: 'seeder', name: 'Zaaimachine 3 m', price: 6000,  rate: 0.7, width: 24, workSpeed: 55, minPower: 1.0, color: '#2874a6' },
     seeder_large: { kind: 'seeder', name: 'Zaaimachine 6 m', price: 20000, rate: 1.5, width: 48, workSpeed: 60, minPower: 2.0, color: '#1b4f72' },
+
+    spreader_fert:   { kind: 'spreader', name: 'Kunstmeststrooier', price: 7000,  rate: 2.0, width: 40, workSpeed: 60, minPower: 1.0, color: '#e67e22' },
+    manure_spreader: { kind: 'manure',   name: 'Mestverspreider',   price: 12000, rate: 0.8, width: 20, workSpeed: 45, minPower: 1.0, color: '#6d4c2f' },
 
     harvester_old: { kind: 'harvester', name: 'Maaidorser (oud)', price: 40000,  rate: 0.5, width: 24, speed: 90,  workSpeed: 40, fuelPerHour: 22, color: '#c9a227' },
     harvester_mid: { kind: 'harvester', name: 'Maaidorser 6 m',   price: 120000, rate: 1.2, width: 40, speed: 100, workSpeed: 50, fuelPerHour: 35, color: '#27ae60' },
@@ -75,9 +154,10 @@ AT.data = {
 
   // Wegen (rechthoeken)
   roads: [
-    { x: 380, y: 0, w: 24, h: 1600 },
-    { x: 1240, y: 0, w: 24, h: 1600 },
-    { x: 1880, y: 0, w: 24, h: 1600 },
+    { x: 380, y: 0, w: 24, h: 1900 },
+    { x: 1240, y: 0, w: 24, h: 1900 },
+    { x: 1880, y: 0, w: 24, h: 1900 },
+    { x: 0, y: 1568, w: 2400, h: 24 },
     { x: 0, y: 560, w: 2400, h: 24 },
     { x: 0, y: 1040, w: 2400, h: 24 },
     { x: 624, y: 584, w: 16, h: 456 },
@@ -129,6 +209,10 @@ AT.data = {
     { id: 'harvest1', text: 'Oogst 1 ha met de maaidorser',                           reward: 2000,  check: s => s.stats.harvestedHa >= 1 },
     { id: 'sell1',    text: 'Verkoop graan op de markt',            reward: 1000,  check: s => s.stats.earned > 0 },
     { id: 'worker',   text: 'Laat een loonwerker een veld doen',    reward: 1000,  check: s => s.stats.workerJobs >= 1 },
+    { id: 'fert',     text: 'Bemest 1 ha (kunstmest of mest) voor meer opbrengst', reward: 2000, check: s => s.stats.fertHa >= 1 },
+    { id: 'rotation', text: 'Oogst 1 ha met vruchtwisseling (ander gewas dan de vorige keer)', reward: 2000, check: s => s.stats.rotationHa >= 1 },
+    { id: 'animals',  text: 'Bouw een stal en koop dieren (tab Bedrijf)', reward: 3000, check: s => Object.values(s.animals).some(a => a.count > 0) },
+    { id: 'factory',  text: 'Bouw een fabriek (tab Bedrijf)',        reward: 5000,  check: s => Object.values(s.factories).some(f => f.owned) },
     { id: 'field3',   text: 'Koop een extra veld',                  reward: 5000,  check: s => s.fields.filter(f => f.owned).length >= 3 },
     { id: 'tractor2', text: 'Koop een tweede tractor',              reward: 5000,  check: s => s.machines.filter(m => AT.data.machines[m.type].kind === 'tractor').length >= 2 },
     { id: 'silo1',    text: 'Vergroot je silo',                     reward: 5000,  check: s => s.siloLevel >= 1 },

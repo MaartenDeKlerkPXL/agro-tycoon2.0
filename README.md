@@ -28,13 +28,18 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 5. Verkoop in de **Markt**, waar de prijzen elke dag veranderen
 6. Geen zin om alles zelf te doen? Huur in de tab **Veld** een **loonwerker** in
 7. Koop extra velden, tractoren en werktuigen
+8. Houd je **bodem** gezond: elke oogst put hem uit. Rij **mest** uit (van je koeien en schapen) en strooi **kunstmest** voor meer opbrengst. Wissel van gewas voor een bonus
+9. Let op **seizoenen en weer**: niet elk gewas mag in elk seizoen gezaaid worden, in de winter groeit bijna niets, en bij regen kun je niet oogsten
+10. In de tab **Bedrijf** bouw je **stallen** (koeien, kippen, schapen) en **fabrieken** (molen, bakkerij, kaasmakerij, brouwerij) die je oogst meer waard maken
 
 ## Projectstructuur
 ```
 index.html        pagina + layout
 css/style.css     opmaak
 js/data.js        ALLE content: gewassen, machines, velden, silo, doelen
-js/game.js        spellogica (cellen, loonwerkers, economie, opslaan)
+js/game.js        spellogica (cellen, bodem, loonwerkers, economie, opslaan)
+js/weather.js     seizoenen, weer, weersvoorspelling, groeisnelheid
+js/farm.js        dieren en fabrieken
 js/vehicle.js     lopen en zelf rijden: besturing + werken onder het werktuig
 js/sprites.js     tekeningen: machines, gebouwen, bomen
 js/effects.js     bandensporen, rook, stof, kaf, meeuwen

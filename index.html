@@ -12,6 +12,7 @@
     <div class="stats">
       <div class="stat"><small>Geld</small><b id="money">€0</b></div>
       <div class="stat"><small>Tijd</small><b id="clock">Dag 1</b></div>
+      <div class="stat"><small>Weer</small><b id="weather">☀️</b></div>
       <div class="stat"><small>Silo</small><b id="silo">0 t</b></div>
     </div>
     <div class="speed" role="group" aria-label="Spelsnelheid">
@@ -24,7 +25,7 @@
 
   <main class="layout">
     <section class="map-wrap">
-      <div id="goal" class="goal-banner"></div>
+      <div class="banner-row"><div id="goal" class="goal-banner"></div><div id="forecast" class="forecast"></div></div>
       <div class="canvas-box"><canvas id="map" aria-label="Kaart van de boerderij"></canvas></div>
       <div id="log" class="log" aria-live="polite"></div>
     </section>
@@ -34,6 +35,7 @@
         <button data-tab="field">Veld</button>
         <button data-tab="garage">Garage</button>
         <button data-tab="shop">Winkel</button>
+        <button data-tab="farm">Bedrijf</button>
         <button data-tab="market">Markt</button>
         <button data-tab="goals">Doelen</button>
       </nav>
@@ -43,6 +45,8 @@
 
   <script src="js/data.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/weather.js"></script>
+  <script src="js/farm.js"></script>
   <script src="js/vehicle.js"></script>
   <script src="js/sprites.js"></script>
   <script src="js/effects.js"></script>

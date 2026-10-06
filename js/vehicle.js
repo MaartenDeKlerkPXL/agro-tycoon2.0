@@ -6,7 +6,7 @@ window.AT = window.AT || {};
   const keys = new Set();
   AT.input = { keys, moved: 0 };
 
-  const OP = { plow: 'plow', seeder: 'sow', harvester: 'harvest' };
+  const OP = { plow: 'plow', seeder: 'sow', harvester: 'harvest', spreader: 'fertilize', manure: 'manure' };
   const KMH = 0.25; // px/s -> km/u voor de snelheidsmeter
 
   const pressed = (...codes) => codes.some(c => keys.has(c));
@@ -100,7 +100,7 @@ window.AT = window.AT || {};
   function workUnderTool(p, r) {
     const op = OP[r.toolDef.kind];
     const cos = Math.cos(p.angle), sin = Math.sin(p.angle);
-    const offset = r.toolDef.kind === 'harvester' ? 15 : -17;
+    const offset = r.toolDef.kind === 'harvester' ? 15 : r.toolDef.kind === 'manure' ? -31 : -17;
     const cx = p.x + cos * offset, cy = p.y + sin * offset;
     const half = r.toolDef.width / 2;
     const dir = Math.abs(cos) > Math.abs(sin) ? 1 : 0; // 1 = rijen liggen horizontaal
@@ -111,8 +111,11 @@ window.AT = window.AT || {};
       if (!hit) continue;
       if (!hit.f.owned) { notOwned = true; continue; }
       const res = G().workCell(hit.f, hit.i, op, p.crop, 'player', dir);
-      if (res === 'nomoney') { warn('Geen geld voor zaaigoed!'); break; }
+      if (res === 'nomoney') { warn(op === 'fertilize' ? 'Geen geld voor kunstmest!' : 'Geen geld voor zaaigoed!'); break; }
       if (res === 'full') { warn('Silo vol! Verkoop graan of vergroot de silo.'); break; }
+      if (res === 'season') { warn(`${D.crops[p.crop].name} kun je nu niet zaaien (wel in: ${D.crops[p.crop].sow.map(i => D.seasons[i].name.toLowerCase()).join(', ')}). Kies ander zaaigoed met C.`); break; }
+      if (res === 'wet') { warn('Te nat om te oogsten. Wacht tot het droog is.'); break; }
+      if (res === 'nomanure') { warn('Geen mest meer. Koeien en schapen maken mest.'); break; }
     }
     if (notOwned) warn('Dit veld is niet van jou. Koop het eerst.');
   }
@@ -158,7 +161,8 @@ window.AT = window.AT || {};
       kmh: Math.round(Math.abs(p.speed) * KMH),
       tool: toolName,
       lowered: p.lowered,
-      crop: r.toolDef && r.toolDef.kind === 'seeder' ? D.crops[p.crop].name : null,
+      crop: r.toolDef && r.toolDef.kind === 'seeder' ? D.crops[p.crop].name + (G().canSowNow(p.crop) ? '' : ' (niet in dit seizoen!)') : null,
+      extra: r.toolDef && r.toolDef.kind === 'manure' ? `Mest: ${AT.fmtTons(AT.state.goods.manure)}` : r.toolDef && r.toolDef.kind === 'spreader' ? `Kunstmest: ${AT.fmtMoney(D.fertCostPerHa)}/ha` : null,
       prompt,
       warn: warnTime > 0 ? warnText : '',
     };

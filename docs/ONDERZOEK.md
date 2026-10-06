@@ -20,7 +20,7 @@
 | Sfeer | Bandensporen op aarde, modder en gras, deeltjes bij het lossen van graan |
 
 **Sterk:** het voelt "echt": machines rijden zichtbaar over het veld en de veldcyclus is concreet (ploegen → zaaien → spuiten → oogsten → transport).
-**Zwakker / kansen voor ons:** het spel draait alleen op desktop (Steam), heeft een vrij technische leercurve, en multiplayer of een browserversie zijn niet aangekondigd.
+**Zwakker / kansen voor ons:** het spel draait alleen op desktop (Steam), heeft een vrij technische leercurve en een browserversie is niet aangekondigd.
 
 ## 2. Concurrenten
 

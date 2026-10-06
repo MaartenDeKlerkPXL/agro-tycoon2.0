@@ -215,3 +215,11 @@ body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; m
 .card.self p { margin: 4px 0; font-size: 14px; }
 .card.howto ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
 .card.howto li { margin: 2px 0; }
+.banner-row { display: flex; gap: 8px; }
+.banner-row .goal-banner { flex: 1; min-width: 0; }
+.forecast { background: var(--panel); border-radius: 8px; padding: 8px 12px; display: flex; gap: 10px; align-items: center; white-space: nowrap; font-size: 14px; }
+.forecast .fc { font-weight: 600; }
+.tabs button { padding: 10px 2px; font-size: 13px; }
+.card.soil .bar { margin: 6px 0; }
+.tips { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.tips li { margin: 2px 0; }
