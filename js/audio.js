@@ -33,6 +33,7 @@ window.AT = window.AT || {};
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     applySettings();
     buildEngine();
+    buildNearby();
     buildAmbient();
   }
   ['keydown', 'pointerdown'].forEach(evt => window.addEventListener(evt, start, { capture: true }));
@@ -135,6 +136,44 @@ window.AT = window.AT || {};
   function starter() {
     burst(0.5, { freq: 300, q: 2, vol: 0.12, bus: 'engine' });
     tone(40, 0.6, { type: 'sawtooth', vol: 0.08, slideTo: 70, bus: 'engine' });
+  }
+
+  // ---------- machines van werknemers in de buurt van de camera ----------
+  let near = null;
+  function buildNearby() {
+    const o = ctx.createOscillator(), lp = filter('lowpass', 260, 2), g = gain(0);
+    o.type = 'sawtooth'; o.frequency.value = 38;
+    const ns = noiseSrc(), nf = filter('bandpass', 600, 0.8), ng = gain(0);
+    chain(o, lp, g, buses.engine); chain(ns, nf, ng, buses.engine);
+    o.start(); ns.start();
+    near = { o, lp, g, nf, ng };
+  }
+  // alle machines die een werknemer nu bestuurt: { x, y, working, kind }
+  function crewPositions() {
+    const s = AT.state, out = [];
+    for (const f of s.fields) {
+      if (!f.job) continue;
+      const pos = AT.game.jobPose(AT.game.fieldDef(f.id), f.job);
+      const m = AT.game.machine(f.job.machines[0]);
+      out.push({ x: pos.x, y: pos.y, working: f.job.phase === 'work' && !f.job.waiting, kind: m ? D.machines[m.type].kind : 'tractor', type: f.job.type });
+    }
+    for (const t of s.trips || []) out.push({ x: t.pos.x, y: t.pos.y, working: false, kind: 'tractor' });
+    for (const d of s.deliveries || []) out.push({ x: d.pos.x, y: d.pos.y, working: false, kind: 'truck' });
+    for (const c of [...(s.chasers || []), ...(s.feedRuns || [])]) out.push({ x: c.pos.x, y: c.pos.y, working: false, kind: 'tractor' });
+    return out;
+  }
+  function updateNearby() {
+    const cam = AT.render ? AT.render.cam : null;
+    if (!cam || !near) return;
+    let best = null, bd = Infinity;
+    for (const c of crewPositions()) { const d = Math.hypot(c.x - cam.x, c.y - cam.y); if (d < bd) { bd = d; best = c; } }
+    const range = 380 / Math.max(0.6, cam.zoom / 1.5);
+    const vol = best && !AT.state.paused ? Math.max(0, 1 - bd / range) ** 1.5 : 0;
+    const spec = ENGINE[best ? best.kind : 'tractor'] || ENGINE.tractor;
+    smooth(near.o.frequency, best && best.working ? spec.idle * 1.5 : spec.top * 0.9, 0.3);
+    smooth(near.g.gain, vol * spec.vol * 0.8, 0.25);
+    smooth(near.nf.frequency, best && best.kind === 'harvester' ? 1400 : 300, 0.3);
+    smooth(near.ng.gain, best && best.working ? vol * 0.06 : 0, 0.25);
   }
 
   // ---------- omgeving ----------
@@ -291,6 +330,7 @@ window.AT = window.AT || {};
   function update(dt) {
     if (!ctx || ctx.state !== 'running') return;
     updateEngine();
+    updateNearby();
     updateAmbient(dt);
     scheduleMusic();
     // voetstappen
@@ -304,7 +344,8 @@ window.AT = window.AT || {};
   // ---------- toetsen en knoppen ----------
   document.addEventListener('keydown', e => {
     if (e.target.closest && e.target.closest('input, select, textarea')) return;
-    if (e.code === 'KeyM' && !e.repeat) toggleMute();
+    if (AT.keys && AT.keys.capturing) return;
+    if (AT.keys ? AT.keys.is(e, 'mute') && !e.repeat : e.code === 'KeyM' && !e.repeat) toggleMute();
   });
   document.addEventListener('click', e => { if (e.target.closest && e.target.closest('button')) play('click'); }, true);
 

@@ -11,6 +11,9 @@ window.AT = window.AT || {};
   const KMH = 1 / D.kmhToPx;       // pixels per seconde -> km/u (snelheidsmeter)
 
   const pressed = (...codes) => codes.some(c => keys.has(c));
+  const held = action => pressed(...AT.keys.codes(action));   // ingestelde toets (+ pijltjes)
+  const K = (e, action) => AT.keys.is(e, action);
+  const kn = action => AT.keys.name(action);
   const G = () => AT.game;
 
   // huidige machine-combinatie als je rijdt
@@ -112,11 +115,11 @@ window.AT = window.AT || {};
 
   // ---------- lopen ----------
   function updateFoot(p, dt) {
-    let dx = (pressed('KeyD', 'ArrowRight') ? 1 : 0) - (pressed('KeyA', 'ArrowLeft') ? 1 : 0);
-    let dy = (pressed('KeyS', 'ArrowDown') ? 1 : 0) - (pressed('KeyW', 'ArrowUp') ? 1 : 0);
+    let dx = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
+    let dy = (held('down') ? 1 : 0) - (held('up') ? 1 : 0);
     const len = Math.hypot(dx, dy);
     if (len) {
-      const sp = (pressed('ShiftLeft', 'ShiftRight') ? D.runSpeed : D.walkSpeed) * PX;
+      const sp = (held('sprint') ? D.runSpeed : D.walkSpeed) * PX;
       tryMove(p, p.x + dx / len * sp * dt, p.y + dy / len * sp * dt, 2.5);
       p.angle = Math.atan2(dy, dx);
       p.speed = sp;
@@ -135,7 +138,7 @@ window.AT = window.AT || {};
     const src = loadSource(r);
     const heavy = src && r.mainDef.kind === 'tractor' ? 1 - 0.25 * (src.load.tons / src.cap) : 1;
     // Shift = een stukje sneller (25%)
-    const boost = pressed('ShiftLeft', 'ShiftRight') ? D.shiftBoost : 1;
+    const boost = held('sprint') ? D.shiftBoost : 1;
     // ondergrond: niet-werkend over akkers en gras gaat langzamer (rupsen hebben er minder last van)
     const surf = surface(p.x, p.y), tracks = !!r.mainDef.tracks;
     let ground = D.surfaceSpeed[surf];
@@ -144,8 +147,8 @@ window.AT = window.AT || {};
     const fuelLeft = G().fuelOf(r.main);
     const dead = fuelLeft <= 0 || r.main.broken;
     const maxSpeed = dead ? 0 : (working ? r.toolDef.workSpeed : r.mainDef.speed * ground) * PX * heavy * boost * G().wearSpeed(r.main);
-    const throttle = (pressed('KeyW', 'ArrowUp') ? 1 : 0) - (pressed('KeyS', 'ArrowDown') ? 1 : 0);
-    const steerIn = (pressed('KeyD', 'ArrowRight') ? 1 : 0) - (pressed('KeyA', 'ArrowLeft') ? 1 : 0);
+    const throttle = (held('up') ? 1 : 0) - (held('down') ? 1 : 0);
+    const steerIn = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
     if (throttle || steerIn) AT.input.moved = 1;
 
     // gas/rem: zware machines trekken rustig op
@@ -464,7 +467,7 @@ window.AT = window.AT || {};
       const tree = AT.farm.nearestTree(p.x, p.y);
       return {
         mode: 'foot',
-        prompt: v ? `E = instappen in ${D.machines[v.type].name}` : AT.farm.nearestRipe(p.x, p.y) ? `H = plukken (${D.plantations[AT.farm.nearestRipe(p.x, p.y).key].plant})` : tree ? 'H = boom kappen' : '',
+        prompt: v ? `${kn('enter')} = instappen in ${D.machines[v.type].name}` : AT.farm.nearestRipe(p.x, p.y) ? `${kn('action')} = plukken (${D.plantations[AT.farm.nearestRipe(p.x, p.y).key].plant})` : tree ? `${kn('action')} = boom kappen` : '',
         warn: warnTime > 0 ? warnText : '',
       };
     }
@@ -472,27 +475,27 @@ window.AT = window.AT || {};
     if (!r) return null;
     let prompt = '';
     if (r.mainDef.kind === 'tractor') {
-      if (r.impl) prompt = `F = ${D.machines[r.impl.type].name} afkoppelen`;
+      if (r.impl) prompt = `${kn('hitch')} = ${D.machines[r.impl.type].name} afkoppelen`;
       else {
         const im = G().nearestImplement(r.main);
-        if (im) prompt = `F = ${D.machines[im.type].name} aankoppelen`;
+        if (im) prompt = `${kn('hitch')} = ${D.machines[im.type].name} aankoppelen`;
       }
     }
     if (r.mainDef.kind === 'truck') {
       const back = truckBack(p), sp = sellPointAt(back);
-      if (inRect(back, D.dock, 14)) prompt = 'U = producten laden';
-      else if (sp) prompt = `U = verkopen bij ${D.sellPoints[sp].name.toLowerCase()}`;
+      if (inRect(back, D.dock, 14)) prompt = `${kn('unload')} = producten laden`;
+      else if (sp) prompt = `${kn('unload')} = verkopen bij ${D.sellPoints[sp].name.toLowerCase()}`;
     }
     const src = loadSource(r);
     if (src) {
       const t = src.load.tons > 0.01 ? unloadTarget(src) : null;
       const where = t => t.kind === 'trailer' ? 'in de aanhanger' : t.kind === 'silo' ? 'in de silo' : t.kind === 'store' ? 'in de opslagloods' : t.kind === 'trough' ? 'in de voerbak' : t.kind === 'factory' ? `bij de ${D.factories[t.key].name.toLowerCase()}` : t.kind === 'sell' ? `bij ${D.sellPoints[t.sp].name.toLowerCase()} (verkopen)` : '';
-      if (p.unloading) prompt = t && t.kind !== 'refuse' ? `Lossen ${where(t)}… (U = stoppen)` : 'Lossen: zoek een aanhanger, stortput of verkooppunt';
-      else if (t && t.kind !== 'refuse') prompt = `U = lossen ${where(t)}`;
+      if (p.unloading) prompt = t && t.kind !== 'refuse' ? `Lossen ${where(t)}… (${kn('unload')} = stoppen)` : 'Lossen: zoek een aanhanger, stortput of verkooppunt';
+      else if (t && t.kind !== 'refuse') prompt = `${kn('unload')} = lossen ${where(t)}`;
       else if (t) prompt = `${t.name} ${t.verb || 'koopt'} dit niet`;
     }
     const toolName = r.toolDef && r.toolDef.kind === 'harvester' ? 'Maaibord' : r.toolDef && r.toolDef.kind !== 'trailer' ? r.toolDef.name : null;
-    if (!prompt && Math.hypot(p.x - D.fuelPump.x, p.y - D.fuelPump.y) < 22 && G().fuelOf(r.main) < G().fuelCap(r.main) - 1) prompt = 'T = tanken';
+    if (!prompt && Math.hypot(p.x - D.fuelPump.x, p.y - D.fuelPump.y) < 22 && G().fuelOf(r.main) < G().fuelCap(r.main) - 1) prompt = `${kn('refuel')} = tanken`;
     const cap = G().fuelCap(r.main), fuel = G().fuelOf(r.main), wear = r.main.wear || 0;
     return {
       mode: 'drive',
@@ -506,7 +509,7 @@ window.AT = window.AT || {};
       loadFrac: src ? src.load.tons / src.cap : 0,
       extra: r.toolDef && r.toolDef.kind === 'manure' ? `Mest: ${AT.fmtTons(AT.state.goods.manure)}` : r.toolDef && r.toolDef.kind === 'spreader' ? `Kunstmest: ${AT.fmtMoney(D.fertCostPerHa)}/ha`
         : r.toolDef && r.toolDef.kind === 'lime' ? `Kalk: ${AT.fmtMoney(D.limeCostPerHa)}/ha` : r.toolDef && r.toolDef.kind === 'sprayer' ? `Spuiten: ${AT.fmtMoney(D.sprayCostPerHa)}/ha (alleen groeiend gewas)` : null,
-      fuel: cap ? `Diesel: ${Math.round(fuel)} / ${cap} L${wear > 0.05 ? ` · slijtage ${Math.round(wear * 100)}%` : ''}${r.main.gps ? ` · GPS ${p.autosteer ? 'AAN' : 'uit'} (G)` : ''}` : null,
+      fuel: cap ? `Diesel: ${Math.round(fuel)} / ${cap} L${wear > 0.05 ? ` · slijtage ${Math.round(wear * 100)}%` : ''}${r.main.gps ? ` · GPS ${p.autosteer ? 'AAN' : 'uit'} (${kn('gps')})` : ''}` : null,
       fuelLow: cap && fuel < cap * 0.15 || wear > 0.85 || r.main.broken,
       prompt,
       warn: warnTime > 0 ? warnText : '',
@@ -514,33 +517,33 @@ window.AT = window.AT || {};
   }
 
   // ---------- toetsenbord ----------
-  const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
   document.addEventListener('keydown', e => {
     if (e.target.closest && e.target.closest('input, select, textarea')) return;
-    if (MOVE_KEYS.includes(e.code)) e.preventDefault();
+    if (AT.keys.capturing) return;   // je stelt net een toets in
+    if (['up', 'down', 'left', 'right', 'tool'].some(a => K(e, a))) e.preventDefault();
     keys.add(e.code);
     if (e.repeat) return;
     const p = AT.state.player;
-    if (e.code === 'Space') toggleTool();
-    if (e.code === 'KeyC') cycleCrop();
-    if (e.code === 'KeyU') toggleUnload();
-    if (e.code === 'KeyG' && p.mode === 'drive') {
+    if (K(e, 'tool')) toggleTool();
+    if (K(e, 'crop')) cycleCrop();
+    if (K(e, 'unload')) toggleUnload();
+    if (K(e, 'gps') && p.mode === 'drive') {
       const r = rig();
       if (!r.main.gps) warn('Deze machine heeft geen GPS. Koop het in de Garage.');
       else { p.autosteer = !p.autosteer; G().log(p.autosteer ? 'GPS aan: laat het stuur los en hij rijdt kaarsrecht.' : 'GPS uit.'); }
     }
-    if (e.code === 'KeyT' && p.mode === 'drive') {
+    if (K(e, 'refuel') && p.mode === 'drive') {
       const r = rig();
       if (Math.hypot(p.x - D.fuelPump.x, p.y - D.fuelPump.y) > 22) warn('Rij naar de dieselpomp op het erf (naast de stortput) om te tanken.');
       else if (!G().refuel(r.main)) warn('De tank is al vol.');
     }
-    if (e.code === 'KeyK') { const res = AT.staff.toggleChaser(); if (typeof res === 'string') warn(res); }
-    if (e.code === 'KeyH' && p.mode === 'foot' && AT.farm.nearestRipe(p.x, p.y)) {
+    if (K(e, 'chaser')) { const res = AT.staff.toggleChaser(); if (typeof res === 'string') warn(res); }
+    if (K(e, 'action') && p.mode === 'foot' && AT.farm.nearestRipe(p.x, p.y)) {
       const hit = AT.farm.nearestRipe(p.x, p.y);
       const got = AT.farm.pick(hit.key, hit.plant, false);
       if (got > 0) { AT.emit('sfx', 'pick'); G().log(`Geplukt: +${AT.fmtAmount(got, D.plantations[hit.key].product)} ${G().goodName(D.plantations[hit.key].product)}.`, 'good'); }
       else warn('De opslagloods is vol.');
-    } else if (e.code === 'KeyH' && p.mode === 'foot') {
+    } else if (K(e, 'action') && p.mode === 'foot') {
       const t = AT.farm.nearestTree(p.x, p.y);
       if (!t) warn(AT.farm.woodlot().owned ? 'Loop naar een volgroeide boom in je bosperceel.' : 'Koop eerst het bosperceel (tab Bedrijf).');
       else {
@@ -548,7 +551,7 @@ window.AT = window.AT || {};
         if (AT.farm.cutTree(t, false)) { AT.emit('sfx', 'chop'); G().log(`Boom gekapt: +${AT.fmtNum(wood, 1)} m³ hout.`, 'good'); if (AT.fx) AT.fx.stream({ x: t.x, y: t.y }, { x: t.x + 6, y: t.y + 4 }, '#8b6a45', 0.3); }
       }
     }
-    if (e.code === 'KeyE') {
+    if (K(e, 'enter')) {
       if (p.mode === 'drive') G().exitVehicle();
       else {
         const v = G().nearestVehicle(p.x, p.y);
@@ -556,7 +559,7 @@ window.AT = window.AT || {};
         else warn('Loop dichter naar een tractor of maaidorser om in te stappen.');
       }
     }
-    if (e.code === 'KeyF') {
+    if (K(e, 'hitch')) {
       const res = G().toggleHitch();
       if (res === 'far') warn('Rij achteruit tot je trekhaak bij een werktuig is.');
       if (res === 'none') warn(p.mode === 'drive' ? 'Een maaidorser heeft geen trekhaak.' : 'Stap eerst in een tractor.');

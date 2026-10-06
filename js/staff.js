@@ -21,12 +21,25 @@ window.AT = window.AT || {};
     const speed = Math.round((0.8 + Math.random() * 0.5) * 100) / 100;   // 0,8–1,3× zo snel
     const fuel = Math.round((0.75 + Math.random() * 0.45) * 100) / 100;  // 0,75–1,2× brandstof
     const salary = Math.round((110 + (speed - 0.8) * 420 + (1.2 - fuel) * 260) / 5) * 5;
-    return { id: 'w' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), name: `${pickOne(FIRST)} ${pickOne(LAST)}`, speed, fuel, salary, xp: 0, status: 'idle', fieldId: null };
+    return { id: 'w' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), name: `${pickOne(FIRST)} ${pickOne(LAST)}`, speed, fuel, salary, xp: 0, status: 'idle', fieldId: null,
+      energy: 1, freeDay: Math.floor(Math.random() * 7), stamina: Math.round((0.8 + Math.random() * 0.4) * 100) / 100 };
   }
 
   function ensure() {
     const s = S();
     if (!s.staff) s.staff = { employees: [], candidates: [], candidatesDay: 0, allowExternal: true };
+    const st = s.staff;
+    if (st.hours == null) st.hours = [6, 22];        // werktijden
+    if (st.nightShift == null) st.nightShift = false;  // ook buiten werktijd (duurder)
+    if (st.carter == null) st.carter = true;           // chauffeur met kipper meesturen bij oogsten
+    for (const w of st.employees.concat(st.candidates)) {
+      if (w.energy == null) w.energy = 1;
+      if (w.freeDay == null) w.freeDay = Math.floor(Math.random() * 7);
+      if (w.stamina == null) w.stamina = 1;
+    }
+    if (!s.chasers) s.chasers = [];
+    if (s.chaser) { s.chasers.push(s.chaser); delete s.chaser; }
+    if (!s.feedRuns) s.feedRuns = [];
     if (!s.queue) s.queue = [];
     if (!s.trips) s.trips = [];
     if (!s.deliveries) s.deliveries = [];
@@ -46,7 +59,19 @@ window.AT = window.AT || {};
 
   const level = w => Math.min(D.staff.maxLevel, 1 + Math.floor(w.xp / D.staff.jobsPerLevel));
   // effectieve snelheid: talent + ervaring
-  const workSpeed = w => w.external ? 1 : w.speed * (1 + (level(w) - 1) * 0.05);
+  // effectieve snelheid: talent + ervaring, en wie moe is werkt trager
+  const workSpeed = w => w.external ? 1 : w.speed * (1 + (level(w) - 1) * 0.05) * (w.energy < 0.3 ? 0.8 : 1);
+  const DAYS = ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'];
+  const weekday = () => (G().day() - 1) % 7;
+  const dayName = i => DAYS[i];
+  // waarom kan deze werknemer nu geen nieuwe klus beginnen? (null = hij kan)
+  function offDuty(w) {
+    const st = S().staff, h = G().hour();
+    if (w.freeDay === weekday()) return `vrije dag (${dayName(w.freeDay)})`;
+    if (!st.nightShift && (h < st.hours[0] || h >= st.hours[1])) return `buiten werktijd (${st.hours[0]}:00–${st.hours[1]}:00)`;
+    if (w.energy < 0.15) return 'moe, rust uit';
+    return null;
+  }
 
   function hire(id) {
     const s = S(), c = s.staff.candidates.find(x => x.id === id);
@@ -71,13 +96,13 @@ window.AT = window.AT || {};
   function workerById(id) { return id === 'ext' ? EXTERNAL : employee(id); }
 
   function freeWorker() {
-    const free = S().staff.employees.filter(w => w.status === 'idle');
+    const free = S().staff.employees.filter(w => w.status === 'idle' && !offDuty(w));
     if (free.length) return free.sort((a, b) => workSpeed(b) - workSpeed(a))[0];
     return S().staff.allowExternal ? EXTERNAL : null;
   }
 
   function payday() {
-    const s = S(), total = s.staff.employees.reduce((a, w) => a + w.salary, 0);
+    const s = S(), total = s.staff.employees.reduce((a, w) => a + w.salary, 0) * (s.staff.nightShift ? 1.4 : 1);
     if (total > 0) {
       G().spend(total);
       G().log(`Lonen betaald aan ${s.staff.employees.length} werknemer(s): ${AT.fmtMoney(total)}.`, 'money');
@@ -133,8 +158,27 @@ window.AT = window.AT || {};
     const rig = G().bestRig(t.task, t.fieldId, t.crop);
     if (!rig) return { wait: G().missingFor(t.task, t.fieldId, t.crop) };
     const worker = freeWorker();
-    if (!worker) return { wait: 'wacht op een vrije werknemer' };
+    if (!worker) return { wait: whyNoWorker() };
     return { ok: true, worker };
+  }
+
+  function whyNoWorker() {
+    const emps = S().staff.employees;
+    if (!emps.length) return 'wacht op een werknemer (neem iemand aan of sta loonwerkers toe)';
+    const idle = emps.filter(w => w.status === 'idle');
+    if (!idle.length) return 'iedereen is bezig';
+    return 'wacht: ' + [...new Set(idle.map(offDuty))].join(', ');
+  }
+
+  // energie: werken maakt moe, rusten (vooral 's nachts) laadt weer op
+  function updateEnergy(dtHours) {
+    const h = G().hour(), night = h < 6 || h >= 22;
+    for (const w of S().staff.employees) {
+      if (w.status === 'idle') w.energy = Math.min(1, w.energy + dtHours * (night ? 0.16 : 0.1));
+      else w.energy = Math.max(0, w.energy - dtHours * 0.06 / (w.stamina || 1));
+      if (w.energy < 0.2 && !w.tiredWarned) { w.tiredWarned = true; G().log(`${w.name} is moe en werkt trager. Na deze klus rust hij/zij uit.`, 'warn'); }
+      if (w.energy > 0.6) w.tiredWarned = false;
+    }
   }
 
   function processQueue() {
@@ -205,7 +249,9 @@ window.AT = window.AT || {};
       else if (sum.plowed > half) {
         const hasSpreader = s.machines.some(m => D.machines[m.type].kind === 'spreader');
         const crop = f.auto.crop === 'rotate' ? rotationCrop(f) : f.auto.crop;
-        if (f.auto.fert && hasSpreader && sum.needFert > half) enqueue(f.id, 'fertilize', null, true);
+        const manureNeed = D.manurePerHa * G().fieldDef(f.id).ha * sum.needManure / sum.total;
+        if (f.auto.manure && hasKind('manure') && sum.needManure > half && s.goods.manure >= manureNeed) enqueue(f.id, 'manure', null, true);
+        else if (f.auto.fert && hasSpreader && sum.needFert > half) enqueue(f.id, 'fertilize', null, true);
         else if (!crop) msg = 'geen gewas dat nu gezaaid kan worden';
         else if (!G().canSowNow(crop)) msg = `wacht op de zaaimaand van ${D.crops[crop].name.toLowerCase()}`;
         else enqueue(f.id, 'sow', crop, true);
@@ -423,62 +469,104 @@ window.AT = window.AT || {};
     if (G().palletsUsed() > G().warehouseCapacity() * 0.5) startDelivery(true);
   }
 
-  // ---------- chauffeur: tractor + kipper rijdt naast je maaidorser (K) ----------
-  // De maaidorser lost tijdens het rijden in de kipper. Is de kipper vol, dan rijdt de
-  // chauffeur naar de silo, lost en komt terug. Nog een keer K = de chauffeur gaat naar huis.
+  // ---------- chauffeur: tractor + kipper rijdt naast een maaidorser ----------
+  // Bij jou (K) of automatisch bij een werknemer die oogst. De maaidorser lost tijdens het rijden.
+  // Is de kipper vol, dan rijdt de chauffeur naar de silo, lost en komt terug.
   const kindOf = m => D.machines[m.type].kind;
-  function toggleChaser() {
-    ensure();
-    const s = S(), r = AT.vehicle.rig();
-    if (s.chaser) {
-      s.chaser.dismiss = true;
-      if (s.chaser.phase === 'follow' || s.chaser.phase === 'come') goDeliver(s.chaser);
-      G().log(`${s.chaser.workerName} brengt de kipper terug${G().getLoad(G().machine(s.chaser.trailer)).tons > 0.01 ? ' en lost eerst in de silo' : ''}.`);
-      return true;
-    }
-    if (!r || r.mainDef.kind !== 'harvester') return 'Stap eerst in een maaidorser, dan kun je met K een chauffeur met kipper roepen.';
+  // vrije tractor + kipper (eventueel losse kipper koppelen aan een vrije tractor)
+  function freeCart() {
+    const s = S();
     let tr = s.machines.find(m => kindOf(m) === 'tractor' && !m.busy && !m.broken && m.impl && kindOf(G().machine(m.impl)) === 'trailer' && !G().machine(m.impl).busy);
-    let trailer = tr ? G().machine(tr.impl) : null;
-    if (!tr) {
-      const trailers = s.machines.filter(m => kindOf(m) === 'trailer' && !m.busy && !m.attached);
-      for (const tl of trailers) {
-        tr = s.machines.find(m => kindOf(m) === 'tractor' && !m.busy && !m.broken && !m.impl && D.machines[m.type].power >= D.machines[tl.type].minPower);
-        if (tr) { trailer = tl; break; }
-      }
-      if (!tr) return 'Geen vrije tractor met kipper (of losse kipper + vrije tractor).';
-      tr.impl = trailer.uid; trailer.attached = tr.uid;
+    if (tr) return { tr, trailer: G().machine(tr.impl) };
+    for (const tl of s.machines.filter(m => kindOf(m) === 'trailer' && !m.busy && !m.attached)) {
+      tr = s.machines.find(m => kindOf(m) === 'tractor' && !m.busy && !m.broken && !m.impl && D.machines[m.type].power >= D.machines[tl.type].minPower);
+      if (tr) return { tr, trailer: tl, attach: true };
     }
-    const worker = freeWorker();
-    if (!worker) return 'Geen vrije werknemer voor de chauffeursrol.';
+    return null;
+  }
+  function startChaser(harvesterUid, worker, forJob = null) {
+    const s = S(), cart = freeCart();
+    if (!cart) return null;
+    const { tr, trailer } = cart;
+    if (cart.attach) { tr.impl = trailer.uid; trailer.attached = tr.uid; }
     tr.busy = 'chaser'; trailer.busy = 'chaser';
     const home = { x: tr.x, y: tr.y, angle: tr.angle };
-    const c = { tractor: tr.uid, trailer: trailer.uid, harvester: r.main.uid, workerId: worker.id, workerName: worker.name, external: !!worker.external,
-      home, phase: 'come', pos: { ...home }, seg: 0, dist: 0, dismiss: false };
+    const c = { id: 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), tractor: tr.uid, trailer: trailer.uid, harvester: harvesterUid,
+      workerId: worker.id, workerName: worker.name, external: !!worker.external, forJob, home, phase: 'come', pos: { ...home }, seg: 0, dist: 0, dismiss: false };
     c.path = route(home, chaserTarget(c));
-    s.chaser = c;
+    s.chasers.push(c);
     if (!worker.external) worker.status = 'chaser';
-    G().log(`${worker.name} komt met de ${D.machines[tr.type].name} en ${D.machines[trailer.type].name} naast je rijden. De maaidorser lost tijdens het rijden.`, 'good');
+    return c;
+  }
+  const playerChaser = () => { const p = S().player; return (S().chasers || []).find(c => !c.forJob && c.harvester === p.vehicle); };
+  function toggleChaser() {
+    ensure();
+    const s = S(), r = AT.vehicle.rig(), mine = playerChaser();
+    if (mine) {
+      mine.dismiss = true;
+      if (mine.phase === 'follow' || mine.phase === 'come') goDeliver(mine);
+      G().log(`${mine.workerName} brengt de kipper terug${G().getLoad(G().machine(mine.trailer)).tons > 0.01 ? ' en lost eerst in de silo' : ''}.`);
+      return true;
+    }
+    if (!r || r.mainDef.kind !== 'harvester') return 'Stap eerst in een maaidorser, dan kun je een chauffeur met kipper roepen.';
+    if (!freeCart()) return 'Geen vrije tractor met kipper (of losse kipper + vrije tractor).';
+    const worker = freeWorker();
+    if (!worker) return 'Geen vrije werknemer voor de chauffeursrol (' + whyNoWorker() + ').';
+    const c = startChaser(r.main.uid, worker);
+    G().log(`${worker.name} komt met de ${D.machines[G().machine(c.tractor).type].name} en ${D.machines[G().machine(c.trailer).type].name} naast je rijden. De maaidorser lost tijdens het rijden.`, 'good');
     AT.emit('change');
     return true;
   }
+  // chauffeur voor een werknemer die gaat oogsten (als er een vrije kipper en werknemer is)
+  function jobChaser(fieldId, harvesterUid) {
+    const s = S();
+    if (!s.staff.carter || !freeCart()) return null;
+    const worker = freeWorker();
+    if (!worker) return null;
+    const c = startChaser(harvesterUid, worker, fieldId);
+    if (c) G().log(`${worker.name} rijdt met de kipper mee naast de maaidorser op Veld ${fieldId}.`);
+    return c;
+  }
+  // positie van de maaidorser: jij rijdt, een werknemer oogst (job), of hij staat stil
+  function harvesterPose(c) {
+    const h = G().machine(c.harvester), p = S().player;
+    if (!h) return null;
+    if (p.mode === 'drive' && p.vehicle === c.harvester) return { x: p.x, y: p.y, angle: p.angle };
+    if (typeof h.busy === 'number') {
+      const f = G().field(h.busy);
+      if (f && f.job) return G().jobPose(G().fieldDef(f.id), f.job);
+    }
+    return { x: h.x, y: h.y, angle: h.angle };
+  }
   // waar de tractor moet rijden: kipper precies onder de losbuis (links van de maaidorser)
   function chaserTarget(c) {
-    const h = G().machine(c.harvester), p = S().player;
-    const driving = p.mode === 'drive' && p.vehicle === c.harvester;
-    const x = driving ? p.x : h.x, y = driving ? p.y : h.y, a = driving ? p.angle : h.angle;
+    const hp = harvesterPose(c) || c.pos;
+    const { x, y, angle: a } = hp;
     const L = D.machines[G().machine(c.trailer).type].length;
     const ax = x + Math.cos(a) * -2 - Math.sin(a) * -26, ay = y + Math.sin(a) * -2 + Math.cos(a) * -26;
     const back = 12.5 + 3 + L / 2;
-    return { x: ax + Math.cos(a) * back, y: ay + Math.sin(a) * back, angle: a };
+    return { x: ax + Math.cos(a) * back, y: ay + Math.sin(a) * back, angle: a, ax, ay };
   }
   const pitPoint2 = () => ({ x: D.siloPit.x + D.siloPit.w / 2, y: D.siloPit.y + D.siloPit.h + 30 });
   function goDeliver(c) { c.phase = 'deliver'; c.path = route(c.pos, pitPoint2()); c.seg = 0; }
+  // graan in de silo; past het niet, dan naar de graanhandel
+  function depositGrain(load, who) {
+    const s = S();
+    if (!load || load.tons < 0.01 || !load.crop) return;
+    const room = G().siloRoom(), toSilo = Math.min(load.tons, room);
+    if (toSilo > 0) { s.silo[load.crop] += toSilo; s.stats.deliveredTons += toSilo; }
+    const rest = load.tons - toSilo;
+    if (rest > 0.01) { const r = G().sellAt('trader', load.crop, rest); G().log(`Silo vol: ${who} verkocht ${AT.fmtTons(rest)} aan de graanhandel (${AT.fmtMoney(r.money)}).`, 'money'); }
+    if (toSilo > 0.01) G().log(`${who} heeft ${AT.fmtTons(toSilo)} ${G().goodName(load.crop)} in de silo gelost.`, 'good');
+    load.tons = 0; load.crop = null;
+  }
 
-  function updateChaser(dtSec) {
-    const s = S(), c = s.chaser;
-    if (!c) return;
+  function updateChaser(c, dtSec) {
+    const s = S();
     const tr = G().machine(c.tractor), tl = G().machine(c.trailer), h = G().machine(c.harvester);
-    if (!tr || !tl) { s.chaser = null; return; }
+    if (!tr || !tl) { s.chasers = s.chasers.filter(x => x !== c); return; }
+    // de klus waarvoor hij meereed is klaar
+    if (c.forJob && !c.dismiss && (!h || h.busy !== c.forJob)) { c.dismiss = true; if (c.phase !== 'deliver' && c.phase !== 'home') goDeliver(c); }
     const speed = D.machines[tr.type].speed * D.kmhToPx * Math.min(s.speed, 20);
     const T = G().getLoad(tl), cap = G().loadCap(tl);
     if (c.phase === 'come') {
@@ -498,29 +586,19 @@ window.AT = window.AT || {};
         // overladen tijdens het rijden
         const L = G().getLoad(h);
         if (d < 8 && L.tons > 0.01 && (!T.crop || T.tons < 0.001 || T.crop === L.crop) && T.tons < cap - 0.01) {
-          const amt = Math.min(L.tons, cap - T.tons, D.unloadRate.harvester * dtSec);
+          const amt = Math.min(L.tons, cap - T.tons, D.unloadRate.harvester * dtSec * Math.min(s.speed, 20));
+          const crop = L.crop;
           L.tons -= amt; if (L.tons < 0.001) { L.tons = 0; L.crop = null; }
-          T.crop = L.crop || T.crop; T.tons += amt;
+          T.crop = crop; T.tons += amt;
           s.stats.chaserTons = (s.stats.chaserTons || 0) + amt;
           c.overloading = true;
-          if (AT.fx) {
-            const a = tg.angle, p = s.player, hx = p.vehicle === c.harvester ? p.x : h.x, hy = p.vehicle === c.harvester ? p.y : h.y;
-            const from = { x: hx + Math.cos(a) * -2 - Math.sin(a) * -26, y: hy + Math.sin(a) * -2 + Math.cos(a) * -26 };
-            AT.fx.stream(from, G().trailerPose(tl).center, G().goodColor(T.crop), dtSec);
-          }
+          if (AT.fx) AT.fx.stream({ x: tg.ax, y: tg.ay }, G().trailerPose(tl).center, G().goodColor(T.crop), dtSec);
         } else c.overloading = false;
         if (T.tons >= cap * 0.95) { G().log(`${c.workerName}: kipper vol (${AT.fmtTons(T.tons)}), ik breng hem naar de silo.`); goDeliver(c); }
       }
     } else if (c.phase === 'deliver') {
       if (moveAlong(c, speed * dtSec)) {
-        if (T.tons > 0.01) {
-          const room = G().siloRoom(), toSilo = Math.min(T.tons, room);
-          if (toSilo > 0) { s.silo[T.crop] += toSilo; s.stats.deliveredTons += toSilo; }
-          const rest = T.tons - toSilo;
-          if (rest > 0.01) { const r = G().sellAt('trader', T.crop, rest); G().log(`Silo vol: ${c.workerName} verkocht ${AT.fmtTons(rest)} aan de graanhandel (${AT.fmtMoney(r.money)}).`, 'money'); }
-          G().log(`${c.workerName} heeft ${AT.fmtTons(toSilo)} ${G().goodName(T.crop)} in de silo gelost.`, 'good');
-          T.tons = 0; T.crop = null;
-        }
+        depositGrain(T, c.workerName);
         if (c.dismiss || !h) { c.phase = 'home'; c.path = route(c.pos, c.home); }
         else { c.phase = 'come'; c.path = route(c.pos, chaserTarget(c)); }
         c.seg = 0;
@@ -532,7 +610,7 @@ window.AT = window.AT || {};
         G().spend(c.dist / 1000 * 0.4 * D.fuelPrice + (c.external ? 120 : 0), c.external ? 'loonwerk' : 'brandstof');
         const w = employee(c.workerId);
         if (w) { w.status = 'idle'; w.xp++; }
-        s.chaser = null;
+        s.chasers = s.chasers.filter(x => x !== c);
         AT.emit('change');
         return;
       }
@@ -540,20 +618,108 @@ window.AT = window.AT || {};
     c.dist += speed * dtSec;
     Object.assign(tr, { x: c.pos.x, y: c.pos.y, angle: c.pos.angle });
   }
+  const chaserFor = harvesterUid => (S().chasers || []).find(c => c.harvester === harvesterUid && !c.dismiss);
+
+  // ---------- voerbak vullen: werknemer brengt voer met tractor + kipper ----------
+  function feedChoice(key) {
+    const d = D.animals[key];
+    return d.feeds.find(k => (D.crops[k] || k === 'hay' || k === 'silage' || k === 'feedmix') && G().stock(k) > 0.05) || null;
+  }
+  function startFeedRun(key, quiet = false) {
+    ensure();
+    const s = S(), d = D.animals[key], a = AT.farm.animal(key);
+    const fail = msg => { if (!quiet) G().log(msg, 'warn'); return msg; };
+    if (!a.owned) return fail('Je hebt deze stal nog niet.');
+    if (s.feedRuns.some(r => r.key === key)) return fail('Er is al iemand onderweg met voer.');
+    const room = d.trough * D.barnLevels[a.level] - AT.farm.troughTons(key);
+    if (room < 0.2) return fail('De voerbak zit al (bijna) vol.');
+    const feed = feedChoice(key);
+    if (!feed) return fail(`Geen voer op voorraad voor de ${d.name.toLowerCase()}.`);
+    if (!freeCart()) return fail('Geen vrije tractor met kipper.');
+    const worker = freeWorker();
+    if (!worker) return fail('Geen vrije werknemer (' + whyNoWorker() + ').');
+    const { tr, trailer, attach } = freeCart();
+    if (attach) { tr.impl = trailer.uid; trailer.attached = tr.uid; }
+    tr.busy = 'feed'; trailer.busy = 'feed';
+    const home = { x: tr.x, y: tr.y, angle: tr.angle };
+    const loadPt = D.crops[feed] ? pitPoint2() : { x: D.dock.x + D.dock.w / 2, y: D.dock.y + D.dock.h + 12 };
+    const run = { id: 'f' + Date.now().toString(36), key, feed, tractor: tr.uid, trailer: trailer.uid, workerId: worker.id, workerName: worker.name, external: !!worker.external,
+      home, phase: 'load', pos: { ...home }, seg: 0, dist: 0, path: inYard(home) && inYard(loadPt) ? [home, loadPt] : route(home, loadPt) };
+    s.feedRuns.push(run);
+    if (!worker.external) worker.status = 'feed';
+    if (!quiet) G().log(`${worker.name} haalt ${G().goodName(feed)} voor de ${d.building.toLowerCase()}.`);
+    AT.emit('change');
+    return true;
+  }
+  function troughPoint(key) {
+    const t = AT.farm.troughRect(key);
+    return { x: t.x + t.w / 2, y: t.y + t.h / 2 + 30 };
+  }
+  function updateFeedRun(run, dtSec) {
+    const s = S(), tr = G().machine(run.tractor), tl = G().machine(run.trailer);
+    if (!tr || !tl) { s.feedRuns = s.feedRuns.filter(x => x !== run); return; }
+    const speed = D.machines[tr.type].speed * D.kmhToPx * Math.min(s.speed, 20) * 0.8;
+    if (moveAlong(run, speed * dtSec)) {
+      const d = D.animals[run.key], a = AT.farm.animal(run.key), L = G().getLoad(tl);
+      if (run.phase === 'load') {
+        const room = d.trough * D.barnLevels[a.level] - AT.farm.troughTons(run.key);
+        const amt = Math.min(G().loadCap(tl), room, G().stock(run.feed));
+        G().take(run.feed, amt);
+        L.crop = run.feed; L.tons = amt;
+        const gate = AT.farm.penGate(run.key), pen = d.pen;
+        const from = { x: run.pos.x, y: run.pos.y }, gatePt = { x: (gate.x0 + gate.x1) / 2, y: pen.y - 14 };
+        run.path = [...(inYard(from) ? [from, ...route(from, gatePt).slice(1)] : route(from, gatePt)), troughPoint(run.key)];
+        run.seg = 0; run.phase = 'deliver';
+      } else if (run.phase === 'deliver') {
+        const put = AT.farm.fillTrough(run.key, L.crop, L.tons);
+        if (put > 0.01) G().log(`${run.workerName} heeft ${AT.fmtTons(put)} ${G().goodName(L.crop)} in de voerbak van de ${d.building.toLowerCase()} gedaan.`, 'good');
+        L.tons -= put; if (L.tons < 0.01) { L.tons = 0; L.crop = null; }
+        const gate = AT.farm.penGate(run.key);
+        run.path = [{ x: run.pos.x, y: run.pos.y }, { x: (gate.x0 + gate.x1) / 2, y: d.pen.y - 14 }, ...route({ x: (gate.x0 + gate.x1) / 2, y: d.pen.y - 14 }, run.home).slice(1)];
+        run.seg = 0; run.phase = 'home';
+      } else {
+        // wat over is gaat terug in de voorraad
+        if (L.tons > 0.01 && L.crop) { if (D.crops[L.crop]) s.silo[L.crop] += L.tons; else G().addGood(L.crop, L.tons); L.tons = 0; L.crop = null; }
+        Object.assign(tr, { busy: null, x: run.home.x, y: run.home.y, angle: run.home.angle });
+        tl.busy = null;
+        G().spend(run.dist / 1000 * 0.4 * D.fuelPrice + (run.external ? 80 : 0), run.external ? 'loonwerk' : 'brandstof');
+        const w = employee(run.workerId);
+        if (w) { w.status = 'idle'; w.xp++; }
+        s.feedRuns = s.feedRuns.filter(x => x !== run);
+        AT.emit('change');
+        return;
+      }
+    }
+    run.dist += speed * dtSec;
+    Object.assign(tr, { x: run.pos.x, y: run.pos.y, angle: run.pos.angle });
+  }
+  // stallen met "werknemer vult de voerbak": bijvullen als hij onder de 35% komt
+  function autoFeedRuns() {
+    const s = S();
+    for (const key of Object.keys(D.animals)) {
+      const a = s.animals[key];
+      if (!a || !a.owned || !a.workerFeed || !a.count) continue;
+      const cap = D.animals[key].trough * D.barnLevels[a.level || 0];
+      if (AT.farm.troughTons(key) < cap * 0.35 && !s.feedRuns.some(r => r.key === key)) startFeedRun(key, true);
+    }
+  }
 
   // ---------- elke frame ----------
   let queueTimer = 0, autoTimer = 0;
   function update(dtSec) {
     ensure();
     queueTimer += dtSec; autoTimer += dtSec;
-    if (autoTimer > 1) { autoTimer = 0; autoStep(); autoDeliver(); }
+    if (autoTimer > 1) { autoTimer = 0; autoStep(); autoDeliver(); autoFeedRuns(); }
     updateDeliveries(dtSec);
-    updateChaser(dtSec);
+    for (const c of [...S().chasers]) updateChaser(c, dtSec);
+    for (const r of [...S().feedRuns]) updateFeedRun(r, dtSec);
+    const s = S();
+    if (!s.paused) updateEnergy(dtSec * D.hoursPerSecond * s.speed * ((s.settings && s.settings.timeScale) || 1));
     if (queueTimer > 0.4) { queueTimer = 0; processQueue(); }
   }
 
   AT.staff = {
     ensure, update, hire, fire, refreshCandidates, enqueue, removeTask, moveTask, setAuto, rotationCrop,
-    workerById, freeWorker, level, workSpeed, payday, route, moveAlong, TASK_LABEL, startDelivery, toggleChaser,
+    workerById, freeWorker, level, workSpeed, payday, route, moveAlong, TASK_LABEL, startDelivery, toggleChaser, jobChaser, chaserFor, depositGrain, startFeedRun, offDuty, dayName, whyNoWorker, playerChaser,
   };
 })();

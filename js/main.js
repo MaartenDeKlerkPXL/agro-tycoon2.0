@@ -19,6 +19,7 @@
     AT.game.tick(dt);
     AT.render.draw(AT.state, dt);
     if (AT.audio) AT.audio.update(dt);
+    if (AT.tutorial) AT.tutorial.update(dt);
     liveTimer += dt;
     if (liveTimer > 0.1) { AT.ui.updateLive(liveTimer); liveTimer = 0; }
     requestAnimationFrame(frame);

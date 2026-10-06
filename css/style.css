@@ -291,3 +291,17 @@ label.check { align-items: flex-start; gap: 8px; margin: 10px 0; cursor: pointer
 label.check input { margin-top: 4px; }
 .bar.thin { height: 6px; margin: 3px 0 6px; }
 .row.small { font-size: 13px; }
+
+/* ---------- uitleg (eerste keer) ---------- */
+.tutorial { position: absolute; left: 12px; bottom: 12px; max-width: 380px; background: rgba(255,250,235,.97); color: var(--ink);
+  border: 2px solid #e0b84c; border-radius: 10px; padding: 10px 12px; box-shadow: 0 6px 20px rgba(0,0,0,.25); z-index: 5; font-size: 14px; }
+.tutorial p { margin: 4px 0 8px; line-height: 1.35; }
+.tut-step { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #8a6a10; font-weight: 700; }
+/* ---------- instellingen ---------- */
+.keys-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.keys-table td { padding: 3px 4px; border-bottom: 1px solid var(--line); }
+.keys-table td:last-child { text-align: right; }
+.keycap { display: inline-block; min-width: 26px; padding: 2px 7px; border: 1px solid #b9b2a2; border-bottom-width: 3px; border-radius: 6px; background: #fff; font-weight: 700; text-align: center; font-size: 13px; }
+.keycap.wait { background: #ffe9a8; border-color: #e0b84c; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.slot { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; margin: 6px 0; background: #fff; }

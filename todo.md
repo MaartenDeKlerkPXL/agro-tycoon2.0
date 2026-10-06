@@ -75,9 +75,9 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Taken in een wachtrij zetten ("ploeg veld 3, daarna zaaien met maïs"), volgorde aanpassen
 - [x] Automatische veldcyclus per veld: vast gewas of wisselbouw, eventueel kunstmest voor het zaaien
 - [x] Externe loonwerker als er niemand vrij is (aan/uit)
-- [ ] Werknemers lossen zelf graan met een aanhanger (nu gaat het direct naar de silo)
-- [ ] Werknemers voeren dieren en rijden mest uit (dieren-taken)
-- [ ] Werktijden en vrije dagen; werknemers worden moe
+- [x] Werknemers oogsten met een echte bunker: een tweede werknemer rijdt met de kipper mee (overladen tijdens het rijden), anders rijdt de maaidorser zelf naar de silo
+- [x] Werknemers vullen de voerbak met tractor + kipper (los of automatisch onder 35%) en rijden mest uit (automatisch beheer: "mest uitrijden voor het zaaien")
+- [x] Werktijden (instelbaar, nachtwerk +40% loon), één vrije dag per week, werknemers worden moe en werken dan trager
 
 ## 🌦️ Fase 3: Seizoenen, weer en bodem
 - [x] Seizoenen (lente, zomer, herfst, winter) met 12 maanden van 2 dagen: elk gewas heeft eigen zaaimaanden
@@ -161,11 +161,11 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 
 ## 🎨 Fase 8: Presentatie en gemak
 - [x] Geluid: motoren, werktuigen, wind/regen/onweer, vogels, krekels, dieren, effecten en rustige muziek (🔊-knop, M = dempen)
-- [ ] Geluid van machines van werknemers in de buurt
-- [ ] Opslaan exporteren/importeren (bestand) + meerdere saves
-- [ ] Instelling voor de daglengte (nu vast: 1 seconde = 1 minuut)
-- [ ] Uitleg in het spel bij de eerste keer (pijlen naar tractor, veld, stortput)
-- [ ] Toetsen zelf instellen
+- [x] Geluid van machines van werknemers in de buurt van de camera
+- [x] 3 opslagplekken + exporteren/importeren naar een bestand (⚙️ Instellingen)
+- [x] Daglengte instellen: een speldag duurt 6, 12, 24 of 48 minuten bij 1×
+- [x] Uitleg bij de eerste keer: 9 stappen met een stuiterende pijl naar tractor, veld, zaaimachine, maaidorser en stortput (overslaan of opnieuw tonen kan)
+- [x] Toetsen zelf instellen (pijltjes werken altijd)
 
 ## 🛠️ Techniek
 - [ ] Unit tests voor `game.js` (economie, cycli) en een vaste speltest in de browser

@@ -21,6 +21,7 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 | T | Tanken bij de rode dieselpomp op het erf |
 | G | GPS aan/uit (rijdt zelf recht; in te bouwen in de Garage) |
 | K | In de maaidorser: chauffeur met kipper roepen of naar huis sturen |
+| ⚙️ | Instellingen: opslagplekken, exporteren/importeren, daglengte, **toetsen zelf instellen**, uitleg opnieuw |
 | M | Geluid dempen (🔊-knop rechtsboven voor volume, muziek en omgeving) |
 | Scroll / slepen | Zoomen / rondkijken |
 | P | Pauze |
@@ -51,6 +52,8 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 22. Je **botst** tegen gebouwen, hekken en bomen; over akkers en gras rij je langzamer. Weides hebben een poort aan de bovenkant
 23. Roep in de maaidorser met **K** een **chauffeur met kipper**: hij rijdt naast je, de maaidorser lost tijdens het rijden en hij brengt het graan naar de silo
 24. **Cultivator** (snel), **rol** (+6%) en **stenenraper** (ploegen haalt stenen boven). Breng oogst met een kipper naar de **stortplaats van je eigen fabriek** voor 10% meer product
+25. **Personeel** heeft werktijden, een vrije dag per week en wordt moe. Bij het oogsten rijdt een tweede werknemer met de kipper mee; werknemers vullen ook voerbakken en rijden mest uit
+26. Nieuw? Een **uitleg** met pijlen helpt je de eerste oogst binnen te halen (opnieuw tonen via ⚙️)
 
 ## Projectstructuur
 ```
@@ -66,6 +69,8 @@ js/sprites.js     tekeningen: machines, gebouwen, bomen
 js/effects.js     bandensporen, rook, stof, kaf, meeuwen
 js/render.js      tekenen: wereld, camera, velden, licht, minimap, HUD
 js/ui.js          zijpaneel, topbalk, logboek
+js/keys.js        instelbare toetsen
+js/tutorial.js    uitleg bij de eerste keer (stappen + pijl op de kaart)
 js/audio.js       geluid (alles live opgewekt): motoren, omgeving, effecten, muziek
 js/main.js        opstarten + game loop
 docs/ONDERZOEK.md onderzoek naar Agro Tycoon en concurrenten

@@ -33,7 +33,7 @@ window.AT = window.AT || {};
     bg = paintBackground();
     AT.fx.init();
     AT.cellChanged = (id, i) => drawCell(id, i);
-    AT.on('reset', () => { for (const id in layers) layers[id].vis.fill(0xffffffff); refreshAll(); AT.fx.reset(); cam.free = false; });
+    AT.on('reset', () => { if (AT.tutorial) AT.tutorial.render(); for (const id in layers) layers[id].vis.fill(0xffffffff); refreshAll(); AT.fx.reset(); cam.free = false; });
     new ResizeObserver(resize).observe(canvas);
     resize();
     refreshAll();
@@ -1022,11 +1022,11 @@ window.AT = window.AT || {};
     };
     for (const f of state.fields) {
       if (!f.job) continue;
-      drawCrew(f.job.machines, G().jobPose(G().fieldDef(f.id), f.job), f.job.phase !== 'to', f.job.type);
+      drawCrew(f.job.machines, G().jobPose(G().fieldDef(f.id), f.job), f.job.phase === 'work' && !f.job.waiting, f.job.type);
     }
     for (const tr of state.trips || []) drawCrew(tr.machines, tr.pos, false, tr.type);
-    if (state.chaser) {
-      const c = state.chaser, t = G().machine(c.tractor), tl = G().machine(c.trailer);
+    for (const c of [...(state.chasers || []), ...(state.feedRuns || [])]) {
+      const t = G().machine(c.tractor), tl = G().machine(c.trailer);
       if (t && tl) SP().machine(ctx, t.type, c.pos.x, c.pos.y, c.pos.angle, { implType: tl.type, implLoad: tl.load, lowered: false, wheel: time * 30, t: time, lights, beacon: (time * 2) % 1 < 0.5 });
     }
     for (const dv of state.deliveries || []) {
@@ -1093,6 +1093,7 @@ window.AT = window.AT || {};
     }
     for (const tr of state.trips || []) list.push({ x: tr.pos.x, y: tr.pos.y, a: tr.pos.angle, cone: true });
     for (const dv of state.deliveries || []) list.push({ x: dv.pos.x, y: dv.pos.y, a: dv.pos.angle, cone: true });
+    for (const c of [...(state.chasers || []), ...(state.feedRuns || [])]) list.push({ x: c.pos.x, y: c.pos.y, a: c.pos.angle, cone: true });
     for (const L of LAMPS) list.push({ x: L.x, y: L.y, r: 60 });
     list.push({ x: D.house.x + D.house.w / 2, y: D.house.y + D.house.h + 6, r: 34 });
     return list;
@@ -1159,7 +1160,7 @@ window.AT = window.AT || {};
       if (!f.owned) pill('Te koop ' + AT.fmtMoney(G().fieldPrice(def.id)), cx, cy - 9, true, 'rgba(45,106,45,0.92)');
       else if (f.job) {
         const who = f.job.workerName || 'Loonwerker';
-        const txt = f.job.phase === 'to' ? `${who} is onderweg` : f.job.waiting ? `${who} wacht tot het droog is` : `${who}: ${Math.floor(f.job.progress * 100)}%`;
+        const txt = f.job.phase === 'to' ? `${who} is onderweg` : f.job.waiting ? `${who} ${typeof f.job.waiting === 'string' ? f.job.waiting : 'wacht tot het droog is'}` : f.job.phase === 'unload' ? `${who} lost in de silo` : f.job.phase === 'back' ? `${who} rijdt terug naar het veld` : `${who}: ${Math.floor(f.job.progress * 100)}%`;
         pill(txt, cx, cy - 9, true, 'rgba(44,127,184,0.9)');
       } else if (f.auto && f.auto.on) pill('🤖 Automatisch' + (f.auto.status ? ': ' + f.auto.status : ''), cx, cy - 9, true, 'rgba(0,0,0,0.5)');
       else if (sum && sum.growing && Math.max(f.weeds || 0, f.disease || 0, f.pests || 0) > D.pests.warnAt) {
@@ -1247,10 +1248,12 @@ window.AT = window.AT || {};
       if (info.extra) lines.push([info.extra, '#ddd', '600 13px']);
       if (info.load) lines.push([info.load, info.loadFrac > 0.95 ? '#ffb38a' : '#ffe08a', '700 13px']);
       if (info.fuel) lines.push([info.fuel, info.fuelLow ? '#ffb38a' : '#ddd', '600 13px']);
-      lines.push(['WASD rijden · Shift sneller · Spatie werktuig · F koppelen · U lossen · T tanken · E uitstappen', '#bbb', '12px']);
+      const k = a => AT.keys.name(a);
+      lines.push([`${k('up')}${k('left')}${k('down')}${k('right')} rijden · ${k('sprint')} sneller · ${k('tool')} werktuig · ${k('hitch')} koppelen · ${k('unload')} lossen · ${k('refuel')} tanken · ${k('enter')} uitstappen`, '#bbb', '12px']);
     } else {
       lines.push(['Te voet', '#fff', '700 14px']);
-      lines.push(['WASD lopen · Shift sneller · E instappen', '#bbb', '12px']);
+      const k = a => AT.keys.name(a);
+      lines.push([`${k('up')}${k('left')}${k('down')}${k('right')} lopen · ${k('sprint')} sneller · ${k('enter')} instappen`, '#bbb', '12px']);
       lines.push(['Slepen = rondkijken · scroll = zoomen', '#bbb', '12px']);
     }
     let w = 0;
@@ -1313,6 +1316,7 @@ window.AT = window.AT || {};
     drawTrees();
     drawMachines(state);
     drawFarmer(state.player);
+    if (AT.tutorial) AT.tutorial.drawWorld(ctx, time, cam.zoom);
     AT.fx.drawParticles(ctx);
     drawCloudShadows(dt);
     AT.fx.drawBirds(ctx);

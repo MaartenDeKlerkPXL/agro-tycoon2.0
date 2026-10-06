@@ -4,7 +4,7 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 10,
+  version: 11,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
   world: { w: 2700, h: 1900 },
@@ -399,7 +399,7 @@ AT.data = {
     { id: 'truck',    text: 'Breng producten met de vrachtwagen naar de supermarkt', reward: 3000, check: s => s.stats.truckDeliveries >= 1 },
     { id: 'lease',    text: 'Pacht een veld (goedkoper beginnen dan kopen)', reward: 1000, check: s => s.fields.some(f => f.leased) },
     { id: 'factory',  text: 'Bouw een fabriek (tab Bedrijf)',        reward: 5000,  check: s => Object.values(s.factories).some(f => f.owned) },
-    { id: 'trough',   text: 'Vul zelf een voerbak: rij een kipper met voer naar een stal en los (U)', reward: 2000, check: s => (s.stats.troughTons || 0) >= 0.5 },
+    { id: 'trough',   text: 'Vul een voerbak met een kipper (zelf met U, of laat een werknemer het doen)', reward: 2000, check: s => (s.stats.troughTons || 0) >= 0.5 },
     { id: 'young',    text: 'Laat je dieren jongen krijgen (goed voeren en gezond houden)', reward: 2000, check: s => (s.stats.births || 0) >= 1 },
     { id: 'field3',   text: 'Koop een extra veld',                  reward: 5000,  check: s => s.fields.filter(f => f.owned).length >= 3 },
     { id: 'hire',     text: 'Neem een werknemer aan (tab Team)',   reward: 2000,  check: s => s.staff && s.staff.employees.length >= 1 },

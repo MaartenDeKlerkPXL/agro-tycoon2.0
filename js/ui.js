@@ -198,6 +198,7 @@ window.AT = window.AT || {};
       <div class="row wrap">
         <select data-auto="crop" data-id="${f.id}">${opts.map(([k, n]) => `<option value="${k}" ${a.crop === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
         <label><input type="checkbox" data-auto="fert" data-id="${f.id}" ${a.fert ? 'checked' : ''}> kunstmest voor het zaaien</label>
+        <label><input type="checkbox" data-auto="manure" data-id="${f.id}" ${a.manure ? 'checked' : ''}> mest uitrijden voor het zaaien (als er genoeg mest is)</label>
       </div></div>`;
   }
 
@@ -277,7 +278,7 @@ window.AT = window.AT || {};
         <div class="bar thin"><div class="fill" style="width:${fp}%;background:${fp < 15 ? '#d9534f' : '#e0b84c'}"></div></div>`;
       html += `<div class="row wrap"><button class="btn" data-action="exit">Uitstappen (E)</button>
         ${cap && fp < 99 ? `<button class="btn small" data-action="fuelService" data-uid="${r.main.uid}">Tankservice (${AT.fmtMoney(D.fuelService)} + diesel)</button>` : ''}
-        ${r.mainDef.kind === 'harvester' ? `<button class="btn small ${s.chaser ? '' : 'primary'}" data-action="chaser">${s.chaser ? 'Chauffeur naar huis (K)' : '🚜 Chauffeur met kipper (K)'}</button>` : ''}</div></div>`;
+        ${r.mainDef.kind === 'harvester' ? `<button class="btn small ${AT.staff.playerChaser() ? '' : 'primary'}" data-action="chaser">${AT.staff.playerChaser() ? `Chauffeur naar huis (${AT.keys.name('chaser')})` : `🚜 Chauffeur met kipper (${AT.keys.name('chaser')})`}</button>` : ''}</div></div>`;
     }
     html += `<div class="card howto"><b>Zo werkt het</b><ul>
       <li><b>WASD</b>: lopen of rijden · <b>Shift</b>: een stukje sneller</li>
@@ -567,12 +568,24 @@ window.AT = window.AT || {};
     if (!st.employees.length) html += `<p class="muted">Nog niemand in dienst. Kies hieronder een kandidaat.</p>`;
     for (const w of st.employees) {
       const job = w.status === 'job' && w.fieldId ? G().field(w.fieldId).job : null;
-      const where = w.status === 'job' ? `${job && job.phase === 'to' ? 'onderweg naar' : 'werkt op'} Veld ${w.fieldId}` : w.status === 'trip' ? 'rijdt terug naar het erf' : w.status === 'delivery' ? 'levert met de vrachtwagen' : w.status === 'chaser' ? 'rijdt met de kipper naast je maaidorser' : 'vrij';
+      const off = w.status === 'idle' ? AT.staff.offDuty(w) : null;
+      const where = w.status === 'job' ? `${job && job.phase === 'to' ? 'onderweg naar' : job && job.phase === 'unload' ? 'lost in de silo voor' : 'werkt op'} Veld ${w.fieldId}` : w.status === 'trip' ? 'rijdt terug naar het erf' : w.status === 'delivery' ? 'levert met de vrachtwagen'
+        : w.status === 'chaser' ? 'rijdt met de kipper naast een maaidorser' : w.status === 'feed' ? 'brengt voer naar de stal' : off ? off : 'vrij, klaar voor een klus';
+      const en = Math.round((w.energy ?? 1) * 100);
       html += `<div class="card"><div class="row"><b class="grow">👷 ${esc(w.name)}</b><span class="badge">niveau ${AT.staff.level(w)}</span></div>
-        <div class="muted">Snelheid ${pctDelta(AT.staff.workSpeed(w))} · brandstof ${pctDelta(w.fuel)} · ${AT.fmtMoney(w.salary)}/dag</div>
-        <div class="row"><span class="grow ${w.status === 'idle' ? '' : 'up'}">${where}</span>
+        <div class="muted">Snelheid ${pctDelta(AT.staff.workSpeed(w))} · brandstof ${pctDelta(w.fuel)} · ${AT.fmtMoney(w.salary)}/dag · vrij op ${AT.staff.dayName(w.freeDay)}</div>
+        <div class="row small"><span class="grow">Energie${en < 30 ? ' · <b class="warn">moe</b> (werkt trager)' : ''}</span><span>${en}%</span></div>
+        <div class="bar thin"><div class="fill" style="width:${en}%;background:${en > 60 ? '#4caf50' : en > 30 ? '#e0b84c' : '#d9534f'}"></div></div>
+        <div class="row"><span class="grow ${w.status === 'idle' && !off ? '' : w.status === 'idle' ? 'muted' : 'up'}">${where}</span>
         <button class="btn small" data-action="fire" data-w="${w.id}" ${w.status === 'idle' ? '' : 'disabled'}>Ontslaan</button></div></div>`;
     }
+    const hrs = st.hours || [6, 22];
+    const hourOpts = (sel, from, to) => Array.from({ length: to - from + 1 }, (_, i) => from + i).map(h => `<option value="${h}" ${h === sel ? 'selected' : ''}>${h}:00</option>`).join('');
+    html += `<div class="card"><b>Werktijden</b>
+      <div class="row wrap small">van <select data-team="hour0">${hourOpts(hrs[0], 4, 10)}</select> tot <select data-team="hour1">${hourOpts(hrs[1], 16, 24)}</select>
+        <label class="row small"><input type="checkbox" data-team="night" ${st.nightShift ? 'checked' : ''}> ook 's nachts (+40% loon)</label></div>
+      <label class="row small"><input type="checkbox" data-team="carter" ${st.carter !== false ? 'checked' : ''}> <span class="grow">Bij het oogsten rijdt een tweede werknemer met tractor + kipper mee (anders rijdt de maaidorser zelf naar de silo als de bunker vol is)</span></label>
+      <p class="muted">Werken maakt moe; wie moe is werkt trager en rust daarna uit. Iedereen heeft één vrije dag per week. Buiten werktijd beginnen ze geen nieuwe klus.</p></div>`;
     html += `<h3>Sollicitanten</h3>`;
     for (const c of st.candidates) {
       html += `<div class="card row"><div class="grow"><b>${esc(c.name)}</b>
@@ -631,11 +644,14 @@ window.AT = window.AT || {};
         <div class="row"><span class="grow">Gezondheid${a.sick ? ' · <b class="warn">ziek!</b>' : ''}</span><span class="${hPct < 60 ? 'warn' : ''}">${hPct}%</span></div>
         <div class="bar thin"><div class="fill" style="width:${hPct}%;background:${hPct > 70 ? '#4caf50' : hPct > 40 ? '#e0b84c' : '#d9534f'}"></div></div>
         <div class="muted">Voerbak: ${inTrough} (max ${AT.fmtTons(troughCap)}) · ${a.count ? `nodig ${AT.fmtTons(fi.perDay)}/dag · genoeg voor ${days} dagen` : 'nog geen dieren'}</div>
-        <label class="row small"><input type="checkbox" data-afeed="${key}" ${a.autoFeed ? 'checked' : ''}> <span class="grow">Automatisch voeren uit silo/loods (+${AT.fmtMoney(D.feedServicePerTon)}/t). Uit = zelf de voerbak vullen met een kipper (U).</span></label>
+        <label class="row small"><input type="checkbox" data-afeed="${key}" ${a.autoFeed ? 'checked' : ''}> <span class="grow">Voerdienst: automatisch voeren uit silo/loods (+${AT.fmtMoney(D.feedServicePerTon)}/t). Uit = de voerbak vullen met een kipper (zelf met U, of door een werknemer).</span></label>
+        <label class="row small"><input type="checkbox" data-wfeed="${key}" ${a.workerFeed ? 'checked' : ''}> <span class="grow">Een werknemer vult de voerbak met tractor + kipper als hij onder 35% komt</span></label>
+        ${(s.feedRuns || []).filter(r => r.key === key).map(r => `<div class="muted">🚜 ${esc(r.workerName)} ${r.phase === 'load' ? 'haalt voer' : r.phase === 'deliver' ? 'brengt ' + G().goodName(r.feed) : 'rijdt terug'}</div>`).join('')}
         <div class="row wrap">
           <button class="btn small primary" data-action="buyAnimals" data-key="${key}" data-n="1" ${s.money < d.price || a.count >= cap ? 'disabled' : ''}>+1 (${AT.fmtMoney(d.price)})</button>
           <button class="btn small primary" data-action="buyAnimals" data-key="${key}" data-n="10" ${s.money < d.price * 10 || a.count >= cap ? 'disabled' : ''}>+10</button>
           <button class="btn small" data-action="sellAnimals" data-key="${key}" data-n="${key === 'chickens' ? 10 : 1}" ${a.count ? '' : 'disabled'}>Verkoop ${key === 'chickens' ? 10 : 1} (${AT.fmtMoney(d.sellPrice * (key === 'chickens' ? 10 : 1) * (0.5 + 0.5 * a.health))})</button>
+          <button class="btn small" data-action="feedRun" data-key="${key}" ${(s.feedRuns || []).some(r => r.key === key) ? 'disabled' : ''}>Laat voerbak vullen</button>
           <button class="btn small ${a.sick || a.health < 0.7 ? 'primary' : ''}" data-action="vet" data-key="${key}" ${a.count && s.money >= AT.farm.vetCost(key) ? '' : 'disabled'}>Dierenarts ${AT.fmtMoney(AT.farm.vetCost(key))}</button>
           ${nextLevel ? `<button class="btn small" data-action="expandBarn" data-key="${key}" ${s.money < AT.farm.expandCost(key) ? 'disabled' : ''}>Stal uitbreiden → ${d.capacity * D.barnLevels[a.level + 1]} (${AT.fmtMoney(AT.farm.expandCost(key))})</button>` : ''}
         </div>
@@ -809,6 +825,71 @@ window.AT = window.AT || {};
     $('#modal').hidden = false;
   }
 
+  // ---------- instellingen: opslaan, daglengte, toetsen, uitleg ----------
+  const TIME_SCALES = [[4, 6], [2, 12], [1, 24], [0.5, 48]];   // [schaal, minuten per speldag bij 1×]
+  let capture = null;   // actie waarvoor je net een nieuwe toets kiest
+  function renderSettings() {
+    const s = AT.state, ts = (s.settings && s.settings.timeScale) || 1;
+    const fmtDate = t => t ? new Date(t).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    const slots = G().listSlots().map(({ n, info }) => `<div class="slot"><b>${n}</b><span class="grow">${info
+      ? `${esc(info.name || 'Spel ' + n)}<br><span class="muted">dag ${info.day} · ${AT.fmtMoney(info.money)} · ${info.fields} velden · ${fmtDate(info.savedAt)}</span>`
+      : '<span class="muted">leeg</span>'}</span>
+      <button class="btn small primary" data-set="saveSlot" data-n="${n}">Opslaan</button>
+      <button class="btn small" data-set="loadSlot" data-n="${n}" ${info ? '' : 'disabled'}>Laden</button>
+      <button class="btn small" data-set="delSlot" data-n="${n}" ${info ? '' : 'disabled'} title="Wissen">✕</button></div>`).join('');
+    const keys = AT.keys.ACTIONS.map(([a, label]) => `<tr><td>${label}</td><td><button class="keycap ${capture === a ? 'wait' : ''}" data-set="bind" data-a="${a}">${capture === a ? 'druk een toets…' : AT.keys.name(a)}</button></td></tr>`).join('');
+    $('#modal').innerHTML = `<div class="modal-card narrow"><div class="row"><h2 class="grow">⚙️ Instellingen</h2><button class="btn small" data-close>Sluiten</button></div>
+      <h3>Opslaan</h3>
+      <p class="muted">Het spel slaat zichzelf steeds automatisch op. Hier bewaar je extra kopieën, of zet je je spel in een bestand (bijvoorbeeld om op een andere computer verder te spelen).</p>
+      ${slots}
+      <div class="row wrap"><button class="btn small" data-set="export">⬇️ Exporteer naar bestand</button>
+        <label class="btn small">⬆️ Importeer bestand<input type="file" accept=".json,application/json" data-set="import" hidden></label></div>
+      <h3>Daglengte</h3>
+      <p class="muted">Hoe lang een speldag duurt bij snelheid 1×. Lopen en rijden blijven even snel; gewassen, dieren en fabrieken gaan mee met de tijd.</p>
+      <div class="seg">${TIME_SCALES.map(([v, min]) => `<button class="btn small ${ts === v ? 'primary' : ''}" data-set="time" data-v="${v}">${min} min${v === 1 ? ' (standaard)' : ''}</button>`).join('')}</div>
+      <h3>Toetsen</h3>
+      <p class="muted">Klik op een toets en druk de nieuwe toets in (Esc = annuleren). De pijltjestoetsen werken altijd om te lopen en te rijden.</p>
+      <table class="keys-table"><tbody>${keys}</tbody></table>
+      <div class="row"><button class="btn small" data-set="resetKeys">Standaardtoetsen</button></div>
+      <h3>Uitleg en geluid</h3>
+      <div class="row wrap"><button class="btn small" data-set="tutorial">Uitleg opnieuw tonen</button><button class="btn small" data-open="sound">🔊 Geluid</button>
+        <button class="btn small danger" data-action="reset">Nieuw spel starten</button></div></div>`;
+    $('#modal').hidden = false;
+  }
+  function onSettings(e) {
+    const b = e.target.closest('[data-set]');
+    if (!b || b.dataset.set === 'import') return;
+    const n = Number(b.dataset.n);
+    switch (b.dataset.set) {
+      case 'saveSlot': { const name = prompt('Naam voor deze opslag:', `Dag ${G().day()}`); if (name !== null) G().saveSlot(n, name.slice(0, 30)); break; }
+      case 'loadSlot': if (confirm('Deze opslag laden? Je huidige spel wordt eerst automatisch opgeslagen (en is terug te halen via "Exporteer" of een opslagplek).')) G().loadSlot(n); break;
+      case 'delSlot': if (confirm(`Opslagplek ${n} wissen?`)) G().deleteSlot(n); break;
+      case 'export': {
+        const blob = new Blob([G().exportSave()], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = `agro-tycoon-dag-${G().day()}.json`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        G().log('Spel geëxporteerd naar een bestand.', 'good');
+        break;
+      }
+      case 'time': AT.state.settings.timeScale = Number(b.dataset.v); G().log(`Daglengte: een speldag duurt nu ${TIME_SCALES.find(t => t[0] === Number(b.dataset.v))[1]} minuten bij 1×.`); break;
+      case 'bind': capture = b.dataset.a; AT.keys.capturing = true; break;
+      case 'resetKeys': AT.keys.reset(); break;
+      case 'tutorial': AT.tutorial.restart(); $('#modal').hidden = true; return;
+    }
+    renderSettings();
+  }
+  // nieuwe toets vastleggen (vóór alle andere toetsafhandeling)
+  window.addEventListener('keydown', e => {
+    if (!capture) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.code !== 'Escape') AT.keys.bind(capture, e.code);
+    capture = null;
+    setTimeout(() => { AT.keys.capturing = false; }, 0);
+    renderSettings();
+  }, true);
+
   // geluidsinstellingen
   function renderSound() {
     const st = AT.audio.settings;
@@ -915,6 +996,7 @@ window.AT = window.AT || {};
       case 'sellGood': G().sellGood(a.good); break;
       case 'buyBuilding': AT.farm.buyBuilding(a.key); break;
       case 'vet': AT.farm.callVet(a.key); break;
+      case 'feedRun': AT.staff.startFeedRun(a.key); break;
       case 'expandBarn': AT.farm.expandBarn(a.key); break;
       case 'buyAnimals': AT.farm.buyAnimals(a.key, Number(a.n)); break;
       case 'sellAnimals': AT.farm.sellAnimals(a.key, Number(a.n)); break;
@@ -1023,6 +1105,10 @@ window.AT = window.AT || {};
         if (patch.on) G().log(`Veld ${el.dataset.id} staat nu op automatisch beheer.`, 'good');
       }
       if (el.dataset.team === 'external') { AT.state.staff.allowExternal = el.checked; AT.emit('change'); }
+      if (el.dataset.team === 'night') { AT.state.staff.nightShift = el.checked; AT.emit('change'); }
+      if (el.dataset.team === 'carter') { AT.state.staff.carter = el.checked; AT.emit('change'); }
+      if (el.dataset.team === 'hour0' || el.dataset.team === 'hour1') { AT.state.staff.hours[el.dataset.team === 'hour0' ? 0 : 1] = Number(el.value); AT.emit('change'); }
+      if (el.dataset.wfeed) { AT.farm.animal(el.dataset.wfeed).workerFeed = el.checked; AT.emit('change'); }
       if (el.dataset.afeed) AT.farm.toggleAutoFeed(el.dataset.afeed);
       el.blur();
     });
@@ -1042,20 +1128,29 @@ window.AT = window.AT || {};
       if (e.target.closest('[data-open="calendar"]')) renderCalendar();
       if (e.target.closest('[data-open="prices"]')) renderPriceCalendar();
       if (e.target.closest('[data-open="sound"]')) { renderSound(); e.target.closest('button').blur(); }
+      if (e.target.closest('[data-open="settings"]')) { renderSettings(); e.target.closest('button').blur(); }
+      if (e.target.closest('#modal [data-set]')) onSettings(e);
       if (e.target.closest('[data-open="goals"]') || e.target.closest('#goal')) openGoals();
       if (e.target.closest('#modal [data-action="reset"]')) { if (confirm('Weet je zeker dat je opnieuw wilt beginnen? Je voortgang gaat verloren.')) { G().reset(); $('#modal').hidden = true; } }
       if (e.target.closest('[data-close]') || e.target.id === 'modal') $('#modal').hidden = true;
     });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').hidden = true; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !capture) $('#modal').hidden = true; });
 
     document.addEventListener('keydown', e => {
       if (e.target.closest && e.target.closest('input, select, textarea')) return;
-      if (e.repeat) return;
-      if (e.code === 'KeyP') setSpeed('pause');
+      if (e.repeat || AT.keys.capturing) return;
+      if (AT.keys.is(e, 'pause')) setSpeed('pause');
       const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
       if (k >= 0) setSpeed(String(D.speeds[k]));
     });
 
+    $('#modal').addEventListener('change', e => {
+      if (e.target.dataset && e.target.dataset.set === 'import' && e.target.files[0]) {
+        const r = new FileReader();
+        r.onload = () => { if (!confirm('Dit spel importeren? Je huidige spel wordt vervangen (het staat nog in "Exporteer" als je het eerst bewaart).')) return; if (!G().importSave(String(r.result))) alert('Dit bestand is geen geldig Agro Tycoon-spel.'); };
+        r.readAsText(e.target.files[0]);
+      }
+    });
     $('#modal').addEventListener('input', e => {
       const k = e.target.dataset && e.target.dataset.sound;
       if (!k) return;

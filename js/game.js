@@ -94,6 +94,8 @@ window.AT = window.AT || {};
       contracts: { offers: [], active: [], refreshed: -99 },
       insurance: { crops: false, paidOut: 0 },
       deliveries: [],     // vrachtwagenritten van werknemers
+      settings: { timeScale: 1 },   // daglengte: 1 = een speldag duurt 24 minuten bij 1×
+      tutorial: { step: 0, done: false },
       autoDeliver: false, // werknemers leveren automatisch als de loods voller raakt
       goalsDone: {},
       log: [],
@@ -705,6 +707,8 @@ window.AT = window.AT || {};
     }
     f.job = job;
     if (!worker.external) { worker.status = 'job'; worker.fieldId = fieldId; }
+    // bij het oogsten rijdt (als dat kan) een chauffeur met kipper mee
+    if (task === 'harvest' && AT.staff) AT.staff.jobChaser(fieldId, rig.machines[0].uid);
     const names = rig.machines.map(m => machineDef(m).name).join(' + ');
     const verb = { plow: 'ploegt', sow: 'zaait', harvest: 'oogst', fertilize: 'strooit kunstmest op', manure: 'rijdt mest uit op', mow: 'maait', ted: 'schudt het gras op', bale: 'perst hooi op', lime: 'strooit kalk op', spray: 'spuit', roll: 'rolt', stones: 'raapt stenen op' }[task];
     log(`${worker.name} ${verb} Veld ${fieldId} met ${names} (${AT.fmtHours(hours)}, ${AT.fmtMoney(cost)}).`);
@@ -725,21 +729,44 @@ window.AT = window.AT || {};
       if (AT.staff.moveAlong(job, travelSpeed(job.machines[0]) * dtSec)) job.phase = 'work';
       return;
     }
+    // maaidorser rijdt zelf naar de silo om de bunker te legen, en weer terug
+    if (job.phase === 'unload' || job.phase === 'back') {
+      if (AT.staff.moveAlong(job, travelSpeed(job.machines[0]) * dtSec)) {
+        if (job.phase === 'unload') {
+          AT.staff.depositGrain(getLoad(machine(job.machines[0])), job.workerName || 'Loonwerker');
+          job.path = AT.staff.route(job.pos, job.returnTo); job.seg = 0; job.phase = 'back';
+        } else job.phase = 'work';
+      }
+      return;
+    }
     if (job.type === 'harvest' && tooWet()) { job.waiting = true; return; } // wacht tot het droog is
     job.waiting = false;
+    const harvester = job.type === 'harvest' ? machine(job.machines[0]) : null;
+    const bunker = harvester ? { load: getLoad(harvester), cap: loadCap(harvester), m: harvester } : null;
     job.progress = Math.min(1, job.progress + dtHours / job.hours);
     const N = jobLength(def, job.laneCols);
     const target = job.progress >= 1 ? N : Math.floor(job.progress * N);
     for (; job.idx < target; job.idx++) {
       const i = jobCell(def, job.laneCols, job.idx);
-      if (i >= 0) workCell(f, i, TASK_OP[job.type], job.crop, 'worker', 0, job.tool ? D.machines[job.tool] : null);
+      if (i < 0) continue;
+      const res = workCell(f, i, TASK_OP[job.type], job.crop, 'worker', 0, job.tool ? D.machines[job.tool] : null, bunker);
+      if (res === 'tankfull' || res === 'mixed') {
+        job.progress = job.idx / N;   // hier blijft hij staan tot de bunker leeg is
+        if (AT.staff.chaserFor(harvester.uid)) { job.waiting = 'wacht op de kipper'; return; }
+        const here = jobPosition(def, job);
+        job.returnTo = { x: here.x, y: here.y, angle: here.angle };
+        job.pos = { x: here.x, y: here.y, angle: here.angle };
+        job.path = AT.staff.route(here, { x: D.siloPit.x + D.siloPit.w / 2, y: D.siloPit.y + D.siloPit.h + 30 });
+        job.seg = 0; job.phase = 'unload';
+        return;
+      }
     }
     if (job.progress >= 1) finishJob(f);
   }
 
   // positie van een machine die bezig is (onderweg of op het veld)
   function jobPose(def, job) {
-    if (job.phase === 'to' && job.pos) return job.pos;
+    if ((job.phase === 'to' || job.phase === 'unload' || job.phase === 'back') && job.pos) return job.pos;
     return jobPosition(def, job);
   }
 
@@ -777,6 +804,8 @@ window.AT = window.AT || {};
       const snap = (trip.snapshot || []).find(x => x.uid === m.uid);
       if (snap && !m.busy) Object.assign(m, snap);
       if (trip.machines.includes(m.uid) && fuelCap(m)) m.fuel = fuelCap(m);   // werknemer tankt bij terugkomst (zat in de kosten)
+      // wat er nog in de bunker zit gaat bij terugkomst de silo in
+      if (trip.machines.includes(m.uid) && machineDef(m).kind === 'harvester' && m.load && m.load.tons > 0.01 && AT.staff) AT.staff.depositGrain(m.load, trip.workerName || 'Loonwerker');
     });
     const w = AT.staff && trip.workerId !== 'ext' ? s.staff.employees.find(e => e.id === trip.workerId) : null;
     if (w) {
@@ -1326,7 +1355,7 @@ window.AT = window.AT || {};
   function tick(dtSeconds) {
     const s = S();
     if (s.paused) return;
-    const dtHours = dtSeconds * D.hoursPerSecond * s.speed;
+    const dtHours = dtSeconds * D.hoursPerSecond * s.speed * ((s.settings && s.settings.timeScale) || 1);
     const prevDay = day();
     s.time += dtHours;
     s.dryClock = (s.dryClock ?? s.time) + dtHours * (D.hayDryRate[s.weather ? s.weather.type : 'sun'] ?? 1);
@@ -1360,7 +1389,8 @@ window.AT = window.AT || {};
   const packBytes = arr => Array.from(arr, v => String.fromCharCode(48 + v)).join('');
   const unpackBytes = (str, n) => { const a = new Uint8Array(n); for (let i = 0; i < n && i < str.length; i++) a[i] = str.charCodeAt(i) - 48; return a; };
 
-  function save() {
+  // de hele spelstand als tekst (voor opslaan, opslagplekken en exporteren)
+  function serialize() {
     const s = S();
     const out = Object.assign({}, s, {
       version: D.version,
@@ -1374,8 +1404,51 @@ window.AT = window.AT || {};
         planted: Array.from(cells.planted, (v, i) => cells.state[i] === ST.SOWN || cells.state[i] === ST.MOWN ? Math.round(v * 10) / 10 : 0),
       })),
     });
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(out)); } catch (e) { /* geen opslag beschikbaar */ }
+    out.savedAt = Date.now();
+    return JSON.stringify(out);
   }
+  let saveBlocked = false;   // vlak voor herladen na een import/laden niet meer overschrijven
+  function save() {
+    if (saveBlocked || !S()) return;
+    try { localStorage.setItem(SAVE_KEY, serialize()); } catch (e) { /* geen opslag beschikbaar */ }
+  }
+
+  // ---------- opslagplekken, exporteren en importeren ----------
+  const SLOTS = 3, slotKey = n => SAVE_KEY + '-slot-' + n;
+  function slotInfo(raw) {
+    try {
+      const sv = JSON.parse(raw);
+      if (!sv || !Array.isArray(sv.fields)) return null;
+      return { day: Math.floor((sv.time || 0) / 24) + 1, money: sv.money || 0, fields: sv.fields.filter(f => f.owned).length,
+        name: sv.slotName || '', savedAt: sv.savedAt || null, version: sv.version };
+    } catch (e) { return null; }
+  }
+  function listSlots() {
+    const out = [];
+    for (let n = 1; n <= SLOTS; n++) { let raw = null; try { raw = localStorage.getItem(slotKey(n)); } catch (e) { /* ok */ } out.push({ n, info: raw ? slotInfo(raw) : null }); }
+    return out;
+  }
+  function saveSlot(n, name) {
+    const s = S();
+    s.slotName = name || `Spel ${n}`;
+    try { localStorage.setItem(slotKey(n), serialize()); } catch (e) { log('Opslaan mislukt: de browser heeft geen ruimte meer.', 'warn'); return false; }
+    log(`Opgeslagen op plek ${n} (${s.slotName}).`, 'good');
+    AT.emit('change');
+    return true;
+  }
+  // laden = de gekozen stand wordt de huidige stand, daarna de pagina opnieuw laden
+  function loadRaw(raw) {
+    if (!slotInfo(raw)) return false;
+    save();
+    try { localStorage.setItem(SAVE_KEY + '-before-load', localStorage.getItem(SAVE_KEY) || ''); localStorage.setItem(SAVE_KEY, raw); } catch (e) { return false; }
+    saveBlocked = true;
+    location.reload();
+    return true;
+  }
+  function loadSlot(n) { let raw = null; try { raw = localStorage.getItem(slotKey(n)); } catch (e) { /* ok */ } return raw ? loadRaw(raw) : false; }
+  function deleteSlot(n) { try { localStorage.removeItem(slotKey(n)); } catch (e) { /* ok */ } AT.emit('change'); }
+  function exportSave() { return serialize(); }
+  function importSave(text) { return loadRaw(text); }
 
   // vult ontbrekende onderdelen aan met de standaardwaarden (nieuwe functies na een update)
   const isPlain = o => o && typeof o === 'object' && !Array.isArray(o) && !ArrayBuffer.isView(o);
@@ -1459,6 +1532,8 @@ window.AT = window.AT || {};
     if (state.siloLevel >= D.silo.length) state.siloLevel = D.silo.length - 1;
     if ((state.warehouseLevel || 0) >= D.warehouse.length) state.warehouseLevel = D.warehouse.length - 1;
     if (saved.dryClock == null) state.dryClock = state.time;
+    // bestaande spellers hoeven de uitleg niet meer te zien
+    if (!saved.tutorial) state.tutorial = { step: 0, done: !!(saved.stats && saved.stats.harvestedHa > 0) };
     fillDefaults(state, base);
     state.version = D.version;
     if (upgraded) state.log.unshift({ day: Math.floor(state.time / 24) + 1, hour: Math.floor(state.time % 24), text: `Het spel is bijgewerkt (versie ${saved.version || '?'} → ${D.version}). Je voortgang is bewaard.`, type: 'goal' });
@@ -1531,7 +1606,7 @@ window.AT = window.AT || {};
     refreshOffers, acceptContract, deliverContract, fillContracts, maxLoan, borrow, repay, assetsValue, ledgerToday,
     tick, startJob, sell, buyField, buyMachine, sellMachine, upgradeSilo, enterVehicle, exitVehicle,
     toggleHitch, nearestImplement, nearestVehicle, hitchPoint, machine, HITCH, getLoad, loadCap, trailerPose,
-    save, load, reset, bestRig, missingFor, canPull, workCell, cellAt, summary, mainCrop,
+    save, load, reset, serialize, listSlots, saveSlot, loadSlot, deleteSlot, exportSave, importSave, slotInfo, bestRig, missingFor, canPull, workCell, cellAt, summary, mainCrop,
     isReady, cellGrowth, overripe, isWithering, jobPosition, jobPose, log, readyCropOf, HARVESTER_NAMES,
     day, hour, siloCapacity, siloUsed, siloRoom, cropPrice, fieldPrice, fieldDef, field,
   };
