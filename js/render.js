@@ -110,6 +110,7 @@ window.AT = window.AT || {};
       if (Object.values(D.factories).some(f => inRect(x, y, f.lot, R + 3))) continue;
       if (inRect(x, y, D.trader.lot, R + 3)) continue;
       if (D.greenhouse.lots.some(l => inRect(x, y, l, R + 3)) || inRect(x, y, D.woodlot.area, R + 2)) continue;
+      if (Object.values(D.plantations).some(pl => inRect(x, y, pl.area, R + 2))) continue;
       if (Object.values(D.sellPoints).some(sp => sp.lot && inRect(x, y, sp.lot, R + 3))) continue;
       if (x < 395 && y > D.yard.y + D.yard.gate.y - D.yard.y - 30 && y < D.yard.gate.y + D.yard.gate.h + 30) continue; // inrit vrijhouden
       if (list.some(t => Math.hypot(t.x - x, t.y - y) < (t.R + R) * 0.75)) continue;
@@ -274,7 +275,7 @@ window.AT = window.AT || {};
     }
     if (type === 'storm' && !paused) {
       flashTimer -= dt;
-      if (flashTimer <= 0) { flash = 1; flashTimer = 3 + Math.random() * 6; }
+      if (flashTimer <= 0) { flash = 1; flashTimer = 3 + Math.random() * 6; AT.emit('thunder'); }
     }
     if (flash > 0) {
       ctx.fillStyle = `rgba(235,240,255,${(flash * 0.55).toFixed(3)})`; ctx.fillRect(0, 0, vw, vh);
@@ -286,7 +287,7 @@ window.AT = window.AT || {};
   const herds = {};
   function herd(key) {
     const d = D.animals[key], a = AT.state.animals[key];
-    const shown = Math.min(a.count, key === 'chickens' ? 40 : 25);
+    const shown = Math.min(a.count, key === 'chickens' ? 40 : key === 'pigs' ? 30 : 25);
     const list = herds[key] = herds[key] || [];
     const P = d.pen, B = d.barn;
     while (list.length < shown) {
@@ -300,7 +301,7 @@ window.AT = window.AT || {};
 
   function updateHerd(key, list, dt) {
     const d = D.animals[key], P = d.pen, B = d.barn;
-    const speed = key === 'chickens' ? 10 : 5;
+    const speed = key === 'chickens' ? 10 : key === 'pigs' ? 6 : 5;
     for (const an of list) {
       if (an.wait > 0) { an.wait -= dt; continue; }
       const dx = an.tx - an.x, dy = an.ty - an.y, dist = Math.hypot(dx, dy);
@@ -322,8 +323,9 @@ window.AT = window.AT || {};
       const d = D.animals[key], a = state.animals[key];
       SP().fence(ctx, d.pen);
       if (!a.owned) { SP().buildingLot(ctx, d.barn); continue; }
-      SP().barn(ctx, d.barn, key === 'cows' ? '#9c3b2c' : key === 'chickens' ? '#a8834f' : '#7d8a8f');
-      SP().trough(ctx, d.barn.x + d.barn.w + 8, d.barn.y + 10, 34, a.fed > 0.5 && a.count > 0);
+      SP().barn(ctx, d.barn, { cows: '#9c3b2c', chickens: '#a8834f', sheep: '#7d8a8f', pigs: '#c27c6b' }[key] || '#8a6a4a');
+      const tr = AT.farm.troughRect(key), full = AT.farm.troughTons(key) / (d.trough * D.barnLevels[AT.farm.animal(key).level]);
+      SP().trough(ctx, tr.x, tr.y, tr.w, full > 0.02, full);
       const list = herd(key);
       if (!state.paused) updateHerd(key, list, dt);
       for (const an of list) SP().animal(ctx, key, an.x, an.y, an.a, an.step);
@@ -345,11 +347,53 @@ window.AT = window.AT || {};
       if (t.growth < 0.12) { ctx.fillStyle = '#6b4a2a'; SP().circle(ctx, t.x, t.y, 2); }
       SP().tree(ctx, t.x, t.y, t.variant, 0, se, 0.25 + 0.75 * t.growth);
     }
+    drawPlantations(se);
     for (const key of Object.keys(D.factories)) {
       const d = D.factories[key], f = state.factories[key];
       if (!f.owned) { SP().buildingLot(ctx, d.lot); continue; }
       SP().factory(ctx, key, d.lot, d.roof, time, f.running && f.on);
     }
+  }
+
+  // boomgaard (fruitbomen met appels) en wijngaard (rijen wijnstokken met druiven)
+  function drawPlantations(se) {
+    const vr = visibleRect(40);
+    for (const [key, d] of Object.entries(D.plantations)) {
+      const pl = AT.farm.plantation(key), A = d.area;
+      if (A.x > vr.x1 || A.x + A.w < vr.x0 || A.y > vr.y1 || A.y + A.h < vr.y0) continue;
+      ctx.fillStyle = 'rgba(70,110,40,0.35)'; ctx.fillRect(A.x, A.y, A.w, A.h);
+      if (!pl.owned) { ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.setLineDash([6, 5]); ctx.strokeRect(A.x, A.y, A.w, A.h); ctx.setLineDash([]); }
+      if (key === 'vineyard') {
+        // draden tussen de palen
+        const rows = [...new Set(pl.plants.map(p => p.y))];
+        ctx.strokeStyle = 'rgba(90,70,50,0.55)'; ctx.lineWidth = 0.6;
+        for (const y of rows) { ctx.beginPath(); ctx.moveTo(A.x + 4, y); ctx.lineTo(A.x + A.w - 4, y); ctx.stroke(); }
+        for (const p of pl.plants) {
+          if (p.x < vr.x0 || p.x > vr.x1 || p.y < vr.y0 || p.y > vr.y1) continue;
+          if (se === 3) { ctx.fillStyle = '#6b4a2a'; ctx.fillRect(p.x - 2, p.y - 0.6, 4, 1.2); continue; }
+          ctx.fillStyle = se === 2 ? '#b5893a' : '#4f8a32'; SP().circle(ctx, p.x, p.y, 3.4);
+          ctx.fillStyle = se === 2 ? '#c99b48' : '#63a03f'; SP().circle(ctx, p.x - 0.8, p.y - 0.8, 2);
+          if (p.fruit > 0.45 && !p.picked) {
+            ctx.fillStyle = p.fruit >= 1 ? '#5b2c6f' : '#7d9a46';
+            SP().circle(ctx, p.x + 1.4, p.y + 1, 0.9 + 0.5 * p.fruit); SP().circle(ctx, p.x - 1.5, p.y + 1.6, 0.8 + 0.4 * p.fruit);
+          }
+        }
+      } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        for (const p of pl.plants) SP().treeShadow(ctx, p.x, p.y, 4, se);
+        for (const p of pl.plants) {
+          if (p.x < vr.x0 - 20 || p.x > vr.x1 + 20 || p.y < vr.y0 - 20 || p.y > vr.y1 + 20) continue;
+          SP().tree(ctx, p.x, p.y, 4, 0, se, 0.62);
+          if (p.fruit > 0.3 && !p.picked && se !== 3) {
+            ctx.fillStyle = p.fruit >= 1 ? '#d63a2a' : '#9fc24a';
+            const h = (p.x * 7 + p.y * 13) | 0;
+            for (let k = 0; k < 6; k++) SP().circle(ctx, p.x + ((h >> k) % 9) - 4, p.y + ((h >> (k + 3)) % 9) - 4, 0.6 + 0.6 * p.fruit);
+          }
+        }
+      }
+    }
+    // hooibalen op het veld
+    for (const b of AT.state.bales) if (b.x > vr.x0 && b.x < vr.x1 && b.y > vr.y0 && b.y < vr.y1) SP().bale(ctx, b.x, b.y, b.a);
   }
 
   // klik op een stal of fabriek
@@ -359,6 +403,7 @@ window.AT = window.AT || {};
     if (inRect(x, y, D.trader.lot, 0)) return { kind: 'trader' };
     for (const sp of Object.values(D.sellPoints)) if (sp.lot && inRect(x, y, sp.lot, 0)) return { kind: 'trader' };
     if (D.greenhouse.lots.some(l => inRect(x, y, l, 0)) || inRect(x, y, D.woodlot.area, 0)) return { kind: 'farm' };
+    if (Object.values(D.plantations).some(pl => inRect(x, y, pl.area, 0))) return { kind: 'farm' };
     return null;
   }
 
@@ -366,8 +411,9 @@ window.AT = window.AT || {};
     const items = [
       ...Object.keys(D.animals).map(k => {
         const d = D.animals[k], a = state.animals[k];
-        const txt = !a.owned ? `${d.building} · bouw ${AT.fmtMoney(d.buildPrice)}` : `${d.building} · ${a.count}/${d.capacity}${a.count && a.fed < 0.5 ? ' · honger!' : ''}`;
-        return { r: d.pen, txt, bg: !a.owned ? 'rgba(45,106,45,0.92)' : a.count && a.fed < 0.5 ? 'rgba(170,60,30,0.92)' : 'rgba(0,0,0,0.55)' };
+        const bad = a.count && (a.fed < 0.5 || a.sick || a.health < 0.5);
+        const txt = !a.owned ? `${d.building} · bouw ${AT.fmtMoney(d.buildPrice)}` : `${d.building} · ${a.count}/${AT.farm.capacity(k)}${a.count && a.fed < 0.5 ? ' · honger!' : ''}${a.sick ? ' · ziek!' : ''}`;
+        return { r: d.pen, txt, bg: !a.owned ? 'rgba(45,106,45,0.92)' : bad ? 'rgba(170,60,30,0.92)' : 'rgba(0,0,0,0.55)' };
       }),
       { r: D.trader.lot, txt: `Graanhandel · ${AT.fmtMoney(G().cropPrice('wheat'))}/t tarwe`, bg: 'rgba(63,110,140,0.92)' },
       ...Object.entries(D.sellPoints).filter(([, sp]) => sp.lot).map(([, sp]) => ({ r: sp.lot, txt: sp.name, bg: 'rgba(63,110,140,0.92)' })),
@@ -375,7 +421,13 @@ window.AT = window.AT || {};
       ...AT.farm.greenhouses().map((gh, i) => ({ r: D.greenhouse.lots[i], txt: gh.owned ? `Kas: ${D.products[gh.crop].name.toLowerCase()} · ${gh.status || ''}` : `Kas · bouw ${AT.fmtMoney(D.greenhouse.price)}`, bg: gh.owned ? 'rgba(0,0,0,0.55)' : 'rgba(45,106,45,0.92)' })),
       (() => { const wl = AT.farm.woodlot(); const ready = wl.trees.filter(t => t.growth >= 0.95).length;
         return { r: D.woodlot.area, txt: wl.owned ? `Bosperceel · ${ready} bomen kapklaar` : `Bosperceel · koop ${AT.fmtMoney(D.woodlot.price)}`, bg: wl.owned ? 'rgba(0,0,0,0.55)' : 'rgba(45,106,45,0.92)' }; })(),
-      { r: { x: D.siloPit.x - 20, y: D.siloPit.y - 40, w: D.siloPit.w + 40, h: 60 }, txt: 'Stortput silo', bg: 'rgba(0,0,0,0.55)', small: true },
+      { r: { x: D.siloPit.x - 20, y: D.siloPit.y - 40, w: D.siloPit.w + 40, h: 60 }, txt: 'Stortput silo / opslag', bg: 'rgba(0,0,0,0.55)', small: true },
+      ...Object.keys(D.animals).filter(k => state.animals[k].owned).map(k => { const tr = AT.farm.troughRect(k); return { r: { x: tr.x - 20, y: tr.y - 30, w: tr.w + 40, h: 44 }, txt: 'Voerbak (U)', bg: 'rgba(0,0,0,0.55)', small: true }; }),
+      ...Object.entries(D.plantations).map(([k, d]) => {
+        const pl = AT.farm.plantation(k), ripe = AT.farm.ripeCount(k);
+        const txt = !pl.owned ? `${d.name} · koop ${AT.fmtMoney(d.price)}` : ripe ? `${d.name} · ${ripe} ${d.plants} plukklaar (H)` : `${d.name} · ${pl.phase === 'grow' ? 'vruchten groeien' : 'oogst in ' + D.months[d.harvest[0]].toLowerCase()}`;
+        return { r: d.area, txt, bg: !pl.owned ? 'rgba(45,106,45,0.92)' : ripe ? 'rgba(183,121,31,0.92)' : 'rgba(0,0,0,0.55)' };
+      }),
       ...Object.keys(D.factories).map(k => {
         const d = D.factories[k], f = state.factories[k];
         const txt = !f.owned ? `${d.name} · bouw ${AT.fmtMoney(d.price)}` : `${d.name} · ${f.status || 'start op'}`;
@@ -465,15 +517,21 @@ window.AT = window.AT || {};
   }
 
   // ---------- velden: cellen tekenen (offscreen) ----------
+  // sleutel = basis × 32 + beeld-bits: 1 kunstmest, 2 mest, 4 verdicht, 8 onkruid, 16 ziekte
   function visKey(f, i) {
-    const st = f.cells.state[i], dir = f.cells.dir[i], fe = f.cells.fert[i] & 3;
+    const st = f.cells.state[i], dir = f.cells.dir[i], raw = f.cells.fert[i];
+    let fe = (raw & 3) | (raw & G().COMPACT ? 4 : 0);
     if (st === G().ST.MOWN) {
       const d = G().hayDryness(f, i);
-      return (4 + (d >= 1 ? 2 : d >= 0.5 ? 1 : 0)) * 4 + fe + (dir ? 0 : 0);
+      return (4 + (d >= 1 ? 2 : d >= 0.5 ? 1 : 0)) * 32 + fe;
     }
-    if (st !== G().ST.SOWN) return (st * 2 + dir) * 4 + fe;
+    // onkruid en ziekte op een deel van de cellen (hoeveel hangt af van hoe erg het is)
+    const hv = hash(f.id * 31337 + i) % 1000 / 1000;
+    if (st !== G().ST.STUBBLE || f.weeds > 0.5) { if (hv < (f.weeds || 0) * 0.7) fe |= 8; }
+    if (st !== G().ST.SOWN) return (st * 2 + dir) * 32 + fe;
+    if ((1 - hv) < (f.disease || 0) * 0.6) fe |= 16;
     const stage = G().isReady(f, i) ? (G().isWithering(f, i) ? 6 : 5) : Math.min(4, Math.floor(G().cellGrowth(f, i) * 5));
-    return (10 + (f.cells.crop[i] * 8 + stage) * 2 + dir) * 4 + fe;
+    return (10 + (f.cells.crop[i] * 8 + stage) * 2 + dir) * 32 + fe;
   }
 
   const STUBBLE = ['#c9ae6b', '#c3a764', '#cfb576', '#c6aa69'];
@@ -651,11 +709,31 @@ window.AT = window.AT || {};
     const def = G().fieldDef(id), f = G().field(id), L = layers[id], g = L.ctx;
     const full = visKey(f, i);
     L.vis[i] = full;
-    drawCellBase(def, g, id, i, full >> 2);
+    drawCellBase(def, g, id, i, full >> 5);
     // bemesting zichtbaar: witte korrels (kunstmest) en donkere plukjes (mest)
-    const fe = full & 3;
+    const fe = full & 31;
     if (!fe) return;
     const x = (i % def.cols) * C, y = Math.floor(i / def.cols) * C, h = hash(id * 7919 + i);
+    const dirH = ((full >> 5) & 1);
+    // verdicht: diepe natte bandensporen
+    if (fe & 4) {
+      g.fillStyle = 'rgba(45,28,14,0.5)';
+      if (dirH) { g.fillRect(x, y + 1.5, C, 1.3); g.fillRect(x, y + 5.2, C, 1.3); } else { g.fillRect(x + 1.5, y, 1.3, C); g.fillRect(x + 5.2, y, 1.3, C); }
+      g.fillStyle = 'rgba(120,140,150,0.25)';
+      if (dirH) g.fillRect(x + (h & 3), y + 1.8, 2, 0.6); else g.fillRect(x + 1.8, y + (h & 3), 0.6, 2);
+    }
+    // onkruid: donkergroene plukjes en een paarse distel
+    if (fe & 8) {
+      g.fillStyle = '#2f5a1f';
+      for (let k = 0; k < 3; k++) { const px = x + ((h >> (k * 5)) & 7), py = y + ((h >> (k * 5 + 3)) & 7); g.beginPath(); g.arc(px, py, 0.9, 0, Math.PI * 2); g.fill(); }
+      if (h & 16) { g.fillStyle = '#9b59b6'; g.fillRect(x + ((h >> 7) & 7), y + ((h >> 11) & 7), 0.8, 0.8); }
+    }
+    // ziekte: gele en bruine vlekken op het gewas
+    if (fe & 16) {
+      g.fillStyle = 'rgba(190,160,50,0.6)'; g.beginPath(); g.arc(x + ((h >> 2) & 7), y + ((h >> 6) & 7), 1.6, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(110,70,30,0.55)'; g.beginPath(); g.arc(x + ((h >> 9) & 7), y + ((h >> 13) & 7), 1, 0, Math.PI * 2); g.fill();
+    }
+    if (!(fe & 3)) return;
     if (fe & 2) { g.fillStyle = 'rgba(60,38,20,0.55)'; for (let k = 0; k < 3; k++) g.fillRect(x + ((h >> (k * 3)) & 7), y + ((h >> (k * 3 + 9)) & 7), 1.2, 0.8); }
     if (fe & 1) { g.fillStyle = 'rgba(255,255,255,0.85)'; for (let k = 0; k < 3; k++) g.fillRect(x + ((h >> (k * 4 + 1)) & 7) + 0.25, y + ((h >> (k * 4 + 13)) & 7) + 0.25, 0.5, 0.5); }
   }
@@ -738,6 +816,7 @@ window.AT = window.AT || {};
         // rand: smalle grasstrook / akkerrand
         ctx.strokeStyle = 'rgba(60,40,20,0.35)'; ctx.lineWidth = 1;
         ctx.strokeRect(def.x + 0.5, def.y + 0.5, def.w - 1, def.h - 1);
+        if (f.irrigated) drawIrrigation(def, f);
       } else {
         // weiland te koop: gras met paaltjes in de hoeken
         ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([6, 6]); ctx.lineWidth = 1;
@@ -753,6 +832,23 @@ window.AT = window.AT || {};
       }
     }
   }
+
+  // irrigatie: buis langs de bovenrand met sproeiers; bij droogte spuiten ze water
+  function drawIrrigation(def, f) {
+    ctx.fillStyle = '#5d6d7e'; ctx.fillRect(def.x + 2, def.y + 2, def.w - 4, 1.6);
+    const watering = AT.weather.drought() && !state0().paused;
+    for (let x = def.x + 20; x < def.x + def.w - 10; x += 48) {
+      ctx.fillStyle = '#34495e'; SP().circle(ctx, x, def.y + 2.8, 1.8);
+      if (watering) {
+        const r = 14 + 6 * Math.sin(time * 3 + x);
+        ctx.fillStyle = 'rgba(160,210,240,0.22)';
+        ctx.beginPath(); ctx.arc(x, def.y + 3, r, 0, Math.PI); ctx.fill();
+        ctx.fillStyle = 'rgba(220,240,255,0.7)';
+        for (let k = 0; k < 5; k++) { const a = (time * 4 + k * 1.3 + x) % Math.PI; SP().circle(ctx, x + Math.cos(a) * r * 0.8, def.y + 3 + Math.sin(a) * r * 0.8, 0.6); }
+      }
+    }
+  }
+  const state0 = () => AT.state;
 
   // wind die over rijpe en groeiende gewassen golft
   function drawWind(sums) {
@@ -804,7 +900,7 @@ window.AT = window.AT || {};
         cargoFrac: D.machines[m.type].pallets ? cargo / D.machines[m.type].pallets : 0,
         implLoad: IL, load: L,
         grain: L && L.tons > 0 ? L.tons / G().loadCap(m) : 0,
-        grainColor: L && L.crop ? D.crops[L.crop].color : null,
+        grainColor: L && L.crop ? G().goodColor(L.crop) : null,
       };
     };
     for (const m of state.machines) {
@@ -824,6 +920,12 @@ window.AT = window.AT || {};
       drawCrew(f.job.machines, G().jobPose(G().fieldDef(f.id), f.job), f.job.phase !== 'to', f.job.type);
     }
     for (const tr of state.trips || []) drawCrew(tr.machines, tr.pos, false, tr.type);
+    for (const dv of state.deliveries || []) {
+      const t = G().machine(dv.truck);
+      if (!t) continue;
+      const pallets = Object.entries(dv.cargo).reduce((a, [k, v]) => a + v / D.products[k].perPallet, 0);
+      SP().machine(ctx, t.type, dv.pos.x, dv.pos.y, dv.pos.angle, { wheel: time * 30, t: time, lights, cargoFrac: pallets / D.machines[t.type].pallets });
+    }
     // jouw machine
     if (p.mode === 'drive') {
       const r = AT.vehicle.rig();
@@ -881,6 +983,7 @@ window.AT = window.AT || {};
       list.push({ x: pos.x, y: pos.y, a: pos.angle, cone: true });
     }
     for (const tr of state.trips || []) list.push({ x: tr.pos.x, y: tr.pos.y, a: tr.pos.angle, cone: true });
+    for (const dv of state.deliveries || []) list.push({ x: dv.pos.x, y: dv.pos.y, a: dv.pos.angle, cone: true });
     for (const L of LAMPS) list.push({ x: L.x, y: L.y, r: 60 });
     list.push({ x: D.house.x + D.house.w / 2, y: D.house.y + D.house.h + 6, r: 34 });
     return list;
@@ -950,6 +1053,10 @@ window.AT = window.AT || {};
         const txt = f.job.phase === 'to' ? `${who} is onderweg` : f.job.waiting ? `${who} wacht tot het droog is` : `${who}: ${Math.floor(f.job.progress * 100)}%`;
         pill(txt, cx, cy - 9, true, 'rgba(44,127,184,0.9)');
       } else if (f.auto && f.auto.on) pill('🤖 Automatisch' + (f.auto.status ? ': ' + f.auto.status : ''), cx, cy - 9, true, 'rgba(0,0,0,0.5)');
+      else if (sum && sum.growing && Math.max(f.weeds || 0, f.disease || 0, f.pests || 0) > D.pests.warnAt) {
+        const worst = [['weeds', 'Onkruid'], ['disease', 'Ziekte'], ['pests', 'Plagen']].sort((a, b) => f[b[0]] - f[a[0]])[0][1];
+        pill(`${worst}! Spuiten`, cx, cy - 9, true, 'rgba(170,60,30,0.92)');
+      }
       else if (sum && sum.dryHay > 0) pill('Hooi is droog: persen', cx, cy - 9, true, 'rgba(183,121,31,0.92)');
       else if (sum && sum.mown > 0) pill('Hooi droogt', cx, cy - 9, true, 'rgba(0,0,0,0.5)');
       else if (sum && sum.ready > 0 && sum.growing === 0) pill(sum.readyCrops.grass ? 'Klaar om te maaien' : 'Klaar om te oogsten', cx, cy - 9, true, 'rgba(183,121,31,0.92)');
@@ -1003,6 +1110,7 @@ window.AT = window.AT || {};
     ctx.fillStyle = '#3f6e8c';
     ctx.fillRect(m.x + D.trader.lot.x * s, m.y + D.trader.lot.y * s, D.trader.lot.w * s, D.trader.lot.h * s);
     for (const sp of Object.values(D.sellPoints)) if (sp.lot) ctx.fillRect(m.x + sp.lot.x * s, m.y + sp.lot.y * s, sp.lot.w * s, sp.lot.h * s);
+    { const prev = ctx.fillStyle; ctx.fillStyle = '#3f7a2a'; for (const pl of Object.values(D.plantations)) ctx.fillRect(m.x + pl.area.x * s, m.y + pl.area.y * s, pl.area.w * s, pl.area.h * s); ctx.fillStyle = prev; }
     for (const mm of state.machines) {
       if (mm.busy || mm.attached) continue;
       ctx.fillStyle = '#ffd25a'; ctx.fillRect(m.x + mm.x * s - 1, m.y + mm.y * s - 1, 2, 2);

@@ -6,7 +6,7 @@ window.AT = window.AT || {};
   const keys = new Set();
   AT.input = { keys, moved: 0 };
 
-  const OP = { plow: 'plow', seeder: 'sow', harvester: 'harvest', spreader: 'fertilize', manure: 'manure', mower: 'mow', tedder: 'ted', baler: 'bale' };
+  const OP = { plow: 'plow', seeder: 'sow', harvester: 'harvest', spreader: 'fertilize', manure: 'manure', mower: 'mow', tedder: 'ted', baler: 'bale', lime: 'lime', sprayer: 'spray' };
   const PX = D.kmhToPx;            // km/u -> pixels per seconde
   const KMH = 1 / D.kmhToPx;       // pixels per seconde -> km/u (snelheidsmeter)
 
@@ -26,7 +26,10 @@ window.AT = window.AT || {};
   }
 
   let warnText = '', warnTime = 0;
-  function warn(text) { warnText = text; warnTime = 2.5; }
+  function warn(text) {
+    if (text !== warnText || warnTime < 1) AT.emit('sfx', 'warn');
+    warnText = text; warnTime = 2.5;
+  }
 
   function update(dt, dtHours) {
     const p = AT.state.player;
@@ -101,6 +104,12 @@ window.AT = window.AT || {};
       G().spend(cost, 'brandstof');
     }
     if (working && p.speed > 3) workUnderTool(p, r);
+    if (Math.abs(p.speed) > 0.5) pickupBales(r);
+    // rijden over natte akkers verdicht de grond (onder de machine en de aanhanger/het werktuig)
+    if (Math.abs(p.speed) > 1 && r.mainDef.kind !== 'truck') {
+      G().compactAt(p.x, p.y);
+      if (r.impl) { const h = G().hitchPoint(r.main); G().compactAt(h.x - Math.cos(p.angle) * 6, h.y - Math.sin(p.angle) * 6); }
+    }
     if (p.unloading) unload(p, r, dt);
   }
 
@@ -130,7 +139,14 @@ window.AT = window.AT || {};
         if (Math.hypot(c.x - src.point.x, c.y - src.point.y) < 14) return { kind: 'trailer', m, point: c };
       }
     }
-    if (inRect(src.point, D.siloPit, 10)) return { kind: 'silo', point: { x: D.siloPit.x + D.siloPit.w / 2, y: D.siloPit.y + D.siloPit.h / 2 } };
+    for (const key of Object.keys(D.animals)) {
+      if (!AT.state.animals[key].owned) continue;
+      const tr = AT.farm.troughRect(key);
+      if (!inRect(src.point, tr, 12)) continue;
+      if (!D.animals[key].feeds.includes(src.load.crop)) return { kind: 'refuse', point: tr, name: `De ${D.animals[key].name.toLowerCase()}`, verb: 'eten' };
+      return { kind: 'trough', key, point: { x: tr.x + tr.w / 2, y: tr.y + tr.h / 2 } };
+    }
+    if (inRect(src.point, D.siloPit, 10)) return { kind: D.crops[src.load.crop] ? 'silo' : 'store', point: { x: D.siloPit.x + D.siloPit.w / 2, y: D.siloPit.y + D.siloPit.h / 2 } };
     const sp = sellPointAt(src.point);
     if (sp) {
       const pit = sellPit(sp);
@@ -147,7 +163,7 @@ window.AT = window.AT || {};
 
   let sale = { tons: 0, money: 0, crop: null, sp: null };
   function finishSale() {
-    if (sale.tons > 0.01) G().log(`${AT.fmtTons(sale.tons)} ${D.crops[sale.crop].name.toLowerCase()} verkocht aan ${D.sellPoints[sale.sp].name.toLowerCase()} voor ${AT.fmtMoney(sale.money)}.`, 'money');
+    if (sale.tons > 0.01) G().log(`${AT.fmtTons(sale.tons)} ${G().goodName(sale.crop)} verkocht aan ${D.sellPoints[sale.sp].name.toLowerCase()} voor ${AT.fmtMoney(sale.money)}.`, 'money');
     sale = { tons: 0, money: 0, crop: null, sp: null };
   }
 
@@ -171,12 +187,12 @@ window.AT = window.AT || {};
       warn(src.kind === 'harvester' ? 'Rij met je linkerkant (de losbuis) naast een aanhanger, of naar de stortput/een verkooppunt.' : 'Rij achteruit met de aanhanger over de stortput bij de silo of bij een verkooppunt.');
       return;
     }
-    if (target.kind === 'refuse') { warn(`${target.name} koopt geen ${D.crops[src.load.crop].name.toLowerCase()}.`); return; }
+    if (target.kind === 'refuse') { warn(`${target.name} ${target.verb || 'koopt'} geen ${G().goodName(src.load.crop)}.`); return; }
     const crop = src.load.crop;
     let amount = Math.min(src.load.tons, D.unloadRate[src.kind] * dt);
     if (target.kind === 'trailer') {
       const L = G().getLoad(target.m), cap = G().loadCap(target.m);
-      if (L.tons > 0.001 && L.crop !== crop) { warn(`Die aanhanger zit al vol met ${D.crops[L.crop].name.toLowerCase()}.`); return; }
+      if (L.tons > 0.001 && L.crop !== crop) { warn(`Die aanhanger zit al vol met ${G().goodName(L.crop)}.`); return; }
       amount = Math.min(amount, cap - L.tons);
       if (amount <= 0.0001) { warn('De aanhanger is vol!'); return; }
       L.crop = crop; L.tons += amount;
@@ -185,6 +201,13 @@ window.AT = window.AT || {};
       if (amount <= 0.0001) { warn('De silo is vol! Verkoop graan of breng het naar de graanhandel.'); return; }
       AT.state.silo[crop] += amount;
       AT.state.stats.deliveredTons += amount;
+    } else if (target.kind === 'store') {
+      amount = Math.min(amount, G().warehouseRoom(crop));
+      if (amount <= 0.0001) { warn('De opslagloods is vol! Verkoop producten of breid de loods uit.'); return; }
+      AT.state.goods[crop] += amount;
+    } else if (target.kind === 'trough') {
+      amount = AT.farm.fillTrough(target.key, crop, amount);
+      if (amount <= 0.0001) { warn('De voerbak zit vol.'); return; }
     } else {
       const res = G().sellAt(target.sp, crop, amount);
       sale.tons += amount; sale.money += res.money; sale.crop = crop; sale.sp = target.sp;
@@ -194,10 +217,12 @@ window.AT = window.AT || {};
     if (src.load.tons < 0.001) {
       src.load.tons = 0; src.load.crop = null; p.unloading = false;
       if (target.kind === 'silo') G().log(`${src.kind === 'harvester' ? 'Bunker' : 'Aanhanger'} gelost in de silo.`, 'good');
+      if (target.kind === 'store') G().log(`${G().goodDef(crop).name} gelost in de opslagloods.`, 'good');
+      if (target.kind === 'trough') G().log(`Voerbak bij de ${D.animals[target.key].building.toLowerCase()} gevuld.`, 'good');
       finishSale();
       AT.emit('change');
     }
-    if (AT.fx) AT.fx.stream(src.point, target.point, D.crops[crop].color, dt);
+    if (AT.fx) AT.fx.stream(src.point, target.point, G().goodColor(crop), dt);
   }
 
   // ---------- vrachtwagen: laden bij het laadperron, verkopen bij een verkooppunt ----------
@@ -257,12 +282,13 @@ window.AT = window.AT || {};
       const hit = G().cellAt(cx - sin * s, cy + cos * s);
       if (!hit) continue;
       if (!hit.f.owned) { notOwned = true; continue; }
-      const bunker = r.mainDef.kind === 'harvester' ? { load: G().getLoad(r.main), cap: G().loadCap(r.main) } : null;
+      const bunker = r.mainDef.kind === 'harvester' ? { load: G().getLoad(r.main), cap: G().loadCap(r.main) }
+        : r.toolDef.kind === 'baler' ? { baler: true, m: r.impl } : null;
       const res = G().workCell(hit.f, hit.i, op, p.crop, 'player', dir, r.toolDef, bunker);
       if (res === 'tankfull') { warn('Bunker vol! Los in een aanhanger (U) of rij naar de stortput bij de silo.'); break; }
       if (res === 'mixed') { warn('Er zit nog een ander gewas in de bunker. Los eerst (U).'); break; }
       if (res === 'storefull') { warn('De opslagloods is vol! Verkoop producten of breid de loods uit.'); break; }
-      if (res === 'nomoney') { warn(op === 'fertilize' ? 'Geen geld voor kunstmest!' : 'Geen geld voor zaaigoed!'); break; }
+      if (res === 'nomoney') { warn({ fertilize: 'Geen geld voor kunstmest!', lime: 'Geen geld voor kalk!', spray: 'Geen geld voor gewasbeschermingsmiddel!' }[op] || 'Geen geld voor zaaigoed!'); break; }
       if (res === 'full') { warn('Silo vol! Verkoop graan of vergroot de silo.'); break; }
       if (res === 'season') { warn(`${D.crops[p.crop].name} kun je nu niet zaaien (wel in: ${D.crops[p.crop].sow.map(i => D.months[i].toLowerCase()).join(', ')}). Kies ander zaaigoed met C.`); break; }
       if (res === 'wet') { warn('Te nat om te oogsten. Wacht tot het droog is.'); break; }
@@ -279,6 +305,30 @@ window.AT = window.AT || {};
       }
     }
     if (notOwned) warn('Dit veld is niet van jou. Koop het eerst.');
+    // volle baal achter de pers op het veld leggen
+    if (r.toolDef.kind === 'baler') {
+      while ((r.impl.baleAcc || 0) >= D.baleTons) {
+        r.impl.baleAcc -= D.baleTons;
+        const b = rot(p.x, p.y, p.angle, -34, (Math.random() - 0.5) * 3);
+        G().dropBale(b.x, b.y, p.angle + Math.PI / 2, D.baleTons);
+        AT.emit('sfx', 'bale');
+      }
+    }
+  }
+
+  // balen oprapen: rij met een kipper over of langs de balen
+  function pickupBales(r) {
+    if (!r.impl || r.toolDef.kind !== 'trailer' || !AT.state.bales.length) return;
+    const pose = G().trailerPose(r.impl), L = G().getLoad(r.impl), cap = G().loadCap(r.impl);
+    for (const b of [...AT.state.bales]) {
+      if (Math.hypot(b.x - pose.center.x, b.y - pose.center.y) > 11) continue;
+      if (L.tons > 0.001 && L.crop !== 'hay') { warn(`Er zit ${G().goodName(L.crop)} in de aanhanger. Los die eerst (U).`); return; }
+      if (L.tons + b.t > cap + 1e-6) { warn('De aanhanger is vol met balen. Breng ze naar de stortput bij de silo (opslag) of het veevoerbedrijf.'); return; }
+      L.crop = 'hay'; L.tons += b.t;
+      AT.state.bales = AT.state.bales.filter(x => x !== b);
+      AT.state.stats.balesCollected = (AT.state.stats.balesCollected || 0) + 1;
+      AT.emit('sfx', 'bale');
+    }
   }
 
   function toggleTool() {
@@ -308,7 +358,7 @@ window.AT = window.AT || {};
       const tree = AT.farm.nearestTree(p.x, p.y);
       return {
         mode: 'foot',
-        prompt: v ? `E = instappen in ${D.machines[v.type].name}` : tree ? 'H = boom kappen' : '',
+        prompt: v ? `E = instappen in ${D.machines[v.type].name}` : AT.farm.nearestRipe(p.x, p.y) ? `H = plukken (${D.plantations[AT.farm.nearestRipe(p.x, p.y).key].plant})` : tree ? 'H = boom kappen' : '',
         warn: warnTime > 0 ? warnText : '',
       };
     }
@@ -330,10 +380,10 @@ window.AT = window.AT || {};
     const src = loadSource(r);
     if (src) {
       const t = src.load.tons > 0.01 ? unloadTarget(src) : null;
-      const where = t => t.kind === 'trailer' ? 'in de aanhanger' : t.kind === 'silo' ? 'in de silo' : t.kind === 'sell' ? `bij ${D.sellPoints[t.sp].name.toLowerCase()} (verkopen)` : '';
+      const where = t => t.kind === 'trailer' ? 'in de aanhanger' : t.kind === 'silo' ? 'in de silo' : t.kind === 'store' ? 'in de opslagloods' : t.kind === 'trough' ? 'in de voerbak' : t.kind === 'sell' ? `bij ${D.sellPoints[t.sp].name.toLowerCase()} (verkopen)` : '';
       if (p.unloading) prompt = t && t.kind !== 'refuse' ? `Lossen ${where(t)}… (U = stoppen)` : 'Lossen: zoek een aanhanger, stortput of verkooppunt';
       else if (t && t.kind !== 'refuse') prompt = `U = lossen ${where(t)}`;
-      else if (t) prompt = `${t.name} koopt dit niet`;
+      else if (t) prompt = `${t.name} ${t.verb || 'koopt'} dit niet`;
     }
     const toolName = r.toolDef && r.toolDef.kind === 'harvester' ? 'Maaibord' : r.toolDef && r.toolDef.kind !== 'trailer' ? r.toolDef.name : null;
     return {
@@ -343,10 +393,11 @@ window.AT = window.AT || {};
       tool: toolName,
       lowered: p.lowered,
       crop: r.toolDef && r.toolDef.kind === 'seeder' ? D.crops[p.crop].name + (G().canSowNow(p.crop) ? '' : ' (niet in dit seizoen!)') : null,
-      load: src ? `${src.kind === 'harvester' ? 'Bunker' : 'Aanhanger'}: ${AT.fmtNum(src.load.tons, 1)} / ${src.cap} t${src.load.crop ? ' ' + D.crops[src.load.crop].name.toLowerCase() : ''}`
+      load: src ? `${src.kind === 'harvester' ? 'Bunker' : 'Aanhanger'}: ${AT.fmtNum(src.load.tons, 1)} / ${src.cap} t${src.load.crop ? ' ' + G().goodName(src.load.crop) : ''}${src.load.crop === 'hay' ? ` (${Math.round(src.load.tons / D.baleTons)} balen)` : ''}`
         : r.mainDef.kind === 'truck' ? `Lading: ${AT.fmtNum(pallets(truckCargo(r.main)), 1)} / ${r.mainDef.pallets} pallets` : null,
       loadFrac: src ? src.load.tons / src.cap : 0,
-      extra: r.toolDef && r.toolDef.kind === 'manure' ? `Mest: ${AT.fmtTons(AT.state.goods.manure)}` : r.toolDef && r.toolDef.kind === 'spreader' ? `Kunstmest: ${AT.fmtMoney(D.fertCostPerHa)}/ha` : null,
+      extra: r.toolDef && r.toolDef.kind === 'manure' ? `Mest: ${AT.fmtTons(AT.state.goods.manure)}` : r.toolDef && r.toolDef.kind === 'spreader' ? `Kunstmest: ${AT.fmtMoney(D.fertCostPerHa)}/ha`
+        : r.toolDef && r.toolDef.kind === 'lime' ? `Kalk: ${AT.fmtMoney(D.limeCostPerHa)}/ha` : r.toolDef && r.toolDef.kind === 'sprayer' ? `Spuiten: ${AT.fmtMoney(D.sprayCostPerHa)}/ha (alleen groeiend gewas)` : null,
       prompt,
       warn: warnTime > 0 ? warnText : '',
     };
@@ -363,12 +414,17 @@ window.AT = window.AT || {};
     if (e.code === 'Space') toggleTool();
     if (e.code === 'KeyC') cycleCrop();
     if (e.code === 'KeyU') toggleUnload();
-    if (e.code === 'KeyH' && p.mode === 'foot') {
+    if (e.code === 'KeyH' && p.mode === 'foot' && AT.farm.nearestRipe(p.x, p.y)) {
+      const hit = AT.farm.nearestRipe(p.x, p.y);
+      const got = AT.farm.pick(hit.key, hit.plant, false);
+      if (got > 0) { AT.emit('sfx', 'pick'); G().log(`Geplukt: +${AT.fmtAmount(got, D.plantations[hit.key].product)} ${G().goodName(D.plantations[hit.key].product)}.`, 'good'); }
+      else warn('De opslagloods is vol.');
+    } else if (e.code === 'KeyH' && p.mode === 'foot') {
       const t = AT.farm.nearestTree(p.x, p.y);
       if (!t) warn(AT.farm.woodlot().owned ? 'Loop naar een volgroeide boom in je bosperceel.' : 'Koop eerst het bosperceel (tab Bedrijf).');
       else {
         const wood = D.woodlot.woodPerTree * t.growth;
-        if (AT.farm.cutTree(t, false)) { G().log(`Boom gekapt: +${AT.fmtNum(wood, 1)} m³ hout.`, 'good'); if (AT.fx) AT.fx.stream({ x: t.x, y: t.y }, { x: t.x + 6, y: t.y + 4 }, '#8b6a45', 0.3); }
+        if (AT.farm.cutTree(t, false)) { AT.emit('sfx', 'chop'); G().log(`Boom gekapt: +${AT.fmtNum(wood, 1)} m³ hout.`, 'good'); if (AT.fx) AT.fx.stream({ x: t.x, y: t.y }, { x: t.x + 6, y: t.y + 4 }, '#8b6a45', 0.3); }
       }
     }
     if (e.code === 'KeyE') {

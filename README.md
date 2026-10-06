@@ -17,7 +17,8 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 | Spatie | Werktuig omlaag/omhoog (ploeg, zaaimachine, maaibord) |
 | C | Zaaigoed wisselen |
 | U | Lossen: maaidorser → aanhanger, aanhanger → stortput silo of verkooppunt; vrachtwagen laden (laadperron) of verkopen |
-| H | Boom kappen (te voet, in je eigen bosperceel) |
+| H | Te voet: boom kappen (bosperceel) of plukken (boomgaard, wijngaard) |
+| M | Geluid dempen (🔊-knop rechtsboven voor volume, muziek en omgeving) |
 | Scroll / slepen | Zoomen / rondkijken |
 | P | Pauze |
 | 1 / 2 / 3 / 4 | Snelheid 1×, 5×, 20×, 60× (1× = 1 seconde is 1 speelminuut) |
@@ -36,7 +37,13 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 11. In de tab **Bedrijf** bouw je **stallen** (koeien, kippen, schapen) en **fabrieken** (molen, bakkerij, kaasmakerij, brouwerij, oliepers, suikerfabriek, chipsfabriek) die je oogst meer waard maken. Daar koop je ook **kassen** (tomaten, sla), een **bosperceel** met **zagerij** en bouw je de **opslagloods** uit
 12. In de tab **Markt** zie je de **📈 prijskalender**: welke maand elk gewas duur of goedkoop is. Neem **contracten** aan voor een bonus, en let op: veel tegelijk verkopen drukt de prijs
 13. Er zijn vier **verkooppunten**: graanhandel, veevoerbedrijf, haven en supermarkt. Breng graan met een kipper en producten met de **vrachtwagen** (laden bij het laadperron, U) voor de volle prijs
-14. In de tab **Geld** zie je inkomsten en uitgaven per dag, het kasboek per categorie, en kun je **lenen** bij de bank (met rente)
+14. In de tab **Geld** zie je inkomsten en uitgaven per dag, het kasboek per categorie, en kun je **lenen** bij de bank (met rente). Daar sluit je ook een **oogstverzekering** af tegen storm en vorst
+15. **Bodem en gewasgezondheid**: houd de **pH** goed met de **kalkstrooier**, spuit tegen **onkruid, ziektes en plagen** met de **spuitmachine**, leg **irrigatie** aan tegen droogte en rij niet over natte akkers (verdichting)
+16. **Hooi**: zelf persen geeft **balen op het veld**. Rij er met tractor + kipper overheen om ze op te rapen en los ze (U) bij de stortput (opslagloods) of het veevoerbedrijf. Bij regen droogt hooi bijna niet
+17. **Boomgaard en wijngaard** (rechts op de kaart): pluk appels en druiven met **H** of huur plukkers in. Druiven worden wijn in de **wijnmakerij**
+18. **Dieren** hebben een **voerbak**: vul hem zelf met een kipper (U) of laat automatisch voeren (kost voerdienst). Houd ze gezond (dierenarts), dan krijgen ze jongen. **Kuilvoer** en **mengvoer** geven meer productie
+19. **Pachten**: een veld huren per dag in plaats van kopen. Een **werknemer** kan ook met de **vrachtwagen** leveren (tab Bedrijf → opslagloods)
+20. Je voortgang blijft bewaard als het spel een update krijgt
 
 ## Projectstructuur
 ```
@@ -45,13 +52,14 @@ css/style.css     opmaak
 js/data.js        ALLE content: gewassen, machines, velden, silo, doelen
 js/game.js        spellogica (cellen, bodem, taken, economie, contracten, bank, opslaan)
 js/weather.js     seizoenen, weer, weersvoorspelling, groeisnelheid
-js/farm.js        dieren, fabrieken, kassen en bosperceel
+js/farm.js        dieren (voerbak, gezondheid, jongen), fabrieken, kassen, bos, boomgaard en wijngaard
 js/staff.js       personeel, wachtrij, automatisch beheer, routes over de wegen
 js/vehicle.js     lopen en zelf rijden: besturing + werken onder het werktuig
 js/sprites.js     tekeningen: machines, gebouwen, bomen
 js/effects.js     bandensporen, rook, stof, kaf, meeuwen
 js/render.js      tekenen: wereld, camera, velden, licht, minimap, HUD
 js/ui.js          zijpaneel, topbalk, logboek
+js/audio.js       geluid (alles live opgewekt): motoren, omgeving, effecten, muziek
 js/main.js        opstarten + game loop
 docs/ONDERZOEK.md onderzoek naar Agro Tycoon en concurrenten
 todo.md           roadmap met alle extra's

@@ -4,7 +4,7 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 8,
+  version: 9,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
   world: { w: 2700, h: 1900 },
@@ -59,11 +59,20 @@ AT.data = {
   witherAfter: 0.5,   // rijp gewas begint te verwelken als het 50% langer staat dan de groeitijd
   seasonPrice: 0.15,  // prijzen ±15% door het jaar: goedkoop in de oogstmaand, duur een half jaar later
   hayDryHours: 16,    // gemaaid gras droogt in 16 uur (in 6 uur als je het schudt)
+  hayDryRate: { sun: 1.15, clouds: 0.7, rain: 0.1, storm: 0.05, snow: 0.05 },  // regen vertraagt het drogen
+  baleTons: 0.4,      // één ronde baal hooi; zelf persen = balen op het veld die je ophaalt met een aanhanger
+  baleCollectCost: 8, // balen laten ophalen (per baal)
 
   // ---------- economie ----------
   saturation: { perEuro: 1 / 400000, max: 0.4, recovery: 0.85 }, // veel verkopen drukt de prijs tijdelijk
   bank: { ratePerDay: 0.004, steps: [10000, 50000, 100000], maxShare: 0.5, base: 50000 },
   contracts: { offers: 3, refreshDays: 4, minDays: 6, maxDays: 12, fine: 0.15 },
+  // oogstverzekering: premie per hectare per dag, keert 80% uit van storm- en vorstschade
+  insurance: { premiumPerHa: 5, cover: 0.8 },
+  // grond pachten: huur per dag als deel van de koopprijs
+  leaseRate: 0.008,
+  // werknemer met de vrachtwagen: externe chauffeur kost per rit
+  truckDriverFee: 150,
   // opslagloods voor producten (in pallets); mest heeft een eigen mestput
   warehouse: [
     { pallets: 30, price: 0 }, { pallets: 80, price: 20000 }, { pallets: 200, price: 60000 }, { pallets: 500, price: 150000 },
@@ -75,8 +84,8 @@ AT.data = {
     feed:    { name: 'Veevoerbedrijf', kind: 'mixed', only: ['corn', 'barley', 'oats', 'soy', 'beans', 'hay'],
                mult: { corn: 1.08, barley: 1.08, oats: 1.1, soy: 1.1, beans: 1.05, hay: 1.15 }, roof: '#6d8f3a',
                lot: { x: 2450, y: 620, w: 230, h: 200 }, pit: { x: 2462, y: 690, w: 74, h: 22 } },
-    harbor:  { name: 'Haven',          kind: 'mixed', only: ['wheat', 'canola', 'sunflower', 'soy', 'sugar', 'planks', 'oil'],
-               mult: { wheat: 1.08, canola: 1.1, sunflower: 1.08, soy: 1.06, sugar: 1.05, planks: 1.1, oil: 1.1 }, roof: '#5a6b7c',
+    harbor:  { name: 'Haven',          kind: 'mixed', only: ['wheat', 'canola', 'sunflower', 'soy', 'sugar', 'planks', 'oil', 'wine', 'apples'],
+               mult: { wheat: 1.08, canola: 1.1, sunflower: 1.08, soy: 1.06, sugar: 1.05, planks: 1.1, oil: 1.1, wine: 1.12, apples: 1.05 }, roof: '#5a6b7c',
                lot: { x: 2450, y: 1250, w: 240, h: 300 }, pit: { x: 2462, y: 1280, w: 74, h: 22 } },
     shop:    { name: 'Supermarkt',     kind: 'products', mult: {}, roof: '#c0392b',
                lot: { x: 2450, y: 60, w: 230, h: 180 }, pit: { x: 2462, y: 130, w: 74, h: 22 } },
@@ -88,6 +97,14 @@ AT.data = {
     crops: { tomatoes: { perDay: 300 }, lettuce: { perDay: 500 } },
     energyPerDay: [40, 30, 60, 160],   // per seizoen
     lots: [{ x: 1016, y: 1612, w: 200, h: 124 }, { x: 1016, y: 1748, w: 200, h: 124 }],
+  },
+  // boomgaard en wijngaard: vruchten groeien in de zomer, oogsten in de oogstmaanden
+  // (zelf plukken met H, of plukkers inhuren). Wat je niet plukt, rot aan het eind van de oogsttijd.
+  plantations: {
+    orchard:  { name: 'Boomgaard', plant: 'boom', plants: 'bomen', price: 60000, area: { x: 2448, y: 846, w: 236, h: 182 },
+                product: 'apples', perPlant: 1200, grow: [1, 2, 3, 4], harvest: [5, 6, 7], pickCost: 40, spacing: [24, 22] },
+    vineyard: { name: 'Wijngaard', plant: 'wijnstok', plants: 'wijnstokken', price: 70000, area: { x: 2448, y: 1600, w: 236, h: 284 },
+                product: 'grapes', perPlant: 90, grow: [1, 2, 3, 4, 5], harvest: [6, 7], pickCost: 4, spacing: [9, 16] },
   },
   // bosperceel: bomen groeien, kappen geeft hout (te voet: H bij een boom)
   woodlot: { price: 40000, area: { x: 2075, y: 1762, w: 305, h: 126 }, growDays: 8, woodPerTree: 2.5, cutCost: 15 },
@@ -119,6 +136,15 @@ AT.data = {
   manureBonus: 1.1,
   rotationBonus: 1.1,       // ander gewas dan vorige keer
   monoculturePenalty: 0.9,  // zelfde gewas als vorige keer
+  // zuurgraad (pH): elke oogst en kunstmest maken de bodem zuurder; kalk strooien maakt hem weer goed
+  soilPh: { start: 6.4, good: 6.3, min: 4.8, max: 7.5, perHarvest: 0.15, perFert: 0.05, perLime: 1.0 },
+  limeCostPerHa: 60,
+  // onkruid, ziektes en plagen (0..1). Zolang ze er zijn kost het elke dag opbrengst; spuiten haalt ze weg
+  pests: { weedsPerDay: 0.14, diseaseWet: 0.2, pestsSummer: 0.14, lossPerDay: 0.07, maxLoss: 0.5, warnAt: 0.35 },
+  sprayCostPerHa: 70,
+  // irrigatie: geen last van droogte (groei en opbrengst), kost water tijdens droogte
+  irrigation: { pricePerHa: 1200, waterPerHaDay: 25 },
+  compaction: 0.85,         // over natte grond gereden: 15% minder opbrengst tot je ploegt
 
   // ---------- producten (dieren en fabrieken) ----------
   products: {
@@ -134,31 +160,52 @@ AT.data = {
     oil:    { name: 'Olie',   unit: 'L',  basePrice: 1.5,  decimals: 0, perPallet: 1000 },
     sugar:  { name: 'Suiker', unit: 'kg', basePrice: 0.6,  decimals: 0, perPallet: 1000 },
     chips:  { name: 'Chips',  unit: 'zakken', basePrice: 0.35, decimals: 0, perPallet: 1500 },
-    hay:    { name: 'Hooi',   unit: 't',  basePrice: 120,  decimals: 1, perPallet: 1, cheapMonth: 3 },
+    hay:    { name: 'Hooi',   unit: 't',  basePrice: 120,  decimals: 1, perPallet: 1, cheapMonth: 3, color: '#cdb86a' },
     wood:   { name: 'Hout',   unit: 'm³', basePrice: 70,   decimals: 1, perPallet: 2 },
     planks: { name: 'Planken', unit: 'm³', basePrice: 260, decimals: 1, perPallet: 2 },
     tomatoes: { name: 'Tomaten', unit: 'kg', basePrice: 1.6, decimals: 0, perPallet: 500, cheapMonth: 4 },
     lettuce:  { name: 'Sla',     unit: 'krop', basePrice: 0.8, decimals: 0, perPallet: 1000, cheapMonth: 3 },
+    apples:   { name: 'Appels',  unit: 'kg', basePrice: 0.45, decimals: 0, perPallet: 1000, cheapMonth: 6, color: '#c0392b' },
+    grapes:   { name: 'Druiven', unit: 'kg', basePrice: 0.9,  decimals: 0, perPallet: 1000, cheapMonth: 7, color: '#6c3483' },
+    silage:   { name: 'Kuilvoer', unit: 't', basePrice: 70,  decimals: 1, perPallet: 2, color: '#7a8f3a' },
+    feedmix:  { name: 'Mengvoer', unit: 't', basePrice: 330, decimals: 1, perPallet: 1, color: '#c49a5a' },
+    wine:     { name: 'Wijn',    unit: 'L',  basePrice: 3.8,  decimals: 0, perPallet: 600, color: '#7b241c' },
   },
 
-  // Dieren: eten graan uit de silo (feeds = voorkeur), produceren per dier per dag
+  // Dieren eten uit hun voerbak (zelf vullen met een aanhanger: U bij de voerbak) of, als
+  // "automatisch voeren" aan staat, uit de silo/opslagloods (kost voerdienst per ton).
+  // feeds = voorkeursvolgorde; births = jongen per dier per dag; sellPrice = verkoopprijs per dier
+  // trough = inhoud voerbak (ton); mengvoer en kuilvoer geven meer productie (feedBonus)
   animals: {
     cows: {
-      name: 'Koeien', one: 'koe', building: 'Koeienstal', buildPrice: 25000, capacity: 20, price: 900,
-      feedPerDay: 0.04, feeds: ['hay', 'corn', 'oats', 'barley', 'soy', 'wheat'], produce: { milk: 80, manure: 0.08 },
+      name: 'Koeien', one: 'koe', young: 'kalfjes', building: 'Koeienstal', buildPrice: 25000, capacity: 20, price: 900, sellPrice: 700,
+      feedPerDay: 0.04, feeds: ['feedmix', 'silage', 'hay', 'corn', 'oats', 'barley', 'soy', 'wheat'], produce: { milk: 80, manure: 0.08 },
+      births: 0.025, trough: 8,
       pen: { x: 48, y: 1608, w: 400, h: 272 }, barn: { x: 60, y: 1620, w: 130, h: 80 },
     },
     chickens: {
-      name: 'Kippen', one: 'kip', building: 'Kippenhok', buildPrice: 8000, capacity: 200, price: 10,
-      feedPerDay: 0.0006, feeds: ['wheat', 'corn', 'oats', 'soy', 'barley'], produce: { eggs: 1.5 },
+      name: 'Kippen', one: 'kip', young: 'kuikens', building: 'Kippenhok', buildPrice: 8000, capacity: 200, price: 10, sellPrice: 7,
+      feedPerDay: 0.0006, feeds: ['feedmix', 'wheat', 'corn', 'oats', 'soy', 'barley'], produce: { eggs: 1.5 },
+      births: 0.06, trough: 2,
       pen: { x: 470, y: 1608, w: 240, h: 272 }, barn: { x: 482, y: 1620, w: 84, h: 56 },
     },
     sheep: {
-      name: 'Schapen', one: 'schaap', building: 'Schaapskooi', buildPrice: 12000, capacity: 40, price: 150,
-      feedPerDay: 0.006, feeds: ['hay', 'oats', 'barley', 'wheat', 'corn'], produce: { wool: 1, manure: 0.01 },
+      name: 'Schapen', one: 'schaap', young: 'lammetjes', building: 'Schaapskooi', buildPrice: 12000, capacity: 40, price: 150, sellPrice: 120,
+      feedPerDay: 0.006, feeds: ['feedmix', 'silage', 'hay', 'oats', 'barley', 'wheat', 'corn'], produce: { wool: 1, manure: 0.01 },
+      births: 0.04, trough: 3,
       pen: { x: 732, y: 1608, w: 268, h: 272 }, barn: { x: 744, y: 1620, w: 110, h: 70 },
     },
+    pigs: {
+      name: 'Varkens', one: 'varken', young: 'biggetjes', building: 'Varkensstal', buildPrice: 20000, capacity: 40, price: 120, sellPrice: 240,
+      feedPerDay: 0.01, feeds: ['feedmix', 'corn', 'barley', 'wheat', 'potato', 'soy'], produce: { manure: 0.015 },
+      births: 0.1, trough: 5,
+      pen: { x: 2448, y: 1072, w: 236, h: 168 }, barn: { x: 2460, y: 1084, w: 104, h: 62 },
+    },
   },
+  feedBonus: { feedmix: 1.3, silage: 1.15 },  // betere productie met mengvoer/kuilvoer
+  feedServicePerTon: 40,    // automatisch voeren uit silo/loods kost €40 per ton
+  barnLevels: [1, 2, 3],    // stal uitbreiden: ×2 en ×3 zoveel plek
+  vetBase: 60, vetPerAnimal: 4,
 
   // Fabrieken: verwerken per "batch" in → uit, batchesPerDay als alles op voorraad is
   factories: {
@@ -176,6 +223,13 @@ AT.data = {
                lot: { x: 1290, y: 1764, w: 200, h: 112 }, roof: '#d8d3c7' },
     sawmill: { name: 'Zagerij',     price: 40000, in: { wood: 2 },                out: { planks: 1.5 }, batchesPerDay: 6, costPerBatch: 15,
                lot: { x: 1912, y: 1764, w: 150, h: 112 }, roof: '#7b5a3a' },
+    winery:  { name: 'Wijnmakerij', price: 80000, in: { grapes: 150 },            out: { wine: 100 },   batchesPerDay: 8, costPerBatch: 25,
+               lot: { x: 2448, y: 252, w: 236, h: 128 }, roof: '#7b241c' },
+    silage:  { name: 'Sleufsilo (kuilvoer)', price: 25000, in: { corn: 1 }, out: { silage: 1.25 }, alt: [{ in: { hay: 0.8 }, out: { silage: 1 } }],
+               batchesPerDay: 10, costPerBatch: 5, lot: { x: 2448, y: 474, w: 236, h: 78 }, roof: '#5f6a4a' },
+    feedmix: { name: 'Veevoermengerij', price: 50000, in: { silage: 0.5, barley: 0.3, soy: 0.2 }, out: { feedmix: 1 },
+               alt: [{ in: { silage: 0.5, oats: 0.3, beans: 0.2 }, out: { feedmix: 1 } }, { in: { corn: 0.5, wheat: 0.3, soy: 0.2 }, out: { feedmix: 0.9 } }],
+               batchesPerDay: 8, costPerBatch: 10, lot: { x: 2448, y: 392, w: 236, h: 74 }, roof: '#8d6e3f' },
     chips:   { name: 'Chipsfabriek', price: 75000, in: { potato: 1, oil: 20 },    out: { chips: 1200 }, batchesPerDay: 6, costPerBatch: 20,
                lot: { x: 1520, y: 1764, w: 190, h: 112 }, roof: '#c0562b' },
   },
@@ -213,6 +267,8 @@ AT.data = {
 
     spreader_fert:   { kind: 'spreader', name: 'Kunstmeststrooier', price: 7000,  rate: 2.0, width: 40, workSpeed: 15, minPower: 1.0, color: '#e67e22' },
     manure_spreader: { kind: 'manure',   name: 'Mestverspreider',   price: 12000, rate: 0.8, width: 20, workSpeed: 10, minPower: 1.0, color: '#6d4c2f' },
+    lime_spreader:   { kind: 'lime',     name: 'Kalkstrooier',      price: 8000,  rate: 1.8, width: 36, workSpeed: 14, minPower: 1.0, color: '#9aa3a8' },
+    sprayer:         { kind: 'sprayer',  name: 'Spuitmachine 24 m', price: 15000, rate: 3.0, width: 48, workSpeed: 16, minPower: 1.0, color: '#2e86c1' },
 
     trailer_small: { kind: 'trailer', name: 'Kipper 8 t',          price: 6000,  capacity: 8,  width: 14, length: 16, minPower: 1.0, color: '#b03a2e' },
     trailer_large: { kind: 'trailer', name: 'Kipper 16 t',         price: 14000, capacity: 16, width: 16, length: 20, minPower: 2.0, color: '#2e86c1' },
@@ -315,11 +371,18 @@ AT.data = {
     { id: 'deliver',  text: 'Breng zelf graan weg: los een aanhanger bij de silo of graanhandel (U)', reward: 2000, check: s => s.stats.deliveredTons >= 1 },
     { id: 'crops3',   text: 'Oogst 3 verschillende gewassen',       reward: 3000,  check: s => Object.keys(s.stats.cropsHarvested || {}).length >= 3 },
     { id: 'clover',   text: 'Zaai klaver en ploeg het onder (groenbemester)', reward: 2000, check: s => s.stats.greenManureHa >= 1 },
+    { id: 'lime',     text: 'Strooi kalk op een zure bodem (kalkstrooier)', reward: 2000, check: s => (s.stats.limeHa || 0) >= 1 },
+    { id: 'spray',    text: 'Spuit tegen onkruid, ziektes of plagen (spuitmachine)', reward: 2000, check: s => (s.stats.sprayHa || 0) >= 1 },
     { id: 'hay',      text: 'Maai gras en pers het tot hooi',       reward: 2000,  check: s => s.stats.hayTons >= 1 },
+    { id: 'bales',    text: 'Haal hooibalen op met een tractor en kipper', reward: 2000, check: s => (s.stats.balesCollected || 0) >= 1 },
+    { id: 'fruit',    text: 'Koop een boomgaard of wijngaard en pluk de oogst (H)', reward: 4000, check: s => (s.stats.picked || 0) >= 1 },
     { id: 'contract', text: 'Voltooi een contract (tab Markt)',     reward: 3000,  check: s => s.stats.contractsDone >= 1 },
     { id: 'animals',  text: 'Bouw een stal en koop dieren (tab Bedrijf)', reward: 3000, check: s => Object.values(s.animals).some(a => a.count > 0) },
     { id: 'truck',    text: 'Breng producten met de vrachtwagen naar de supermarkt', reward: 3000, check: s => s.stats.truckDeliveries >= 1 },
+    { id: 'lease',    text: 'Pacht een veld (goedkoper beginnen dan kopen)', reward: 1000, check: s => s.fields.some(f => f.leased) },
     { id: 'factory',  text: 'Bouw een fabriek (tab Bedrijf)',        reward: 5000,  check: s => Object.values(s.factories).some(f => f.owned) },
+    { id: 'trough',   text: 'Vul zelf een voerbak: rij een kipper met voer naar een stal en los (U)', reward: 2000, check: s => (s.stats.troughTons || 0) >= 0.5 },
+    { id: 'young',    text: 'Laat je dieren jongen krijgen (goed voeren en gezond houden)', reward: 2000, check: s => (s.stats.births || 0) >= 1 },
     { id: 'field3',   text: 'Koop een extra veld',                  reward: 5000,  check: s => s.fields.filter(f => f.owned).length >= 3 },
     { id: 'hire',     text: 'Neem een werknemer aan (tab Team)',   reward: 2000,  check: s => s.staff && s.staff.employees.length >= 1 },
     { id: 'auto',     text: 'Zet een veld op automatisch beheer (tab Veld)', reward: 3000, check: s => s.fields.some(f => f.auto && f.auto.on) },

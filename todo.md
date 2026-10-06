@@ -91,12 +91,12 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Bodemkwaliteit per veld: elke oogst put de bodem uit, mest maakt hem weer beter
 - [x] Kunstmeststrooier (+25% opbrengst) en mestverspreider (betere bodem)
 - [x] Vruchtwisseling: ander gewas = +10%, steeds hetzelfde gewas = −10%
-- [ ] Bodem-pH en kalk strooien
+- [x] Bodem-pH en kalk strooien: oogsten en kunstmest maken de bodem zuurder, de kalkstrooier maakt hem weer goed
 - [x] Groenbemester (klaver): onderploegen herstelt de bodem
-- [ ] Irrigatie tegen droogte
-- [ ] Onkruid, ziektes en plagen (spuitmachine)
+- [x] Irrigatie per veld: bij droogte groeit het gewas gewoon door (kost water)
+- [x] Onkruid (lente), ziektes (nat weer) en plagen (warm en droog) kosten elke dag opbrengst; de spuitmachine haalt ze weg en beschermt tot de oogst
 - [x] Rijp gewas verwelkt als je te lang wacht (minder opbrengst)
-- [ ] Rijden in de regen maakt sporen/verdichting in de bodem
+- [x] Rijden over natte akkers verdicht de bodem (−15% tot je ploegt), met zichtbare sporen
 
 ## 🌽 Fase 4: Meer gewassen en producten
 - [x] Haver, koolzaad (winterhard, gele bloei), zonnebloem (droogtebestendig), soja en veldbonen (verbeteren de bodem)
@@ -106,9 +106,10 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Gras/hooi: maaien → schudden → drogen → persen; gras groeit daarna vanzelf terug
 - [x] Bosperceel kopen, bomen kappen (H) en hout tot planken zagen in de zagerij; bomen groeien terug
 - [x] Kassen met tomaten of sla, het hele jaar (stookkosten in de winter)
-- [ ] Regen vertraagt het drogen van hooi
-- [ ] Echte balen op het veld die je zelf ophaalt
-- [ ] Boomgaard/fruit en wijngaard
+- [x] Regen vertraagt het drogen van hooi
+- [x] Echte balen op het veld: ophalen met tractor + kipper (eroverheen rijden) of laten ophalen
+- [x] Boomgaard (appels) en wijngaard (druiven → wijnmakerij): plukken met H of plukkers inhuren
+- [ ] Fruit- en druivenoogstmachine
 
 **Waarom zou je niet altijd het duurste gewas kiezen?** Elk gewas moet een eigen reden hebben:
 - [x] **Seizoenen**: niet elk gewas mag in elk seizoen gezaaid worden (tarwe in lente/herfst, gerst en maïs in lente/zomer)
@@ -128,11 +129,12 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Koeien (melk + mest), kippen (eieren), schapen (wol + mest)
 - [x] Stallen bouwen, dieren kopen/verkopen, dieren lopen rond in de wei
 - [x] Dieren eten graan uit de silo; honger = minder productie
-- [ ] Varkens
-- [ ] Voer zelf naar de stal rijden (voerwagen) in plaats van automatisch
+- [x] Varkens (veel biggetjes, verkopen als ze vetgemest zijn)
+- [x] Voer zelf naar de stal rijden: voerbak vullen met een kipper (U); automatisch voeren uit de silo kost voerdienst
 - [x] Hooi als voer voor koeien en schapen
-- [ ] Voer maken van eigen oogst (kuilvoer, veevoermengerij)
-- [ ] Dierengezondheid, jongen en stallen uitbreiden (meer plek)
+- [x] Voer maken van eigen oogst: sleufsilo (kuilvoer) en veevoermengerij (mengvoer) geven meer productie
+- [x] Dierengezondheid (ziektes, dierenarts), jongen en stallen uitbreiden (×2, ×3 plek)
+- [ ] Voermengwagen als eigen machine
 
 ## 🏭 Fase 6: Productie en economie
 - [x] Fabrieken: graanmolen (meel), bakkerij (brood van meel + eieren), kaasmakerij (kaas van melk), brouwerij (bier van gerst)
@@ -145,9 +147,9 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Leningen bij de bank met dagelijkse rente (max. op basis van je bezit)
 - [x] Financieel overzicht: grafiek inkomsten/uitgaven per dag + kasboek per categorie
 - [x] Marktverzadiging en seizoensprijzen per maand (prijskalender)
-- [ ] Werknemers rijden zelf met de vrachtwagen
-- [ ] Verzekering tegen storm/vorst
-- [ ] Grond pachten in plaats van kopen
+- [x] Werknemers rijden zelf met de vrachtwagen (laden, beste verkooppunt, terug), ook automatisch als de loods half vol is
+- [x] Oogstverzekering: 80% vergoeding van storm- en vorstschade
+- [x] Grond pachten in plaats van kopen (huur per dag, later alsnog kopen)
 
 ## 🗺️ Fase 7: Wereld en progressie
 - [ ] Nog grotere kaart / meerdere kaarten
@@ -156,7 +158,8 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [ ] Prestaties (achievements)
 
 ## 🎨 Fase 8: Presentatie en gemak
-- [ ] Geluid: motoren, ambient, muziek
+- [x] Geluid: motoren, werktuigen, wind/regen/onweer, vogels, krekels, dieren, effecten en rustige muziek (🔊-knop, M = dempen)
+- [ ] Geluid van machines van werknemers in de buurt
 - [ ] Opslaan exporteren/importeren (bestand) + meerdere saves
 - [ ] Instelling voor de daglengte (nu vast: 1 seconde = 1 minuut)
 - [ ] Uitleg in het spel bij de eerste keer (pijlen naar tractor, veld, stortput)
@@ -164,6 +167,6 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 
 ## 🛠️ Techniek
 - [ ] Unit tests voor `game.js` (economie, cycli) en een vaste speltest in de browser
-- [ ] Opslag behouden bij updates (nu begint het spel opnieuw als de opslagversie verandert)
+- [x] Opslag behouden bij updates (oude saves worden omgezet, met reservekopie)
 - [ ] Balans-spreadsheet (verdienen per uur per gewas/machine)
 - [ ] Overstappen op ES-modules + Vite wanneer het project groter wordt

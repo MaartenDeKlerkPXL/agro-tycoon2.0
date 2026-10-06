@@ -29,6 +29,7 @@ window.AT = window.AT || {};
     if (!s.staff) s.staff = { employees: [], candidates: [], candidatesDay: 0, allowExternal: true };
     if (!s.queue) s.queue = [];
     if (!s.trips) s.trips = [];
+    if (!s.deliveries) s.deliveries = [];
     if (!s.staff.candidates.length) refreshCandidates(true);
   }
 
@@ -103,6 +104,7 @@ window.AT = window.AT || {};
   const TASK_LABEL = (task, crop) => ({
     plow: 'Ploegen', sow: 'Zaaien' + (crop ? ' (' + D.crops[crop].name.toLowerCase() + ')' : ''), harvest: 'Oogsten',
     fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden', mow: 'Gras maaien', ted: 'Gras schudden', bale: 'Hooi persen',
+    lime: 'Kalk strooien', spray: 'Spuiten',
   })[task];
 
   // Kan deze taak nu starten? Geeft { ok } of { wait: 'reden' } of { drop: 'reden' }
@@ -124,6 +126,8 @@ window.AT = window.AT || {};
     if (t.task === 'harvest' && !(sum.ready - (sum.readyCrops.grass || 0))) return sum.growing ? { wait: 'gewas groeit nog' } : { drop: 'niets te oogsten' };
     if (t.task === 'fertilize' && !sum.needFert) return { drop: 'al bemest' };
     if (t.task === 'manure' && !sum.needManure) return { drop: 'al bemest' };
+    if (t.task === 'lime' && !sum.needLime) return { drop: 'al gekalkt' };
+    if (t.task === 'spray' && !sum.needSpray) return sum.ready ? { drop: 'gewas is al rijp' } : { drop: 'niets te spuiten' };
     const rig = G().bestRig(t.task, t.fieldId, t.crop);
     if (!rig) return { wait: G().missingFor(t.task, t.fieldId, t.crop) };
     const worker = freeWorker();
@@ -188,6 +192,9 @@ window.AT = window.AT || {};
         f.auto.status = msg;
         continue;
       }
+      const health = Math.max(f.weeds || 0, f.disease || 0, f.pests || 0);
+      if (sum.growing > half && health > 0.25 && hasKind('sprayer') && sum.needSpray > half) { enqueue(f.id, 'spray', null, true); f.auto.status = 'spuiten'; continue; }
+      if ((f.ph ?? 7) < 6.0 && hasKind('lime') && sum.needLime > half && sum.stubble + sum.plowed > half) { enqueue(f.id, 'lime', null, true); f.auto.status = 'kalken'; continue; }
       if (sum.ready > half * 0.2 && readyCrop && !D.crops[readyCrop].greenManure && !sum.growing) enqueue(f.id, 'harvest', null, true);
       else if (sum.ready && readyCrop && D.crops[readyCrop].greenManure && !sum.growing) enqueue(f.id, 'plow', null, true);
       else if (sum.stubble > half) enqueue(f.id, 'plow', null, true);
@@ -315,17 +322,115 @@ window.AT = window.AT || {};
     return o.seg >= o.path.length - 1;
   }
 
+  // ---------- leveren met de vrachtwagen ----------
+  // Een werknemer haalt de vrachtwagen, laadt bij het laadperron wat het meest waard is,
+  // rijdt naar het verkooppunt dat er het meest voor betaalt en komt terug.
+  const dockPoint = () => ({ x: D.dock.x + D.dock.w / 2, y: D.dock.y + D.dock.h + 10 });
+  const pitPoint = sp => { const pit = D.sellPoints[sp].pit; return { x: pit.x + pit.w / 2, y: pit.y + pit.h / 2 }; };
+  const pathBetween = (a, b) => inYard(a) && inYard(b) ? [{ x: a.x, y: a.y }, { x: b.x, y: b.y }] : route(a, b);
+  const pathLen = path => path.reduce((sum, p, i) => i ? sum + Math.hypot(p.x - path[i - 1].x, p.y - path[i - 1].y) : 0, 0);
+
+  function loadTruck(cap) {
+    const s = S(), cargo = {};
+    let room = cap;
+    const keys = Object.keys(D.products).filter(k => D.products[k].perPallet && s.goods[k] > 0.01)
+      .sort((a, b) => G().price(b) * D.products[b].perPallet - G().price(a) * D.products[a].perPallet);
+    for (const k of keys) {
+      if (room <= 0.001) break;
+      const amt = Math.min(s.goods[k], room * D.products[k].perPallet);
+      s.goods[k] -= amt; cargo[k] = amt; room -= amt / D.products[k].perPallet;
+    }
+    return cargo;
+  }
+  function cargoValue(sp, cargo) {
+    return Object.entries(cargo).reduce((v, [k, amt]) => v + (G().accepts(sp, k) ? amt * G().price(k, sp) : 0), 0);
+  }
+  function bestSellPoint(cargo) {
+    let best = null, bv = 0;
+    for (const [id, sp] of Object.entries(D.sellPoints)) {
+      if (!sp.pit) continue;
+      const v = cargoValue(id, cargo);
+      if (v > bv) { bv = v; best = id; }
+    }
+    return best;
+  }
+
+  function startDelivery(quiet = false) {
+    ensure();
+    const s = S(), fail = msg => { if (!quiet) G().log(msg, 'warn'); return msg; };
+    const truck = s.machines.find(m => D.machines[m.type].kind === 'truck' && !m.busy);
+    if (!s.machines.some(m => D.machines[m.type].kind === 'truck')) return fail('Je hebt geen vrachtwagen (Winkel).');
+    if (!truck) return fail('De vrachtwagen is bezig.');
+    if (G().palletsUsed() < 0.5) return fail('Er staat bijna niets in de opslagloods.');
+    const worker = freeWorker();
+    if (!worker) return fail('Geen vrije werknemer.');
+    truck.busy = 'delivery';
+    const home = { x: truck.x, y: truck.y, angle: truck.angle };
+    const path = pathBetween(home, dockPoint());
+    s.deliveries.push({ id: 'd' + Date.now().toString(36), truck: truck.uid, workerId: worker.id, workerName: worker.name, external: !!worker.external,
+      phase: 'dock', home, path, pos: { x: home.x, y: home.y, angle: home.angle }, seg: 0, cargo: {}, sp: null, dist: pathLen(path) });
+    if (!worker.external) worker.status = 'delivery';
+    G().log(`${worker.name} haalt de vrachtwagen om producten te leveren.`);
+    AT.emit('change');
+    return true;
+  }
+
+  function updateDeliveries(dtSec) {
+    const s = S();
+    for (const d of [...(s.deliveries || [])]) {
+      const truck = G().machine(d.truck);
+      if (!truck) { s.deliveries = s.deliveries.filter(x => x !== d); continue; }
+      const speed = D.machines[truck.type].speed * D.kmhToPx * Math.min(s.speed, 20);
+      if (!moveAlong(d, speed * dtSec)) continue;
+      if (d.phase === 'dock') {
+        d.cargo = loadTruck(D.machines[truck.type].pallets);
+        d.sp = bestSellPoint(d.cargo);
+        const from = dockPoint();
+        d.path = d.sp ? route(from, pitPoint(d.sp)) : pathBetween(from, d.home);
+        d.phase = d.sp ? 'sell' : 'home'; d.seg = 0; d.dist += pathLen(d.path);
+        if (!d.sp) G().log(`${d.workerName}: niets in de loods dat een verkooppunt koopt.`, 'warn');
+      } else if (d.phase === 'sell') {
+        let money = 0;
+        for (const [k, amt] of Object.entries(d.cargo)) {
+          if (amt < 0.01 || !G().accepts(d.sp, k)) continue;
+          money += G().sellAt(d.sp, k, amt).money;
+          d.cargo[k] = 0;
+        }
+        s.stats.truckDeliveries++;
+        G().log(`${d.workerName} heeft geleverd bij ${D.sellPoints[d.sp].name.toLowerCase()}: ${AT.fmtMoney(money)}.`, 'money');
+        d.path = route(pitPoint(d.sp), d.home); d.seg = 0; d.phase = 'home'; d.dist += pathLen(d.path);
+      } else {
+        // terug: wat niet verkocht is gaat weer de loods in, brandstof en chauffeur betalen
+        for (const [k, amt] of Object.entries(d.cargo)) if (amt > 0.01) G().addGood(k, amt);
+        const fuel = d.dist / 1000 * 0.36 * D.fuelPrice;
+        G().spend(fuel, 'brandstof');
+        if (d.external) G().spend(D.truckDriverFee, 'loonwerk');
+        Object.assign(truck, { busy: null, x: d.home.x, y: d.home.y, angle: d.home.angle });
+        const w = employee(d.workerId);
+        if (w) { w.status = 'idle'; w.xp++; }
+        s.deliveries = s.deliveries.filter(x => x !== d);
+        AT.emit('change');
+      }
+    }
+  }
+  function autoDeliver() {
+    const s = S();
+    if (!s.autoDeliver || (s.deliveries || []).length) return;
+    if (G().palletsUsed() > G().warehouseCapacity() * 0.5) startDelivery(true);
+  }
+
   // ---------- elke frame ----------
   let queueTimer = 0, autoTimer = 0;
   function update(dtSec) {
     ensure();
     queueTimer += dtSec; autoTimer += dtSec;
-    if (autoTimer > 1) { autoTimer = 0; autoStep(); }
+    if (autoTimer > 1) { autoTimer = 0; autoStep(); autoDeliver(); }
+    updateDeliveries(dtSec);
     if (queueTimer > 0.4) { queueTimer = 0; processQueue(); }
   }
 
   AT.staff = {
     ensure, update, hire, fire, refreshCandidates, enqueue, removeTask, moveTask, setAuto, rotationCrop,
-    workerById, freeWorker, level, workSpeed, payday, route, moveAlong, TASK_LABEL,
+    workerById, freeWorker, level, workSpeed, payday, route, moveAlong, TASK_LABEL, startDelivery,
   };
 })();

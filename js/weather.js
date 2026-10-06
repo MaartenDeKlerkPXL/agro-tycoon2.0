@@ -87,6 +87,7 @@ window.AT = window.AT || {};
         if (!tender.length) continue;
         const hit = 0.1 + Math.random() * 0.15;
         f.damage = Math.min(0.6, f.damage + hit);
+        AT.game.insuredDamage(f, hit, 'vorstschade');
         AT.game.log(`❄️ Vorstschade op Veld ${f.id} (${tender.map(k => D.crops[k].name.toLowerCase()).join(', ')}): −${Math.round(hit * 100)}%. Alleen tarwe en koolzaad zijn winterhard.`, 'warn');
       }
     }
@@ -98,6 +99,7 @@ window.AT = window.AT || {};
         if (sum.ready + sum.growing < sum.total * 0.2) continue;
         const hit = 0.04 + Math.random() * 0.12;
         f.damage = Math.min(0.5, f.damage + hit);
+        AT.game.insuredDamage(f, hit, 'stormschade');
         AT.game.log(`Stormschade op Veld ${f.id}: ${Math.round(hit * 100)}% minder opbrengst.`, 'warn');
       }
     } else if (wt.wet) {

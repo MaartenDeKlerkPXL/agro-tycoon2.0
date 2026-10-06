@@ -275,3 +275,9 @@ body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; m
 .mrow2.empty { opacity: .7; }
 .mrow2 .spark { width: 56px; }
 .mrow2 .muted { font-size: 12px; }
+.icon-btn { background: rgba(255,255,255,.12); border: 0; color: inherit; font-size: 18px; border-radius: 8px; padding: 4px 8px; cursor: pointer; }
+.icon-btn:hover { background: rgba(255,255,255,.22); }
+label.check { align-items: flex-start; gap: 8px; margin: 10px 0; cursor: pointer; }
+label.check input { margin-top: 4px; }
+.bar.thin { height: 6px; margin: 3px 0 6px; }
+.row.small { font-size: 13px; }
