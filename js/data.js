@@ -4,7 +4,7 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 6,
+  version: 7,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
   world: { w: 2400, h: 1900 },
@@ -24,8 +24,9 @@ AT.data = {
     siloLevel: 0,
   },
 
-  // 1 echte seconde = zoveel speluren (bij snelheid 1×)
-  hoursPerSecond: 0.35,
+  // 1 echte seconde = 1 speelminuut (bij snelheid 1×)
+  hoursPerSecond: 1 / 60,
+  speeds: [1, 5, 20, 60],   // knoppen 1×/5×/20×/60× (toetsen 1–4)
 
   // Gewassen. Prijzen in € per ton, opbrengst in ton per hectare.
   // sow          = maanden waarin je mag zaaien (0 = maart … 11 = februari)
@@ -192,7 +193,11 @@ AT.data = {
 
   // snelheden in km/u; zo veel pixels per seconde is 1 km/u op de kaart
   kmhToPx: 1.15,
-  walkSpeed: 6, runSpeed: 14,
+  walkSpeed: 9, runSpeed: 13,
+  shiftBoost: 1.25,          // Shift in een voertuig = 25% sneller
+
+  // personeel
+  staff: { max: 8, refreshCost: 250, jobsPerLevel: 4, maxLevel: 5 },
 
   // Wegen (rechthoeken)
   roads: [
@@ -259,6 +264,8 @@ AT.data = {
     { id: 'animals',  text: 'Bouw een stal en koop dieren (tab Bedrijf)', reward: 3000, check: s => Object.values(s.animals).some(a => a.count > 0) },
     { id: 'factory',  text: 'Bouw een fabriek (tab Bedrijf)',        reward: 5000,  check: s => Object.values(s.factories).some(f => f.owned) },
     { id: 'field3',   text: 'Koop een extra veld',                  reward: 5000,  check: s => s.fields.filter(f => f.owned).length >= 3 },
+    { id: 'hire',     text: 'Neem een werknemer aan (tab Team)',   reward: 2000,  check: s => s.staff && s.staff.employees.length >= 1 },
+    { id: 'auto',     text: 'Zet een veld op automatisch beheer (tab Veld)', reward: 3000, check: s => s.fields.some(f => f.auto && f.auto.on) },
     { id: 'tractor2', text: 'Koop een tweede tractor',              reward: 5000,  check: s => s.machines.filter(m => AT.data.machines[m.type].kind === 'tractor').length >= 2 },
     { id: 'silo1',    text: 'Vergroot je silo',                     reward: 5000,  check: s => s.siloLevel >= 1 },
     { id: 'earn100k', text: 'Verdien in totaal €100.000',           reward: 10000, check: s => s.stats.earned >= 100000 },

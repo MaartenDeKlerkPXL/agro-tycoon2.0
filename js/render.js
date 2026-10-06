@@ -758,15 +758,18 @@ window.AT = window.AT || {};
       const impl = m.impl ? G().machine(m.impl) : null;
       SP().machine(ctx, m.type, m.x, m.y, m.angle, Object.assign({ implType: impl && impl.type, lowered: false, wheel: 0, t: time }, loadOpts(m, impl)));
     }
-    // loonwerkers
-    for (const f of state.fields) {
-      if (!f.job) continue;
-      const def = G().fieldDef(f.id), pos = G().jobPosition(def, f.job);
-      const ms = state.machines.filter(m => f.job.machines.includes(m.uid));
+    // werknemers: onderweg, aan het werk of op de terugweg
+    const drawCrew = (uids, pos, working, type) => {
+      const ms = state.machines.filter(m => uids.includes(m.uid));
       const main = ms.find(m => ['tractor', 'harvester'].includes(D.machines[m.type].kind));
       const impl = ms.find(m => m !== main);
-      if (main) SP().machine(ctx, main.type, pos.x, pos.y, pos.angle, { implType: impl && impl.type, lowered: true, wheel: time * 30, t: time, lights, beacon: (time * 2) % 1 < 0.5, grain: f.job.type === 'harvest' ? 1 : 0 });
+      if (main) SP().machine(ctx, main.type, pos.x, pos.y, pos.angle, { implType: impl && impl.type, lowered: working, wheel: time * 30, t: time, lights, beacon: (time * 2) % 1 < 0.5, grain: working && type === 'harvest' ? 1 : 0 });
+    };
+    for (const f of state.fields) {
+      if (!f.job) continue;
+      drawCrew(f.job.machines, G().jobPose(G().fieldDef(f.id), f.job), f.job.phase !== 'to', f.job.type);
     }
+    for (const tr of state.trips || []) drawCrew(tr.machines, tr.pos, false, tr.type);
     // jouw machine
     if (p.mode === 'drive') {
       const r = AT.vehicle.rig();
@@ -820,9 +823,10 @@ window.AT = window.AT || {};
     else list.push({ x: p.x, y: p.y, r: 30 });
     for (const f of state.fields) {
       if (!f.job) continue;
-      const pos = G().jobPosition(G().fieldDef(f.id), f.job);
+      const pos = G().jobPose(G().fieldDef(f.id), f.job);
       list.push({ x: pos.x, y: pos.y, a: pos.angle, cone: true });
     }
+    for (const tr of state.trips || []) list.push({ x: tr.pos.x, y: tr.pos.y, a: tr.pos.angle, cone: true });
     for (const L of LAMPS) list.push({ x: L.x, y: L.y, r: 60 });
     list.push({ x: D.house.x + D.house.w / 2, y: D.house.y + D.house.h + 6, r: 34 });
     return list;
@@ -887,7 +891,11 @@ window.AT = window.AT || {};
       const cx = (tl.x + br.x) / 2, cy = (tl.y + br.y) / 2 + 8;
       const sum = sums[def.id];
       if (!f.owned) pill('Te koop ' + AT.fmtMoney(G().fieldPrice(def.id)), cx, cy - 9, true, 'rgba(45,106,45,0.92)');
-      else if (f.job) pill(f.job.waiting ? 'Loonwerker wacht tot het droog is' : 'Loonwerker bezig ' + Math.floor(f.job.progress * 100) + '%', cx, cy - 9, true, 'rgba(44,127,184,0.9)');
+      else if (f.job) {
+        const who = f.job.workerName || 'Loonwerker';
+        const txt = f.job.phase === 'to' ? `${who} is onderweg` : f.job.waiting ? `${who} wacht tot het droog is` : `${who}: ${Math.floor(f.job.progress * 100)}%`;
+        pill(txt, cx, cy - 9, true, 'rgba(44,127,184,0.9)');
+      } else if (f.auto && f.auto.on) pill('🤖 Automatisch' + (f.auto.status ? ': ' + f.auto.status : ''), cx, cy - 9, true, 'rgba(0,0,0,0.5)');
       else if (sum && sum.ready > 0 && sum.growing === 0) pill('Klaar om te oogsten', cx, cy - 9, true, 'rgba(183,121,31,0.92)');
     }
   }
@@ -945,6 +953,9 @@ window.AT = window.AT || {};
     const tl = screenToWorld(0, 0);
     ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1;
     ctx.strokeRect(m.x + tl.x * s, m.y + tl.y * s, vw / cam.zoom * s, vh / cam.zoom * s);
+    ctx.fillStyle = '#4fc3f7';
+    for (const f of state.fields) if (f.job) { const q = G().jobPose(G().fieldDef(f.id), f.job); ctx.beginPath(); ctx.arc(m.x + q.x * s, m.y + q.y * s, 2.5, 0, Math.PI * 2); ctx.fill(); }
+    for (const tr of state.trips || []) { ctx.beginPath(); ctx.arc(m.x + tr.pos.x * s, m.y + tr.pos.y * s, 2.5, 0, Math.PI * 2); ctx.fill(); }
     const p = state.player;
     ctx.fillStyle = '#ff3b30'; ctx.beginPath(); ctx.arc(m.x + p.x * s, m.y + p.y * s, 3.5, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#fff'; ctx.stroke();
@@ -961,10 +972,10 @@ window.AT = window.AT || {};
       if (info.crop) lines.push([`Zaaigoed: ${info.crop}  (C = wisselen)`, '#ddd', '600 13px']);
       if (info.extra) lines.push([info.extra, '#ddd', '600 13px']);
       if (info.load) lines.push([info.load, info.loadFrac > 0.95 ? '#ffb38a' : '#ffe08a', '700 13px']);
-      lines.push(['WASD rijden · Spatie werktuig · F koppelen · U lossen · E uitstappen', '#bbb', '12px']);
+      lines.push(['WASD rijden · Shift sneller · Spatie werktuig · F koppelen · U lossen · E uitstappen', '#bbb', '12px']);
     } else {
       lines.push(['Te voet', '#fff', '700 14px']);
-      lines.push(['WASD lopen · Shift rennen · E instappen', '#bbb', '12px']);
+      lines.push(['WASD lopen · Shift sneller · E instappen', '#bbb', '12px']);
       lines.push(['Slepen = rondkijken · scroll = zoomen', '#bbb', '12px']);
     }
     let w = 0;

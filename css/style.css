@@ -240,3 +240,8 @@ body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; m
 .cal td.now, .cal th.now { outline: 2px solid #e0b84c; outline-offset: -2px; }
 .cal th.winter { color: #4a78a8; }
 .forecast .btn.small { margin-left: 4px; }
+.tabs button { font-size: 12px; }
+.card.auto.on { border-color: var(--green); background: #f1f8ec; }
+.card.auto select { font: inherit; font-size: 13px; padding: 4px; border-radius: 6px; border: 1px solid var(--line); max-width: 100%; }
+.card.auto label { font-size: 13px; }
+.qrow { margin-top: 6px; gap: 4px; }

@@ -62,7 +62,9 @@ window.AT = window.AT || {};
     // een volle aanhanger maakt je trager
     const src = loadSource(r);
     const heavy = src && r.mainDef.kind === 'tractor' ? 1 - 0.25 * (src.load.tons / src.cap) : 1;
-    const maxSpeed = (working ? r.toolDef.workSpeed : r.mainDef.speed) * PX * heavy;
+    // Shift = een stukje sneller (25%)
+    const boost = pressed('ShiftLeft', 'ShiftRight') ? D.shiftBoost : 1;
+    const maxSpeed = (working ? r.toolDef.workSpeed : r.mainDef.speed) * PX * heavy * boost;
     const throttle = (pressed('KeyW', 'ArrowUp') ? 1 : 0) - (pressed('KeyS', 'ArrowDown') ? 1 : 0);
     const steerIn = (pressed('KeyD', 'ArrowRight') ? 1 : 0) - (pressed('KeyA', 'ArrowLeft') ? 1 : 0);
     if (throttle || steerIn) AT.input.moved = 1;
@@ -76,7 +78,9 @@ window.AT = window.AT || {};
       const drag = 14 * dt;
       p.speed = Math.abs(p.speed) <= drag ? 0 : p.speed - Math.sign(p.speed) * drag;
     }
-    p.speed = Math.max(-maxSpeed * 0.4, Math.min(maxSpeed, p.speed));
+    // boven de topsnelheid (bijv. Shift losgelaten) rustig afremmen in plaats van abrupt
+    if (p.speed > maxSpeed) p.speed = Math.max(maxSpeed, p.speed - 20 * dt);
+    p.speed = Math.max(-maxSpeed * 0.4, p.speed);
     p.throttle = throttle;
 
     // sturen (wielen draaien zichtbaar mee)

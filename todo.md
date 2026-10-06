@@ -6,7 +6,9 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 ## ✅ Fase 0: Basisspel
 - [x] Grote kaart (2400×1900) met 19 velden, wegen, erf, machinehal, silo's, weides, fabrieksterrein en graanhandel
 - [x] **Lopen als boer** en **zelf rijden** over de hele kaart (WASD/pijltjes), camera volgt je
-- [x] Realistische snelheden: tractor 30–50 km/u, werken 5–15 km/u, lopen 6 km/u (rennen 14)
+- [x] Realistische snelheden: tractor 30–50 km/u, werken 5–15 km/u, lopen 9 km/u
+- [x] Shift = een stukje sneller (lopen 13 km/u, voertuigen +25%)
+- [x] Tijd: 1 echte seconde = 1 speelminuut; snelheid 1×/5×/20×/60× (toetsen 1–4)
 - [x] Machines blijven staan waar je uitstapt; nieuwe machines staan op de parkeerplaats
 - [x] Werktuigen zelf aan- en afkoppelen (achteruit tegen het werktuig + F)
 - [x] Pijl die de weg wijst naar het gekozen veld
@@ -22,7 +24,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Velden kopen, machines kopen en verkopen
 - [x] Minimap, zoomen (scroll) en kaart verschuiven (slepen)
 - [x] Doelen/tutorial met beloningen + statistieken
-- [x] Dag/nacht, pauze (P) en snelheid 1×/2×/4×
+- [x] Dag/nacht en pauze (P)
 - [x] Automatisch opslaan (localStorage)
 - [x] Live link via GitHub Pages
 
@@ -51,7 +53,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Lossen met U: maaidorser → aanhanger (losbuis), aanhanger → stortput silo of graanhandel
 - [x] Graanhandel op de kaart: volle prijs; verkopen vanuit de silo kost 10% ophaalkosten
 - [ ] Overladen tijdens het rijden (maaidorser en tractor naast elkaar)
-- [ ] Loonwerker-chauffeur die met de aanhanger meerijdt en zelf wegbrengt
+- [ ] Werknemer-chauffeur die met de aanhanger naast de maaidorser meerijdt en zelf wegbrengt
 - [ ] Graan naar een fabriek brengen (bonus voor directe levering)
 - [ ] **Cultivator** (sneller dan ploegen)
 - [ ] **Spuitmachine**: onkruid/herbicide
@@ -64,10 +66,15 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [ ] Machine-upgrades (GPS = automatisch recht rijden)
 
 ## 👷 Fase 2: Personeel en automatisering
-- [ ] Vaste werknemers aannemen (salaris per dag, skills: snelheid, zuinigheid)
-- [ ] Loonwerkers rijden echt van de schuur naar het veld over de weg (nu verschijnen ze op het veld)
-- [ ] Taken in een wachtrij zetten ("ploeg veld 3, daarna zaaien met maïs")
-- [ ] Automatische veldcyclus per veld (herhaal gewas X)
+- [x] Vaste werknemers aannemen (dagloon, eigen snelheid en zuinigheid; ervaring maakt ze sneller)
+- [x] Sollicitanten: elke week nieuwe, of zelf een nieuwe ronde starten
+- [x] Werknemers rijden echt over de weg van de machine naar het veld en weer terug (route via de wegen)
+- [x] Taken in een wachtrij zetten ("ploeg veld 3, daarna zaaien met maïs"), volgorde aanpassen
+- [x] Automatische veldcyclus per veld: vast gewas of wisselbouw, eventueel kunstmest voor het zaaien
+- [x] Externe loonwerker als er niemand vrij is (aan/uit)
+- [ ] Werknemers lossen zelf graan met een aanhanger (nu gaat het direct naar de silo)
+- [ ] Werknemers voeren dieren en rijden mest uit (dieren-taken)
+- [ ] Werktijden en vrije dagen; werknemers worden moe
 
 ## 🌦️ Fase 3: Seizoenen, weer en bodem
 - [x] Seizoenen (lente, zomer, herfst, winter) met 12 maanden van 2 dagen: elk gewas heeft eigen zaaimaanden
@@ -141,7 +148,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 ## 🎨 Fase 8: Presentatie en gemak
 - [ ] Geluid: motoren, ambient, muziek
 - [ ] Opslaan exporteren/importeren (bestand) + meerdere saves
-- [ ] Instelling voor de daglengte (nu groeit een gewas ongeveer even snel als jij een veld ploegt)
+- [ ] Instelling voor de daglengte (nu vast: 1 seconde = 1 minuut)
 - [ ] Uitleg in het spel bij de eerste keer (pijlen naar tractor, veld, stortput)
 - [ ] Toetsen zelf instellen
 

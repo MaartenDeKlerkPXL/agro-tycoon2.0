@@ -11,7 +11,7 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 | Toets | Actie |
 |---|---|
 | WASD / pijltjes | Lopen of rijden |
-| Shift | Rennen |
+| Shift | Een stukje sneller (lopen én rijden) |
 | E | In-/uitstappen (loop vlak naar de machine) |
 | F | Werktuig aan-/afkoppelen (rij achteruit tegen het werktuig) |
 | Spatie | Werktuig omlaag/omhoog (ploeg, zaaimachine, maaibord) |
@@ -19,7 +19,7 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 | U | Lossen: maaidorser → aanhanger, aanhanger → stortput silo of graanhandel |
 | Scroll / slepen | Zoomen / rondkijken |
 | P | Pauze |
-| 1 / 2 / 3 | Snelheid 1×, 2×, 4× |
+| 1 / 2 / 3 / 4 | Snelheid 1×, 5×, 20×, 60× (1× = 1 seconde is 1 speelminuut) |
 
 ## Hoe het werkt
 1. Je staat als boer op het erf. Loop naar de rode tractor (de ploeg hangt er al aan) en druk **E**
@@ -27,7 +27,7 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 3. Rij terug, zet de ploeg neer (**F**), rij achteruit tegen de **zaaimachine** en koppel die aan (**F**). Kies een gewas (**C**) en zaai
 4. Is het gewas rijp, dan oogst je met de **maaidorser**. Het graan gaat in de **bunker**. Is die vol, zet dan een tractor met **kipper** naast de maaidorser (links, bij de losbuis) en druk **U**
 5. Rij de kipper naar de **stortput bij de silo** of naar de **graanhandel** (onderaan de kaart) en druk **U**. Bij de graanhandel krijg je de volle prijs; vanuit de silo laten ophalen (tab Markt) kost 10%
-6. Geen zin om alles zelf te doen? Huur in de tab **Veld** een **loonwerker** in
+6. Geen zin om alles zelf te doen? Neem in de tab **Team** **werknemers** aan. Geef opdrachten in de tab **Veld** (ze komen in de wachtrij) of zet een veld op **🤖 automatisch beheer**. Werknemers rijden zelf over de weg naar het veld en terug
 7. Koop extra velden, tractoren en werktuigen
 8. Houd je **bodem** gezond: elke oogst put hem uit. Rij **mest** uit (van je koeien en schapen) en strooi **kunstmest** voor meer opbrengst. Wissel van gewas voor een bonus
 9. Let op **seizoenen en weer**: elk gewas heeft eigen zaaimaanden (zie de 📅 Zaaikalender), in de winter groeit bijna niets en vorst beschadigt gewassen die niet winterhard zijn. Bij regen kun je niet oogsten, en rijpe gewassen verwelken als je te lang wacht
@@ -42,6 +42,7 @@ js/data.js        ALLE content: gewassen, machines, velden, silo, doelen
 js/game.js        spellogica (cellen, bodem, loonwerkers, economie, opslaan)
 js/weather.js     seizoenen, weer, weersvoorspelling, groeisnelheid
 js/farm.js        dieren en fabrieken
+js/staff.js       personeel, wachtrij, automatisch beheer, routes over de wegen
 js/vehicle.js     lopen en zelf rijden: besturing + werken onder het werktuig
 js/sprites.js     tekeningen: machines, gebouwen, bomen
 js/effects.js     bandensporen, rook, stof, kaf, meeuwen

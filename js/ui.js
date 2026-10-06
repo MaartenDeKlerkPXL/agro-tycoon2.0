@@ -55,12 +55,15 @@ window.AT = window.AT || {};
       html += soilHtml(f, sum);
       if (f.job) {
         const machines = s.machines.filter(m => f.job.machines.includes(m.uid)).map(m => D.machines[m.type].name).join(' + ');
-        html += `<div class="card"><b>Loonwerker: ${JOB_NAMES[f.job.type]}</b>
+        html += `<div class="card"><b>${esc(f.job.workerName || 'Loonwerker')}: ${JOB_NAMES[f.job.type]}${f.job.phase === 'to' ? ' (onderweg)' : ''}</b>
           <div class="bar"><div class="fill job" data-live="jobbar"></div></div>
           <div class="muted"><span data-live="jobpct"></span> · ${esc(machines)}</div></div>`;
+        html += autoCard(f) + fieldQueue(f);
       } else {
         html += selfHelp(sum);
-        html += `<h3>Of: loonwerker inhuren</h3><p class="muted">Een loonwerker doet het hele veld voor je met jouw vrije machines (+${AT.fmtMoney(D.workerWagePerHour)}/u loon).</p>`;
+        html += autoCard(f);
+        html += fieldQueue(f);
+        html += `<h3>Of: opdracht geven aan je personeel</h3><p class="muted">Opdrachten gaan in de wachtrij (tab Team). Een vrije werknemer rijdt met jouw machines naar het veld.${s.staff && s.staff.allowExternal ? ` Is niemand vrij, dan komt een loonwerker (+${AT.fmtMoney(D.workerWagePerHour)}/u).` : ''}</p>`;
         if (sum.stubble) html += workerButton(s, f, 'plow', 'Laat ploegen');
         if (sum.plowed) html += cropChoice(s, f, def, sum);
         const rc = G().mainCrop({ crops: sum.readyCrops });
@@ -137,27 +140,50 @@ window.AT = window.AT || {};
     return bar + '</div>' + legend + '</div>' + extra;
   }
 
+  // automatisch beheer van een veld
+  function autoCard(f) {
+    const a = f.auto || { on: false, crop: 'rotate', fert: false };
+    const opts = [['rotate', 'Wisselbouw (automatisch het beste gewas)'], ...Object.entries(D.crops).map(([k, c]) => [k, c.name])];
+    return `<div class="card auto ${a.on ? 'on' : ''}">
+      <label class="row"><input type="checkbox" data-auto="on" data-id="${f.id}" ${a.on ? 'checked' : ''}> <b class="grow">🤖 Automatisch beheer</b></label>
+      <p class="muted">Je personeel ploegt, zaait en oogst dit veld steeds opnieuw.${a.on && a.status ? ' Nu: ' + esc(a.status) + '.' : ''}</p>
+      <div class="row wrap">
+        <select data-auto="crop" data-id="${f.id}">${opts.map(([k, n]) => `<option value="${k}" ${a.crop === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        <label><input type="checkbox" data-auto="fert" data-id="${f.id}" ${a.fert ? 'checked' : ''}> kunstmest voor het zaaien</label>
+      </div></div>`;
+  }
+
+  function fieldQueue(f) {
+    const q = (AT.state.queue || []).filter(t => t.fieldId === f.id);
+    if (!q.length) return '';
+    return `<div class="card"><b>In de wachtrij</b>${q.map(t => `<div class="row qrow"><span class="grow">${esc(AT.staff.TASK_LABEL(t.task, t.crop))}${t.auto ? ' 🤖' : ''}<br><span class="muted">${esc(t.status)}</span></span>
+      <button class="btn small" data-action="unqueue" data-q="${t.id}" title="Verwijderen">✕</button></div>`).join('')}</div>`;
+  }
+
   function workerButton(s, f, task, label) {
     const rig = G().bestRig(task, f.id);
-    if (!rig) return `<p class="warn">${esc(G().missingFor(task, f.id))}</p>`;
-    const names = rig.machines.map(m => D.machines[m.type].name).join(' + ');
-    return `<div class="card row"><div class="grow"><b>${esc(names)}</b>
-      <div class="muted">${AT.fmtHours(rig.hours)} · ${AT.fmtMoney(rig.cost)}</div></div>
-      <button class="btn small primary" data-action="job" data-task="${task}" data-id="${f.id}" ${s.money < rig.cost ? 'disabled' : ''}>${label}</button></div>`;
+    const missing = !rig && !s.machines.some(m => {
+      const k = D.machines[m.type].kind;
+      return task === 'harvest' ? k === 'harvester' : k === ({ plow: 'plow', fertilize: 'spreader', manure: 'manure' }[task]);
+    });
+    if (missing) return `<p class="warn">${esc(G().missingFor(task, f.id))}</p>`;
+    const info = rig ? `${esc(rig.machines.map(m => D.machines[m.type].name).join(' + '))}<div class="muted">±${AT.fmtHours(rig.hours)} · brandstof ±${AT.fmtMoney(rig.hours * rig.fuelPerHour * D.fuelPrice)}</div>` : `<span class="muted">${esc(G().missingFor(task, f.id))}: wacht in de rij</span>`;
+    return `<div class="card row"><div class="grow">${info}</div>
+      <button class="btn small primary" data-action="job" data-task="${task}" data-id="${f.id}">${label}</button></div>`;
   }
 
   function cropChoice(s, f, def, sum) {
     const rig = G().bestRig('sow', f.id);
-    if (!rig) return `<p class="warn">${esc(G().missingFor('sow'))}</p>`;
+    if (!rig && !s.machines.some(m => D.machines[m.type].kind === 'seeder')) return `<p class="warn">${esc(G().missingFor('sow'))}</p>`;
     const ha = def.ha * sum.plowed / sum.total;
-    let html = `<div class="card"><b>Laat zaaien</b> <span class="muted">· ${esc(rig.machines.map(m => D.machines[m.type].name).join(' + '))} · ${AT.fmtHours(rig.hours)}</span>`;
+    let html = `<div class="card"><b>Laat zaaien</b> <span class="muted">· ${rig ? esc(rig.machines.map(m => D.machines[m.type].name).join(' + ')) + ' · ±' + AT.fmtHours(rig.hours) : 'zaaimachine nu bezet, wacht in de rij'}</span>`;
     const entries = Object.entries(D.crops).sort(([a], [b]) => G().canSowNow(b) - G().canSowNow(a));
     for (const [key, c] of entries) {
-      const cost = rig.cost + c.seedCostPerHa * ha;
+      const cost = (rig ? rig.hours * rig.fuelPerHour * D.fuelPrice : 0) + c.seedCostPerHa * ha;
       const ok = G().canSowNow(key);
       html += `<div class="row crop-row ${ok ? '' : 'off'}"><span class="dot" style="background:${c.color}"></span>
         <span class="grow">${c.name} <span class="muted">${c.growDays} d · ${ok ? AT.fmtMoney(cost) : 'zaaien: ' + monthRanges(c.sow)}</span></span>
-        <button class="btn small primary" data-action="sow" data-crop="${key}" data-id="${f.id}" ${!ok || s.money < cost ? 'disabled' : ''}>Zaai</button></div>`;
+        <button class="btn small primary" data-action="sow" data-crop="${key}" data-id="${f.id}" ${!ok ? 'disabled' : ''}>Zaai</button></div>`;
     }
     return html + '</div>';
   }
@@ -167,7 +193,8 @@ window.AT = window.AT || {};
 
   function whereIs(m) {
     if (m.busy === 'player') return 'jij rijdt hiermee';
-    if (m.busy) return 'loonwerker op Veld ' + m.busy;
+    if (m.busy === 'trip') return 'werknemer rijdt terug naar het erf';
+    if (m.busy) { const j = G().field(m.busy).job; return `${j ? j.workerName : 'werknemer'} op Veld ${m.busy}`; }
     if (m.attached) {
       const t = G().machine(m.attached);
       return 'aangekoppeld aan ' + D.machines[t.type].name + (t.busy === 'player' ? ' (jij rijdt)' : '');
@@ -195,7 +222,7 @@ window.AT = window.AT || {};
       html += `<button class="btn" data-action="exit">Uitstappen (E)</button></div>`;
     }
     html += `<div class="card howto"><b>Zo werkt het</b><ul>
-      <li><b>WASD</b>: lopen of rijden · <b>Shift</b>: rennen</li>
+      <li><b>WASD</b>: lopen of rijden · <b>Shift</b>: een stukje sneller</li>
       <li><b>E</b>: in- of uitstappen (loop tot vlak bij de machine)</li>
       <li><b>F</b>: werktuig aan- of afkoppelen (rij achteruit tegen ploeg, zaaimachine of strooier)</li>
       <li><b>Spatie</b>: werktuig omlaag/omhoog · <b>C</b>: zaaigoed wisselen</li>
@@ -307,6 +334,54 @@ window.AT = window.AT || {};
     return html;
   }
 
+  // ---------- Team: personeel, wachtrij en automatisch beheer ----------
+  const pctDelta = v => (v >= 1 ? '+' : '−') + Math.abs(Math.round((v - 1) * 100)) + '%';
+  const STATUS = { idle: 'vrij', job: 'aan het werk', trip: 'onderweg' };
+
+  function renderTeam(s) {
+    AT.staff.ensure();
+    const st = s.staff;
+    let html = `<h2>Team</h2><p class="muted">Werknemers voeren opdrachten uit de wachtrij uit: ze rijden met jouw machines over de weg naar het veld en weer terug. Loon wordt elke dag betaald.</p>`;
+    html += `<h3>Personeel (${st.employees.length}/${D.staff.max})</h3>`;
+    if (!st.employees.length) html += `<p class="muted">Nog niemand in dienst. Kies hieronder een kandidaat.</p>`;
+    for (const w of st.employees) {
+      const job = w.status === 'job' && w.fieldId ? G().field(w.fieldId).job : null;
+      const where = w.status === 'job' ? `${job && job.phase === 'to' ? 'onderweg naar' : 'werkt op'} Veld ${w.fieldId}` : w.status === 'trip' ? 'rijdt terug naar het erf' : 'vrij';
+      html += `<div class="card"><div class="row"><b class="grow">👷 ${esc(w.name)}</b><span class="badge">niveau ${AT.staff.level(w)}</span></div>
+        <div class="muted">Snelheid ${pctDelta(AT.staff.workSpeed(w))} · brandstof ${pctDelta(w.fuel)} · ${AT.fmtMoney(w.salary)}/dag</div>
+        <div class="row"><span class="grow ${w.status === 'idle' ? '' : 'up'}">${where}</span>
+        <button class="btn small" data-action="fire" data-w="${w.id}" ${w.status === 'idle' ? '' : 'disabled'}>Ontslaan</button></div></div>`;
+    }
+    html += `<h3>Sollicitanten</h3>`;
+    for (const c of st.candidates) {
+      html += `<div class="card row"><div class="grow"><b>${esc(c.name)}</b>
+        <div class="muted">Snelheid ${pctDelta(c.speed)} · brandstof ${pctDelta(c.fuel)} · ${AT.fmtMoney(c.salary)}/dag</div></div>
+        <button class="btn small primary" data-action="hire" data-w="${c.id}" ${st.employees.length >= D.staff.max ? 'disabled' : ''}>Aannemen</button></div>`;
+    }
+    html += `<button class="btn small" data-action="newCandidates">Nieuwe sollicitanten (${AT.fmtMoney(D.staff.refreshCost)})</button>
+      <p class="muted">Elke week komen er vanzelf nieuwe sollicitanten.</p>`;
+
+    html += `<h3>Wachtrij (${s.queue.length})</h3>`;
+    html += `<label class="row card"><input type="checkbox" data-team="external" ${st.allowExternal ? 'checked' : ''}>
+      <span class="grow">Externe loonwerker inzetten als er geen personeel vrij is <span class="muted">(${AT.fmtMoney(D.workerWagePerHour)}/u)</span></span></label>`;
+    if (!s.queue.length) html += `<p class="muted">Leeg. Geef opdrachten in de tab Veld, of zet velden op automatisch beheer.</p>`;
+    s.queue.forEach((t, i) => {
+      html += `<div class="card row qrow"><span class="grow"><b>Veld ${t.fieldId}</b>: ${esc(AT.staff.TASK_LABEL(t.task, t.crop))}${t.auto ? ' 🤖' : ''}<br><span class="muted">${esc(t.status)}</span></span>
+        <button class="btn small" data-action="qup" data-q="${t.id}" ${i === 0 ? 'disabled' : ''} title="Eerder">▲</button>
+        <button class="btn small" data-action="qdown" data-q="${t.id}" ${i === s.queue.length - 1 ? 'disabled' : ''} title="Later">▼</button>
+        <button class="btn small" data-action="unqueue" data-q="${t.id}" title="Verwijderen">✕</button></div>`;
+    });
+
+    html += `<h3>Automatisch beheer</h3>`;
+    const owned = s.fields.filter(f => f.owned);
+    html += '<div class="field-list">' + owned.map(f => {
+      const a = f.auto || {};
+      const crop = !a.on ? '' : a.crop === 'rotate' ? 'wisselbouw' : D.crops[a.crop].name.toLowerCase();
+      return `<button class="field-row ${a.on ? 'ready' : ''}" data-action="select" data-id="${f.id}"><span>Veld ${f.id}</span><span>${a.on ? '🤖 ' + crop + (a.status ? ' · ' + esc(a.status) : '') : 'handmatig'}</span></button>`;
+    }).join('') + '</div>';
+    return html;
+  }
+
   // ---------- Bedrijf: dieren & fabrieken ----------
   const recipe = obj => Object.entries(obj).map(([k, v]) => `${AT.fmtAmount(v, k)} ${AT.farm.goodName(k)}`).join(' + ');
 
@@ -374,13 +449,13 @@ window.AT = window.AT || {};
     </div>
     <h3>Besturing</h3><div class="card muted">
       WASD / pijltjes: lopen of rijden<br>Spatie: werktuig omlaag/omhoog · C: zaaigoed wisselen<br>
-      E: in-/uitstappen · F: werktuig aan-/afkoppelen · U: lossen · Shift: rennen<br>Scroll: zoomen · Slepen: rondkijken<br>P: pauze · 1 / 2 / 3: snelheid
+      E: in-/uitstappen · F: werktuig aan-/afkoppelen · U: lossen · Shift: sneller<br>Scroll: zoomen · Slepen: rondkijken<br>P: pauze · 1 / 2 / 3 / 4: snelheid 1× / 5× / 20× / 60×
     </div>
     <button class="btn danger" data-action="reset">Nieuw spel starten</button>`;
     return html;
   }
 
-  const TABS = { field: renderField, garage: renderGarage, shop: renderShop, farm: renderFarm, market: renderMarket, goals: renderGoals };
+  const TABS = { field: renderField, garage: renderGarage, shop: renderShop, team: renderTeam, farm: renderFarm, market: renderMarket, goals: renderGoals };
 
   function renderPanel() {
     const s = AT.state;
@@ -426,11 +501,11 @@ window.AT = window.AT || {};
   }
 
   // waarden die steeds veranderen, zonder knoppen opnieuw op te bouwen
-  let sumTimer = 0;
+  let sumTimer = 0, teamTimer = 0;
   function updateLive(dt = 1) {
     const s = AT.state;
     $('#money').textContent = AT.fmtMoney(s.money);
-    const h = Math.floor(G().hour()), min = Math.floor((G().hour() % 1) * 6) * 10;
+    const h = Math.floor(G().hour()), min = Math.floor((G().hour() % 1) * 60);
     const W = AT.weather, se = D.seasons[W.season()];
     $('#clock').textContent = `${se.icon} ${W.monthName()} dag ${W.dayInMonth()} · ${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
     $('#clock').title = `${se.name}, jaar ${W.year()}`;
@@ -443,6 +518,9 @@ window.AT = window.AT || {};
       b.classList.toggle('active', v === 'pause' ? s.paused : !s.paused && Number(v) === s.speed);
     });
 
+    // team-tab regelmatig verversen (status van wachtrij en werknemers)
+    teamTimer += dt;
+    if (activeTab === 'team' && teamTimer > 1.5) { teamTimer = 0; renderPanel(); return; }
     if (activeTab !== 'field') return;
     const f = G().field(AT.render.view.selected);
     if (f.job) {
@@ -474,8 +552,14 @@ window.AT = window.AT || {};
       case 'select': selectField(id); break;
       case 'look': selectField(id, true); break;
       case 'buyField': G().buyField(id); break;
-      case 'job': G().startJob(id, a.task); break;
-      case 'sow': G().startJob(id, 'sow', a.crop); break;
+      case 'job': AT.staff.enqueue(id, a.task); break;
+      case 'sow': AT.staff.enqueue(id, 'sow', a.crop); break;
+      case 'unqueue': AT.staff.removeTask(a.q); break;
+      case 'qup': AT.staff.moveTask(a.q, -1); break;
+      case 'qdown': AT.staff.moveTask(a.q, 1); break;
+      case 'hire': AT.staff.hire(a.w); break;
+      case 'fire': AT.staff.fire(a.w); break;
+      case 'newCandidates': AT.staff.refreshCandidates(); break;
       case 'sell': G().sell(a.crop, a.tons ? Number(a.tons) : undefined); break;
       case 'buyMachine': G().buyMachine(a.type); break;
       case 'sellMachine': G().sellMachine(Number(a.uid)); break;
@@ -570,6 +654,16 @@ window.AT = window.AT || {};
 
   function init() {
     $('#tab-content').addEventListener('click', onAction);
+    $('#tab-content').addEventListener('change', e => {
+      const el = e.target;
+      if (el.dataset.auto) {
+        const patch = el.dataset.auto === 'crop' ? { crop: el.value } : { [el.dataset.auto]: el.checked };
+        AT.staff.setAuto(Number(el.dataset.id), patch);
+        if (patch.on) G().log(`Veld ${el.dataset.id} staat nu op automatisch beheer.`, 'good');
+      }
+      if (el.dataset.team === 'external') { AT.state.staff.allowExternal = el.checked; AT.emit('change'); }
+      el.blur();
+    });
     document.querySelector('.tabs').addEventListener('click', e => {
       const b = e.target.closest('button[data-tab]');
       if (!b) return;
@@ -592,9 +686,8 @@ window.AT = window.AT || {};
       if (e.target.closest && e.target.closest('input, select, textarea')) return;
       if (e.repeat) return;
       if (e.code === 'KeyP') setSpeed('pause');
-      if (e.code === 'Digit1') setSpeed('1');
-      if (e.code === 'Digit2') setSpeed('2');
-      if (e.code === 'Digit3') setSpeed('4');
+      const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
+      if (k >= 0) setSpeed(String(D.speeds[k]));
     });
 
     AT.on('change', renderPanel);

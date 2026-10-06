@@ -97,12 +97,16 @@ window.AT = window.AT || {};
     for (const f of s.fields) {
       if (!f.job) continue;
       const def = AT.game.fieldDef(f.id);
-      const pos = AT.game.jobPosition(def, f.job);
+      const pos = AT.game.jobPose(def, f.job);
       const main = s.machines.find(m => f.job.machines.includes(m.uid) && ['tractor', 'harvester'].includes(D.machines[m.type].kind));
       if (!main) continue;
       const kind = D.machines[main.type].kind;
       const tk = { plow: 'plow', sow: 'seeder', fertilize: 'spreader', manure: 'manure', harvest: 'harvester' }[f.job.type];
-      machineFx('job' + f.id, kind, pos.x, pos.y, pos.angle, 30, !f.job.waiting, tk, 24, dt, false);
+      machineFx('job' + f.id, kind, pos.x, pos.y, pos.angle, 30, !f.job.waiting && f.job.phase !== 'to', tk, 24, dt, false);
+    }
+    for (const tr of s.trips || []) {
+      const main = s.machines.find(m => tr.machines.includes(m.uid) && ['tractor', 'harvester'].includes(D.machines[m.type].kind));
+      if (main) machineFx('trip' + tr.id, D.machines[main.type].kind, tr.pos.x, tr.pos.y, tr.pos.angle, 30, false, null, 0, dt, false);
     }
 
     for (let i = particles.length - 1; i >= 0; i--) {
