@@ -215,12 +215,33 @@ window.AT = window.AT || {};
     const d = D.factories[key];
     return [{ in: d.in, out: d.out }, ...(d.alt || [])];
   }
-  const lacking = r => Object.entries(r.in).filter(([k, amt]) => G().stock(k) < amt).map(([k]) => k);
-  function usableRecipe(key) { return recipes(key).find(r => !lacking(r).length) || null; }
+  // voorraad voor een fabriek: eerst wat er direct bij de fabriek is gelost, dan de silo/loods
+  const buffer = key => { const f = S().factories[key]; if (!f.buffer) f.buffer = {}; return f.buffer; };
+  const have = (key, k) => (buffer(key)[k] || 0) + G().stock(k);
+  const lacking = (key, r) => Object.entries(r.in).filter(([k, amt]) => have(key, k) < amt).map(([k]) => k);
+  function usableRecipe(key) { return recipes(key).find(r => !lacking(key, r).length) || null; }
   function missingInputs(key) {
     if (usableRecipe(key)) return [];
-    return [...new Set(recipes(key).flatMap(lacking))];
+    return [...new Set(recipes(key).flatMap(r => lacking(key, r)))];
   }
+  // stortplaats bij de fabriek: bovenaan (rij langs de weg) of onderaan
+  function factoryPit(key) {
+    const L = D.factories[key].lot, top = L.y >= 1600 && L.y < 1700;
+    return { x: L.x + L.w - 56, y: top ? L.y + 4 : L.y + L.h - 16, w: 50, h: 12 };
+  }
+  // neemt deze fabriek dit (uit een aanhanger) aan?
+  const factoryAccepts = (key, good) => recipes(key).some(r => good in r.in) && (!!D.crops[good] || good === 'hay');
+  function deliverToFactory(key, good, amount) {
+    const f = S().factories[key];
+    if (!f.owned || !factoryAccepts(key, good)) return 0;
+    const b = buffer(key), room = 60 - Object.values(b).reduce((a, v) => a + v, 0);
+    const add = Math.max(0, Math.min(amount, room));
+    b[good] = (b[good] || 0) + add;
+    S().stats.factoryTons = (S().stats.factoryTons || 0) + add;
+    return add;
+  }
+  // weide: poort in het bovenste hek, net breed genoeg voor tractor + kipper naar de voerbak
+  function penGate(key) { const B = D.animals[key].barn; return { x0: B.x + B.w + 2, x1: B.x + B.w + 50 }; }
 
   function goodName(k) { return (D.crops[k] || D.products[k]).name.toLowerCase(); }
 
@@ -239,8 +260,16 @@ window.AT = window.AT || {};
       }
       if (S().money < d.costPerBatch) { f.status = 'geen geld voor energie'; f.running = false; continue; }
       if (Object.entries(recipe.out).some(([k, amt]) => G().warehouseRoom(k) < amt)) { f.status = 'opslagloods vol'; f.running = false; continue; }
-      for (const [k, amt] of Object.entries(recipe.in)) G().take(k, amt);
-      for (const [k, amt] of Object.entries(recipe.out)) G().addGood(k, amt);
+      // direct geleverd (vers) = meer product
+      const b = buffer(key);
+      let fresh = true;
+      for (const [k, amt] of Object.entries(recipe.in)) {
+        const fromBuf = Math.min(amt, b[k] || 0);
+        if (fromBuf > 0) { b[k] -= fromBuf; if (b[k] < 1e-6) delete b[k]; }
+        if (amt - fromBuf > 1e-9) { fresh = false; G().take(k, amt - fromBuf); }
+      }
+      for (const [k, amt] of Object.entries(recipe.out)) G().addGood(k, amt * (fresh ? D.factoryBonus : 1));
+      f.fresh = fresh;
       G().spend(d.costPerBatch, 'energie');
       f.progress -= 1;
       f.made = (f.made || 0) + 1;
@@ -433,5 +462,5 @@ window.AT = window.AT || {};
     updateWoodlot(dtHours);
   }
 
-  AT.farm = { animal, capacity, troughRect, troughTons, expandBarn, expandCost, toggleAutoFeed, fillTrough, callVet, vetCost, plantation, buyPlantation, pick, pickAll, nearestRipe, ripeCount, update, greenhouses, buyGreenhouse, setGreenhouseCrop, woodlot, buyWoodlot, cutTree, nearestTree, cutAll, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName, recipes };
+  AT.farm = { factoryPit, factoryAccepts, deliverToFactory, penGate, buffer, animal, capacity, troughRect, troughTons, expandBarn, expandCost, toggleAutoFeed, fillTrough, callVet, vetCost, plantation, buyPlantation, pick, pickAll, nearestRipe, ripeCount, update, greenhouses, buyGreenhouse, setGreenhouseCrop, woodlot, buyWoodlot, cutTree, nearestTree, cutAll, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName, recipes };
 })();

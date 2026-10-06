@@ -9,8 +9,8 @@ window.AT = window.AT || {};
 
   let activeTab = 'field';
 
-  const JOB_NAMES = { plow: 'Ploegen', sow: 'Zaaien', harvest: 'Oogsten', fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden', mow: 'Maaien', ted: 'Schudden', bale: 'Hooi persen', lime: 'Kalk strooien', spray: 'Spuiten' };
-  const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser', spreader: 'Kunstmeststrooier', manure: 'Mestverspreider', mower: 'Maaier', tedder: 'Schudder', baler: 'Balenpers', truck: 'Vrachtwagen', trailer: 'Aanhanger', lime: 'Kalkstrooier', sprayer: 'Spuitmachine' };
+  const JOB_NAMES = { plow: 'Ploegen', sow: 'Zaaien', harvest: 'Oogsten', fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden', mow: 'Maaien', ted: 'Schudden', bale: 'Hooi persen', lime: 'Kalk strooien', spray: 'Spuiten', roll: 'Rollen', stones: 'Stenen rapen' };
+  const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser', spreader: 'Kunstmeststrooier', manure: 'Mestverspreider', mower: 'Maaier', tedder: 'Schudder', baler: 'Balenpers', truck: 'Vrachtwagen', trailer: 'Aanhanger', lime: 'Kalkstrooier', sprayer: 'Spuitmachine', cultivator: 'Cultivator', roller: 'Rol', stonepicker: 'Stenenraper' };
   const seasonName = i => D.seasons[i].name.toLowerCase();
   const monthShort = i => D.months[i].slice(0, 3).toLowerCase();
   // maanden als korte reeks: "mrt–apr, sep–okt"
@@ -87,6 +87,8 @@ window.AT = window.AT || {};
         if (sum.needManure && G().bestRig('manure', f.id)) html += workerButton(s, f, 'manure', 'Laat mest uitrijden');
         if (sum.needLime && (f.ph ?? 7) < 6.6 && hasKind(s, 'lime')) html += workerButton(s, f, 'lime', `Laat kalk strooien (${AT.fmtMoney(D.limeCostPerHa)}/ha)`);
         if (sum.needSpray && hasKind(s, 'sprayer')) html += workerButton(s, f, 'spray', `Laat spuiten (${AT.fmtMoney(D.sprayCostPerHa)}/ha)`);
+        if (sum.needRoll && hasKind(s, 'roller')) html += workerButton(s, f, 'roll', 'Laat rollen');
+        if (sum.stones && hasKind(s, 'stonepicker')) html += workerButton(s, f, 'stones', 'Laat stenen rapen');
         if (!sum.stubble && !sum.plowed && !sum.ready && !sum.mown) html += `<p class="muted">Niets te doen: het gewas groeit.</p>`;
       }
     }
@@ -121,6 +123,7 @@ window.AT = window.AT || {};
     if (f.soil < 0.6) tips.push('Zaai <b>klaver</b> of <b>bonen/soja</b> om de bodem te herstellen.');
     const ph = f.ph ?? D.soilPh.start, phF = G().phFactor(f);
     if (ph < D.soilPh.good) tips.push(`De bodem is te <b>zuur</b> (pH ${AT.fmtNum(ph, 1)}): −${Math.round((1 - phF) * 100)}% opbrengst. Strooi <b>kalk</b> met een kalkstrooier.`);
+    if (sum.stones > sum.total * 0.05) tips.push(`<b>Stenen</b> op ${pct(sum.stones, sum.total)}%: −${Math.round((1 - D.stoneYield) * 100)}% opbrengst daar en slijtage aan de maaidorser. Raap ze met een <b>stenenraper</b>.`);
     if (sum.compact > sum.total * 0.05) tips.push(`<b>${pct(sum.compact, sum.total)}% verdicht</b> door rijden op natte grond: −15% op die plekken. Ploegen maakt het weer los.`);
     if (AT.weather.drought() && !f.irrigated) tips.push('<b>Droogte</b>: tragere groei en minder opbrengst. Irrigatie helpt.');
     const phPct = Math.max(0, Math.min(100, (ph - 4.5) / 3 * 100));
@@ -211,7 +214,7 @@ window.AT = window.AT || {};
     const rig = G().bestRig(task, f.id);
     const missing = !rig && !s.machines.some(m => {
       const k = D.machines[m.type].kind;
-      return task === 'harvest' ? k === 'harvester' : k === ({ plow: 'plow', fertilize: 'spreader', manure: 'manure', lime: 'lime', spray: 'sprayer', mow: 'mower', ted: 'tedder', bale: 'baler' }[task]);
+      return task === 'harvest' ? k === 'harvester' : k === ({ plow: 'plow', fertilize: 'spreader', manure: 'manure', lime: 'lime', spray: 'sprayer', mow: 'mower', ted: 'tedder', bale: 'baler', roll: 'roller', stones: 'stonepicker' }[task]) || (task === 'plow' && k === 'cultivator');
     });
     if (missing) return `<p class="warn">${esc(G().missingFor(task, f.id))}</p>`;
     const info = rig ? `${esc(rig.machines.map(m => D.machines[m.type].name).join(' + '))}<div class="muted">±${AT.fmtHours(rig.hours)} · brandstof ±${AT.fmtMoney(rig.hours * rig.fuelPerHour * D.fuelPrice)}</div>` : `<span class="muted">${esc(G().missingFor(task, f.id))}: wacht in de rij</span>`;
@@ -269,29 +272,52 @@ window.AT = window.AT || {};
         }
         html += `</div>`;
       }
-      html += `<button class="btn" data-action="exit">Uitstappen (E)</button></div>`;
+      const cap = G().fuelCap(r.main), fuel = G().fuelOf(r.main), fp = cap ? Math.round(fuel / cap * 100) : 0;
+      if (cap) html += `<div class="row small"><span class="grow">⛽ Diesel ${Math.round(fuel)} / ${cap} L</span><span class="${fp < 15 ? 'warn' : ''}">${fp}%</span></div>
+        <div class="bar thin"><div class="fill" style="width:${fp}%;background:${fp < 15 ? '#d9534f' : '#e0b84c'}"></div></div>`;
+      html += `<div class="row wrap"><button class="btn" data-action="exit">Uitstappen (E)</button>
+        ${cap && fp < 99 ? `<button class="btn small" data-action="fuelService" data-uid="${r.main.uid}">Tankservice (${AT.fmtMoney(D.fuelService)} + diesel)</button>` : ''}
+        ${r.mainDef.kind === 'harvester' ? `<button class="btn small ${s.chaser ? '' : 'primary'}" data-action="chaser">${s.chaser ? 'Chauffeur naar huis (K)' : '🚜 Chauffeur met kipper (K)'}</button>` : ''}</div></div>`;
     }
     html += `<div class="card howto"><b>Zo werkt het</b><ul>
       <li><b>WASD</b>: lopen of rijden · <b>Shift</b>: een stukje sneller</li>
       <li><b>E</b>: in- of uitstappen (loop tot vlak bij de machine)</li>
       <li><b>F</b>: werktuig aan- of afkoppelen (rij achteruit tegen ploeg, zaaimachine of strooier)</li>
       <li><b>Spatie</b>: werktuig omlaag/omhoog · <b>C</b>: zaaigoed wisselen</li>
-      <li><b>U</b>: lossen. Maaidorser → aanhanger (losbuis zit links), aanhanger → stortput bij de silo of de graanhandel (verkopen)</li>
+      <li><b>U</b>: lossen. Maaidorser → aanhanger (losbuis zit links), aanhanger → stortput bij de silo, een verkooppunt, de voerbak of de stortplaats van je eigen fabriek (+10%)</li>
+      <li><b>T</b>: tanken bij de rode dieselpomp op het erf · <b>G</b>: GPS aan/uit (als ingebouwd)</li>
+      <li><b>K</b>: in de maaidorser een chauffeur met kipper roepen: hij rijdt naast je, de maaidorser lost tijdens het rijden en hij brengt het graan naar de silo</li>
+      <li>Je botst tegen gebouwen, hekken en bomen. Over akkers en gras rij je langzamer dan over de weg (rupsen minder).</li>
     </ul></div>`;
 
     html += `<h3>Jouw machines</h3>`;
-    const order = ['tractor', 'harvester', 'truck', 'trailer', 'plow', 'seeder', 'spreader', 'manure', 'lime', 'sprayer', 'mower', 'tedder', 'baler'];
+    const order = ['tractor', 'harvester', 'truck', 'trailer', 'plow', 'cultivator', 'roller', 'stonepicker', 'seeder', 'spreader', 'manure', 'lime', 'sprayer', 'mower', 'tedder', 'baler'];
     // (rooiers vallen onder 'harvester')
     const sorted = [...s.machines].sort((a, b) => order.indexOf(D.machines[a.type].kind) - order.indexOf(D.machines[b.type].kind));
     for (const m of sorted) {
       const d = D.machines[m.type];
       const value = Math.round(d.price * 0.6);
       const sellable = !m.busy && !(m.attached && G().machine(m.attached).busy);
+      const wear = Math.round((m.wear || 0) * 100), cap = G().fuelCap(m);
+      const info = [esc(whereIs(m))];
+      if (m.load && m.load.tons > 0.01) info.push(`geladen: ${AT.fmtTons(m.load.tons)} ${G().goodName(m.load.crop)}`);
+      if (cap) info.push(`diesel ${Math.round(G().fuelOf(m) / cap * 100)}%`);
+      info.push(m.broken ? '<b class="warn">KAPOT</b>' : `slijtage <span class="${wear > 70 ? 'warn' : ''}">${wear}%</span>`);
+      if (m.gps) info.push('GPS');
+      if (m.rented) info.push(`gehuurd · ${AT.fmtMoney(G().rentPrice(m.type))}/dag`);
+      const canGps = (d.kind === 'tractor' || d.kind === 'harvester') && !m.gps && !m.rented;
+      const fixable = (m.wear || 0) > 0.05 || m.broken;
       html += `<div class="card row">${thumbImg(m.type)}
-        <div class="grow"><b>${esc(d.name)}</b><div class="muted">${esc(whereIs(m))}${m.load && m.load.tons > 0.01 ? ` · geladen: ${AT.fmtTons(m.load.tons)} ${G().goodName(m.load.crop)}` : ''}</div></div>
+        <div class="grow"><b>${esc(d.name)}</b><div class="muted">${info.join(' · ')}</div>
+          <div class="row wrap">
+            ${fixable ? `<button class="btn small ${m.broken || wear > 70 ? 'primary' : ''}" data-action="repair" data-uid="${m.uid}" ${m.busy && m.busy !== 'player' ? 'disabled' : ''} title="${G().atYard(m) ? 'In de werkplaats op het erf' : 'Monteur komt naar je toe (voorrijkosten)'}">Repareer ${AT.fmtMoney(G().repairCost(m))}</button>` : ''}
+            ${canGps ? `<button class="btn small" data-action="gps" data-uid="${m.uid}" ${s.money < D.gpsPrice ? 'disabled' : ''}>GPS ${AT.fmtMoney(D.gpsPrice)}</button>` : ''}
+            ${cap && G().fuelOf(m) < cap * 0.5 && !m.busy ? `<button class="btn small" data-action="fuelService" data-uid="${m.uid}">Tankservice</button>` : ''}
+          </div></div>
         <div class="col">
           <button class="btn small" data-action="findMachine" data-uid="${m.uid}">Zoek</button>
-          <button class="btn small" data-action="sellMachine" data-uid="${m.uid}" ${sellable ? '' : 'disabled'} title="Verkoop voor 60% van de nieuwprijs">${AT.fmtMoney(value)}</button>
+          ${m.rented ? `<button class="btn small" data-action="returnMachine" data-uid="${m.uid}" ${m.busy ? 'disabled' : ''}>Terugbrengen</button>`
+            : `<button class="btn small" data-action="sellMachine" data-uid="${m.uid}" ${sellable ? '' : 'disabled'} title="Verkoop voor 60% van de nieuwprijs">${AT.fmtMoney(value)}</button>`}
         </div></div>`;
     }
     return html;
@@ -299,7 +325,10 @@ window.AT = window.AT || {};
 
   // ---------- Winkel ----------
   function machineSpecs(d) {
-    if (d.kind === 'tractor') return `${d.power.toFixed(1)}× vermogen · ${d.speed} km/u · ${d.fuelPerHour} L/u`;
+    if (d.kind === 'tractor') return `${d.power.toFixed(1)}× vermogen · ${d.speed} km/u · ${d.fuelPerHour} L/u${d.tracks ? ' · rupsen: geen bodemverdichting, sneller op de akker' : ''}${d.old ? ' · goedkoop, trager werk, slijt sneller' : ''}`;
+    if (d.kind === 'cultivator') return `${d.width} m breed · sneller dan ploegen, maar geen gras omwerken en minder diep (verdichting blijft)`;
+    if (d.kind === 'roller') return `${d.width} m breed · na het zaaien rollen: +${Math.round((D.rollBonus - 1) * 100)}% opbrengst`;
+    if (d.kind === 'stonepicker') return `${d.width} m breed · raapt stenen (stenen kosten ${Math.round((1 - D.stoneYield) * 100)}% opbrengst en slijten de maaidorser)`;
     if (d.kind === 'trailer') return `${d.capacity} t graan, voer of hooibalen · vereist ${d.minPower >= 3 ? '300 pk' : d.minPower >= 2 ? '150+ pk' : '75+ pk'}`;
     if (d.kind === 'harvester') {
       const what = Object.values(D.crops).filter(c => c.harvester === d.harvests).map(c => c.name.toLowerCase());
@@ -319,7 +348,8 @@ window.AT = window.AT || {};
 
   function renderShop(s) {
     let html = `<h2>Winkel</h2>`;
-    const groups = [['tractor', 'Tractoren'], ['trailer', 'Aanhangers'], ['truck', 'Vrachtwagens'], ['plow', 'Ploegen'], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting en bodem'], ['manure', ''], ['lime', ''], ['sprayer', 'Gewasbescherming'], ['mower', 'Grasland'], ['tedder', ''], ['baler', ''], ['harvester', 'Oogstmachines']];
+    html += `<p class="muted">Kopen of huren: huren kost ${Math.round(D.rentPerDay * 100 * 10) / 10}% van de prijs per dag. Breng een gehuurde machine terug in de Garage.</p>`;
+    const groups = [['tractor', 'Tractoren'], ['trailer', 'Aanhangers'], ['truck', 'Vrachtwagens'], ['plow', 'Grondbewerking'], ['cultivator', ''], ['roller', ''], ['stonepicker', ''], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting en bodem'], ['manure', ''], ['lime', ''], ['sprayer', 'Gewasbescherming'], ['mower', 'Grasland'], ['tedder', ''], ['baler', ''], ['harvester', 'Oogstmachines']];
     for (const [kind, title] of groups) {
       if (title) html += `<h3>${title}</h3>`;
       for (const [key, d] of Object.entries(D.machines)) {
@@ -327,7 +357,8 @@ window.AT = window.AT || {};
         const owned = s.machines.filter(m => m.type === key).length;
         html += `<div class="card row">${thumbImg(key)}
           <div class="grow"><b>${esc(d.name)}</b>${owned ? ` <span class="badge">${owned}×</span>` : ''}<div class="muted">${machineSpecs(d)}</div></div>
-          <button class="btn small primary" data-action="buyMachine" data-type="${key}" ${s.money < d.price ? 'disabled' : ''}>${AT.fmtMoney(d.price)}</button></div>`;
+          <div class="col"><button class="btn small primary" data-action="buyMachine" data-type="${key}" ${s.money < d.price ? 'disabled' : ''}>${AT.fmtMoney(d.price)}</button>
+          <button class="btn small" data-action="rentMachine" data-type="${key}" ${s.money < G().rentPrice(key) ? 'disabled' : ''} title="Huren per dag">Huur ${AT.fmtMoney(G().rentPrice(key))}/d</button></div></div>`;
       }
     }
     const next = D.silo[s.siloLevel + 1];
@@ -536,7 +567,7 @@ window.AT = window.AT || {};
     if (!st.employees.length) html += `<p class="muted">Nog niemand in dienst. Kies hieronder een kandidaat.</p>`;
     for (const w of st.employees) {
       const job = w.status === 'job' && w.fieldId ? G().field(w.fieldId).job : null;
-      const where = w.status === 'job' ? `${job && job.phase === 'to' ? 'onderweg naar' : 'werkt op'} Veld ${w.fieldId}` : w.status === 'trip' ? 'rijdt terug naar het erf' : w.status === 'delivery' ? 'levert met de vrachtwagen' : 'vrij';
+      const where = w.status === 'job' ? `${job && job.phase === 'to' ? 'onderweg naar' : 'werkt op'} Veld ${w.fieldId}` : w.status === 'trip' ? 'rijdt terug naar het erf' : w.status === 'delivery' ? 'levert met de vrachtwagen' : w.status === 'chaser' ? 'rijdt met de kipper naast je maaidorser' : 'vrij';
       html += `<div class="card"><div class="row"><b class="grow">👷 ${esc(w.name)}</b><span class="badge">niveau ${AT.staff.level(w)}</span></div>
         <div class="muted">Snelheid ${pctDelta(AT.staff.workSpeed(w))} · brandstof ${pctDelta(w.fuel)} · ${AT.fmtMoney(w.salary)}/dag</div>
         <div class="row"><span class="grow ${w.status === 'idle' ? '' : 'up'}">${where}</span>
@@ -624,7 +655,8 @@ window.AT = window.AT || {};
           <button class="btn small" data-action="look-factory" data-key="${key}">Zoek</button>
           <button class="btn small ${f.on ? '' : 'primary'}" data-action="toggleFactory" data-key="${key}">${f.on ? 'Zet uit' : 'Zet aan'}</button></div>
         <div class="muted">${line} · max ${d.batchesPerDay}× per dag · €${d.costPerBatch} energie per keer</div>
-        <div class="${f.running ? '' : 'warn'}">Status: ${esc(f.status || 'start op')}</div></div>`;
+        <div class="${f.running ? '' : 'warn'}">Status: ${esc(f.status || 'start op')}</div>
+        ${AT.farm.recipes(key).some(r => Object.keys(r.in).some(g => AT.farm.factoryAccepts(key, g))) ? `<div class="muted">Stortplaats: ${Object.entries(AT.farm.buffer(key)).filter(([, v]) => v > 0.01).map(([k, v]) => `${AT.fmtTons(v)} ${G().goodName(k)}`).join(', ') || 'leeg'} · breng oogst met een kipper (U) voor ${Math.round((D.factoryBonus - 1) * 100)}% meer product</div>` : ''}</div>`;
     }
     // kassen
     html += `<h3>Kassen</h3>`;
@@ -810,6 +842,7 @@ window.AT = window.AT || {};
     $('#weather').textContent = `${wt.icon} ${W.temperature()}°C${W.drought() ? ' · droog!' : ''}`;
     $('#weather').title = `${wt.name} · bodemvocht ${Math.round((s.weather ? s.weather.moisture : 0.6) * 100)}% · jaar ${W.year()}`;
     $('#silo').textContent = `${Math.round(G().siloUsed())} / ${G().siloCapacity()} t`;
+    const sIco = document.querySelector('.ico.silo'); if (sIco) sIco.classList.toggle('full', G().siloUsed() > G().siloCapacity() * 0.9);
     document.querySelectorAll('.speed button').forEach(b => {
       const v = b.dataset.speed;
       b.classList.toggle('active', v === 'pause' ? s.paused : !s.paused && Number(v) === s.speed);
@@ -865,6 +898,12 @@ window.AT = window.AT || {};
       case 'newCandidates': AT.staff.refreshCandidates(); break;
       case 'sell': G().sell(a.crop, a.tons ? Number(a.tons) : undefined); break;
       case 'buyMachine': G().buyMachine(a.type); break;
+      case 'rentMachine': G().rentMachine(a.type); break;
+      case 'returnMachine': G().returnMachine(Number(a.uid)); break;
+      case 'repair': G().repair(Number(a.uid)); break;
+      case 'gps': G().buyGps(Number(a.uid)); break;
+      case 'fuelService': { const m = G().machine(Number(a.uid)); if (m) G().refuel(m, true); break; }
+      case 'chaser': { const res = AT.staff.toggleChaser(); if (typeof res === 'string') G().log(res, 'warn'); break; }
       case 'sellMachine': G().sellMachine(Number(a.uid)); break;
       case 'upgradeSilo': G().upgradeSilo(); break;
       case 'findMachine': {

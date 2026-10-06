@@ -18,6 +18,9 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 | C | Zaaigoed wisselen |
 | U | Lossen: maaidorser → aanhanger, aanhanger → stortput silo of verkooppunt; vrachtwagen laden (laadperron) of verkopen |
 | H | Te voet: boom kappen (bosperceel) of plukken (boomgaard, wijngaard) |
+| T | Tanken bij de rode dieselpomp op het erf |
+| G | GPS aan/uit (rijdt zelf recht; in te bouwen in de Garage) |
+| K | In de maaidorser: chauffeur met kipper roepen of naar huis sturen |
 | M | Geluid dempen (🔊-knop rechtsboven voor volume, muziek en omgeving) |
 | Scroll / slepen | Zoomen / rondkijken |
 | P | Pauze |
@@ -44,6 +47,10 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 18. **Dieren** hebben een **voerbak**: vul hem zelf met een kipper (U) of laat automatisch voeren (kost voerdienst). Houd ze gezond (dierenarts), dan krijgen ze jongen. **Kuilvoer** en **mengvoer** geven meer productie
 19. **Pachten**: een veld huren per dag in plaats van kopen. Een **werknemer** kan ook met de **vrachtwagen** leveren (tab Bedrijf → opslagloods)
 20. Je voortgang blijft bewaard als het spel een update krijgt
+21. **Machines** hebben een **dieseltank** (tanken met T) en **slijten**: versleten machines zijn trager en kunnen kapotgaan. Repareer ze in de Garage. Je kunt machines ook **huren** en een **GPS** inbouwen
+22. Je **botst** tegen gebouwen, hekken en bomen; over akkers en gras rij je langzamer. Weides hebben een poort aan de bovenkant
+23. Roep in de maaidorser met **K** een **chauffeur met kipper**: hij rijdt naast je, de maaidorser lost tijdens het rijden en hij brengt het graan naar de silo
+24. **Cultivator** (snel), **rol** (+6%) en **stenenraper** (ploegen haalt stenen boven). Breng oogst met een kipper naar de **stortplaats van je eigen fabriek** voor 10% meer product
 
 ## Projectstructuur
 ```

@@ -42,29 +42,31 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Mooiere wegen (asfalt/grind met randen) en een erf met bestrating
 - [x] Stijlkeuze: bovenaanzicht met getekende details (isometrisch zou een volledige herbouw zijn)
 - [x] Afbeeldingen van machines in de winkel en garage
-- [ ] Iconen voor geld, tijd en silo in de bovenbalk
+- [x] Iconen voor geld, tijd, weer en silo in de bovenbalk (silo-icoon wordt rood als hij bijna vol is)
 - [x] Graanhandel als gebouw op de kaart
-- [ ] Hagen langs sommige akkers en sloten tussen de velden
-- [ ] Seizoenen ook op de akkers zelf: stoppel en kale grond onder de sneeuw
+- [x] Hagen langs sommige akkers (met een opening om in te rijden) en sloten met riet tussen buurvelden
+- [x] Sneeuw op de akkers: eerst in de voren, daarna een dicht pak; hoge gewassen steken erboven uit; dooit weg bij regen en buiten de winter
 
 ## 🚜 Fase 1: Meer machines en vervoer
-- [ ] **Extra tractormodellen** (50 pk oldtimer, 200 pk, 400 pk rupstrekker)
+- [x] **Extra tractormodellen**: oldtimer 50 pk (goedkoop, slijt snel), 200 pk, rupstrekker 400 pk (geen verdichting, sneller op de akker)
 - [x] **Graanbunker in de maaidorser** (5–12 t): als hij vol is, moet je lossen
 - [x] **Aanhangers** (kipper 8 t, 16 t, overlaadwagen 30 t): graan zelf naar de silo of graanhandel rijden
 - [x] Lossen met U: maaidorser → aanhanger (losbuis), aanhanger → stortput silo of graanhandel
 - [x] Graanhandel op de kaart: volle prijs; verkopen vanuit de silo kost 10% ophaalkosten
-- [ ] Overladen tijdens het rijden (maaidorser en tractor naast elkaar)
-- [ ] Werknemer-chauffeur die met de aanhanger naast de maaidorser meerijdt en zelf wegbrengt
-- [ ] Graan naar een fabriek brengen (bonus voor directe levering)
-- [ ] **Cultivator** (sneller dan ploegen)
+- [x] Overladen tijdens het rijden: de maaidorser lost in de kipper die naast hem rijdt
+- [x] Werknemer-chauffeur (K) rijdt met de kipper naast je maaidorser en brengt het graan zelf naar de silo
+- [x] Oogst direct naar je eigen fabriek brengen (stortplaats, U): 10% meer product
+- [x] **Cultivator** (sneller dan ploegen, maar geen gras omwerken en verdichting blijft) + ploeg 10-schaar
 - [x] **Spuitmachine** en **kalkstrooier** (zie Fase 3)
-- [ ] Rol, egalisatie en stenen rapen
-- [ ] Machineslijtage + onderhoud/reparatie in de schuur
-- [ ] Brandstoftank: tank leeg = bijtanken op het erf
-- [ ] Machines huren in plaats van kopen
-- [ ] Botsen met gebouwen, hekken en bomen (nu rijd je overal doorheen)
-- [ ] Langzamer rijden over akkers en gras dan over de weg
-- [ ] Machine-upgrades (GPS = automatisch recht rijden)
+- [x] Rol (+6% opbrengst na het zaaien) en stenen rapen (ploegen haalt stenen boven: −10% en slijtage)
+- [x] Machineslijtage (trager, meer diesel, kan kapotgaan) + reparatie in de werkplaats of door een monteur ter plekke
+- [x] Dieseltank: tank leeg = stilstaan; tanken bij de dieselpomp op het erf (T) of de tankservice bellen
+- [x] Machines huren per dag in plaats van kopen (terugbrengen in de Garage)
+- [x] Botsen met gebouwen, hekken (erf en weides, met poorten) en bomen
+- [x] Langzamer rijden over akkers en gras dan over de weg (rupsen hebben er minder last van)
+- [x] GPS-upgrade per machine: G = houdt zelf een kaarsrechte lijn
+- [ ] Kopakker-automaat (GPS keert zelf aan het eind van het veld)
+- [ ] Werknemers gebruiken de dieseltank en kunnen pech krijgen
 
 ## 👷 Fase 2: Personeel en automatisering
 - [x] Vaste werknemers aannemen (dagloon, eigen snelheid en zuinigheid; ervaring maakt ze sneller)

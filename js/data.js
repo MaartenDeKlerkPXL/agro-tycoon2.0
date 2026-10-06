@@ -4,7 +4,7 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 9,
+  version: 10,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
   world: { w: 2700, h: 1900 },
@@ -249,28 +249,36 @@ AT.data = {
   // minPower = minimaal tractorvermogen
   // speed  = topsnelheid op de weg (km/u), workSpeed = max snelheid met werktuig omlaag (km/u)
   machines: {
+    tractor_old:    { kind: 'tractor', name: 'Oldtimer 50 pk',  price: 9000,   power: 0.7, fuelPerHour: 6,  speed: 25, color: '#8a9a3b', old: true, wearRate: 2 },
     tractor_small:  { kind: 'tractor', name: 'Tractor 75 pk',  price: 25000,  power: 1.0, fuelPerHour: 10, speed: 30, color: '#c0392b' },
     tractor_medium: { kind: 'tractor', name: 'Tractor 150 pk', price: 65000,  power: 2.0, fuelPerHour: 18, speed: 40, color: '#2e7d32' },
+    tractor_200:    { kind: 'tractor', name: 'Tractor 200 pk', price: 95000,  power: 2.6, fuelPerHour: 24, speed: 45, color: '#e67e22' },
     tractor_large:  { kind: 'tractor', name: 'Tractor 300 pk', price: 150000, power: 3.5, fuelPerHour: 32, speed: 50, color: '#1565c0' },
+    tractor_crawler: { kind: 'tractor', name: 'Rupstrekker 400 pk', price: 240000, power: 5.0, fuelPerHour: 42, speed: 40, color: '#34495e', tracks: true },
 
-    plow_small:   { kind: 'plow',   name: 'Ploeg 3-schaar',  price: 4000,  rate: 0.5, width: 16, workSpeed: 8, minPower: 1.0, color: '#7f8c8d' },
+    plow_small:   { kind: 'plow',   name: 'Ploeg 3-schaar',  price: 4000,  rate: 0.5, width: 16, workSpeed: 8, minPower: 0.7, color: '#7f8c8d' },
     plow_large:   { kind: 'plow',   name: 'Ploeg 6-schaar',  price: 14000, rate: 1.1, width: 32, workSpeed: 10, minPower: 2.0, color: '#566573' },
-    seeder_small: { kind: 'seeder', sows: 'seeder', name: 'Zaaimachine 3 m', price: 6000,  rate: 0.7, width: 24, workSpeed: 12, minPower: 1.0, color: '#2874a6' },
+    plow_huge:    { kind: 'plow',   name: 'Ploeg 10-schaar', price: 30000, rate: 2.0, width: 52, workSpeed: 11, minPower: 3.5, color: '#2c3e50' },
+    cultivator:       { kind: 'cultivator', name: 'Cultivator 4 m', price: 11000, rate: 1.6, width: 32, workSpeed: 14, minPower: 1.0, color: '#b03a2e' },
+    cultivator_large: { kind: 'cultivator', name: 'Cultivator 9 m', price: 36000, rate: 3.6, width: 72, workSpeed: 16, minPower: 3.5, color: '#1f618d' },
+    roller:       { kind: 'roller', name: 'Rol 6 m',         price: 6000,  rate: 2.4, width: 48, workSpeed: 15, minPower: 0.7, color: '#7f8c8d' },
+    stonepicker:  { kind: 'stonepicker', name: 'Stenenraper', price: 14000, rate: 1.0, width: 20, workSpeed: 8,  minPower: 1.0, color: '#d35400' },
+    seeder_small: { kind: 'seeder', sows: 'seeder', name: 'Zaaimachine 3 m', price: 6000,  rate: 0.7, width: 24, workSpeed: 12, minPower: 0.7, color: '#2874a6' },
     seeder_large: { kind: 'seeder', sows: 'seeder', name: 'Zaaimachine 6 m', price: 20000, rate: 1.5, width: 48, workSpeed: 14, minPower: 2.0, color: '#1b4f72' },
 
     potato_planter: { kind: 'seeder', sows: 'potato', name: 'Aardappelpootmachine', price: 18000, rate: 0.6, width: 12, workSpeed: 8,  minPower: 1.0, color: '#7d4e9e' },
     beet_seeder:    { kind: 'seeder', sows: 'beet',   name: 'Bietenzaaier',         price: 16000, rate: 0.9, width: 18, workSpeed: 10, minPower: 1.0, color: '#2c7a7b' },
-    mower:   { kind: 'mower',  name: 'Maaier 3 m',  price: 9000,  rate: 1.2, width: 22, workSpeed: 14, minPower: 1.0, color: '#c0392b' },
-    tedder:  { kind: 'tedder', name: 'Schudder',    price: 7000,  rate: 1.6, width: 30, workSpeed: 14, minPower: 1.0, color: '#e67e22' },
+    mower:   { kind: 'mower',  name: 'Maaier 3 m',  price: 9000,  rate: 1.2, width: 22, workSpeed: 14, minPower: 0.7, color: '#c0392b' },
+    tedder:  { kind: 'tedder', name: 'Schudder',    price: 7000,  rate: 1.6, width: 30, workSpeed: 14, minPower: 0.7, color: '#e67e22' },
     baler:   { kind: 'baler',  name: 'Balenpers',   price: 28000, rate: 0.8, width: 10, workSpeed: 10, minPower: 1.0, color: '#2e7d32' },
     truck:   { kind: 'truck',  name: 'Vrachtwagen', price: 60000, pallets: 12, speed: 70, fuelPerHour: 25, color: '#34495e' },
 
-    spreader_fert:   { kind: 'spreader', name: 'Kunstmeststrooier', price: 7000,  rate: 2.0, width: 40, workSpeed: 15, minPower: 1.0, color: '#e67e22' },
+    spreader_fert:   { kind: 'spreader', name: 'Kunstmeststrooier', price: 7000,  rate: 2.0, width: 40, workSpeed: 15, minPower: 0.7, color: '#e67e22' },
     manure_spreader: { kind: 'manure',   name: 'Mestverspreider',   price: 12000, rate: 0.8, width: 20, workSpeed: 10, minPower: 1.0, color: '#6d4c2f' },
     lime_spreader:   { kind: 'lime',     name: 'Kalkstrooier',      price: 8000,  rate: 1.8, width: 36, workSpeed: 14, minPower: 1.0, color: '#9aa3a8' },
     sprayer:         { kind: 'sprayer',  name: 'Spuitmachine 24 m', price: 15000, rate: 3.0, width: 48, workSpeed: 16, minPower: 1.0, color: '#2e86c1' },
 
-    trailer_small: { kind: 'trailer', name: 'Kipper 8 t',          price: 6000,  capacity: 8,  width: 14, length: 16, minPower: 1.0, color: '#b03a2e' },
+    trailer_small: { kind: 'trailer', name: 'Kipper 8 t',          price: 6000,  capacity: 8,  width: 14, length: 16, minPower: 0.7, color: '#b03a2e' },
     trailer_large: { kind: 'trailer', name: 'Kipper 16 t',         price: 14000, capacity: 16, width: 16, length: 20, minPower: 2.0, color: '#2e86c1' },
     trailer_huge:  { kind: 'trailer', name: 'Overlaadwagen 30 t',  price: 38000, capacity: 30, width: 18, length: 24, minPower: 3.5, color: '#7d3c98' },
 
@@ -282,6 +290,16 @@ AT.data = {
   },
 
   fuelPrice: 1.6,          // € per liter diesel
+  // dieselpomp op het erf (T = tanken); tankinhoud = fuelTank of 12 uur rijden
+  fuelPump: { x: 318, y: 758, r: 7 },
+  fuelService: 150,        // tankservice die naar je toe komt
+  // slijtage per uur gebruik; boven 90% kan een machine kapotgaan. Repareren in de Garage.
+  wearPerHour: 0.006, repairShare: 0.12, repairCallOut: 400,
+  rentPerDay: 0.025,       // huren: 2,5% van de nieuwprijs per dag
+  gpsPrice: 6000,          // GPS-stuursysteem: rijdt zelf recht (G)
+  stoneYield: 0.9, rollBonus: 1.06,   // stenen kosten opbrengst, rollen geeft net iets meer
+  factoryBonus: 1.1,       // direct bij je eigen fabriek gelost: 10% meer product
+  surfaceSpeed: { road: 1, field: 0.65, grass: 0.8 },   // niet-werkend rijden over akkers en gras gaat langzamer
   workerWagePerHour: 20,   // € per speluur voor een loonwerker
 
   // Erf: boerderij, silo's, machinehal en parkeerplaats voor machines
@@ -387,6 +405,9 @@ AT.data = {
     { id: 'hire',     text: 'Neem een werknemer aan (tab Team)',   reward: 2000,  check: s => s.staff && s.staff.employees.length >= 1 },
     { id: 'auto',     text: 'Zet een veld op automatisch beheer (tab Veld)', reward: 3000, check: s => s.fields.some(f => f.auto && f.auto.on) },
     { id: 'tractor2', text: 'Koop een tweede tractor',              reward: 5000,  check: s => s.machines.filter(m => AT.data.machines[m.type].kind === 'tractor').length >= 2 },
+    { id: 'refuel',   text: 'Tank je tractor bij de dieselpomp op het erf (T)', reward: 1000, check: s => (s.stats.refuels || 0) >= 1 },
+    { id: 'chaser',   text: 'Laat een chauffeur met kipper naast je maaidorser rijden (K)', reward: 3000, check: s => (s.stats.chaserTons || 0) >= 1 },
+    { id: 'factoryDirect', text: 'Breng oogst direct naar je eigen fabriek (U bij de stortplaats)', reward: 2000, check: s => (s.stats.factoryTons || 0) >= 1 },
     { id: 'silo1',    text: 'Vergroot je silo',                     reward: 5000,  check: s => s.siloLevel >= 1 },
     { id: 'earn100k', text: 'Verdien in totaal €100.000',           reward: 10000, check: s => s.stats.earned >= 100000 },
     { id: 'allfields',text: 'Bezit alle velden',                    reward: 25000, check: s => s.fields.every(f => f.owned) },

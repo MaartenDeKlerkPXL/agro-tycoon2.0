@@ -27,13 +27,13 @@ window.AT = window.AT || {};
       c.width = def.w * FS; c.height = def.h * FS;
       const g = c.getContext('2d');
       g.setTransform(FS, 0, 0, FS, 0, 0);
-      layers[def.id] = { canvas: c, ctx: g, vis: new Uint16Array(def.cols * def.rows).fill(65535) };
+      layers[def.id] = { canvas: c, ctx: g, vis: new Uint32Array(def.cols * def.rows).fill(0xffffffff) };
     }
     trees = placeTrees();
     bg = paintBackground();
     AT.fx.init();
     AT.cellChanged = (id, i) => drawCell(id, i);
-    AT.on('reset', () => { for (const id in layers) layers[id].vis.fill(65535); refreshAll(); AT.fx.reset(); cam.free = false; });
+    AT.on('reset', () => { for (const id in layers) layers[id].vis.fill(0xffffffff); refreshAll(); AT.fx.reset(); cam.free = false; });
     new ResizeObserver(resize).observe(canvas);
     resize();
     refreshAll();
@@ -158,6 +158,8 @@ window.AT = window.AT || {};
       g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rnd() - 0.5) * 3, y - 4 - rnd() * 4); g.stroke();
     }
 
+    drawHedgesAndDitches(g, rnd);
+
     // weides voor de dieren: wat frisser gras
     for (const a of Object.values(D.animals)) {
       g.fillStyle = 'rgba(140,200,90,0.25)'; g.fillRect(a.pen.x, a.pen.y, a.pen.w, a.pen.h);
@@ -184,6 +186,68 @@ window.AT = window.AT || {};
     g.fillStyle = '#5f9e44'; g.fillRect(H.x - 4, H.y + H.h + 6, H.w + 8, 10);
     for (let i = 0; i < 40; i++) { g.fillStyle = flowers[i % 4]; g.fillRect(H.x + rnd() * H.w, H.y + H.h + 7 + rnd() * 8, 1.6, 1.6); }
     return c;
+  }
+
+  // ---------- hagen langs sommige akkers, sloten tussen buurvelden ----------
+  const overlap = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0);
+  const roadIn = r => D.roads.some(q => q.x < r.x + r.w && q.x + q.w > r.x && q.y < r.y + r.h && q.y + q.h > r.y);
+  function edgeStrips() {
+    const ditches = [], hedges = [], F = D.fields;
+    // sloot: smalle strook gras tussen twee velden zonder weg ertussen
+    for (const a of F) for (const b of F) {
+      const gx = b.x - (a.x + a.w), oy = overlap(a.y, a.y + a.h, b.y, b.y + b.h);
+      if (gx >= 8 && gx <= 40 && oy > 40) { const r = { x: a.x + a.w, y: Math.max(a.y, b.y), w: gx, h: oy }; if (!roadIn(r)) ditches.push({ r, vertical: true }); }
+      const gy = b.y - (a.y + a.h), ox = overlap(a.x, a.x + a.w, b.x, b.x + b.w);
+      if (gy >= 8 && gy <= 40 && ox > 40) { const r = { x: Math.max(a.x, b.x), y: a.y + a.h, w: ox, h: gy }; if (!roadIn(r)) ditches.push({ r, vertical: false }); }
+    }
+    // haag: strook tussen een akker en de weg (niet aan elke kant)
+    for (const f of F) {
+      const sides = [
+        { r: { x: f.x - 20, y: f.y, w: 20, h: f.h }, vertical: true }, { r: { x: f.x + f.w, y: f.y, w: 20, h: f.h }, vertical: true },
+        { r: { x: f.x, y: f.y - 20, w: f.w, h: 20 }, vertical: false }, { r: { x: f.x, y: f.y + f.h, w: f.w, h: 20 }, vertical: false },
+      ];
+      sides.forEach((sd, k) => {
+        if (hash(f.id * 7 + k * 13) % 3 !== 0) return;
+        // er moet een weg naast liggen, maar niet in de strook zelf
+        const probe = sd.vertical ? { x: sd.r.x - 22, y: sd.r.y, w: sd.r.w + 44, h: sd.r.h } : { x: sd.r.x, y: sd.r.y - 22, w: sd.r.w, h: sd.r.h + 44 };
+        const strip = sd.vertical ? { x: sd.r.x + 6, y: sd.r.y, w: 8, h: sd.r.h } : { x: sd.r.x, y: sd.r.y + 6, w: sd.r.w, h: 8 };
+        if (roadIn(strip) || !roadIn(probe)) return;
+        if (ditches.some(d => overlap(d.r.x, d.r.x + d.r.w, strip.x, strip.x + strip.w) > 0 && overlap(d.r.y, d.r.y + d.r.h, strip.y, strip.y + strip.h) > 0)) return;
+        hedges.push(sd);
+      });
+    }
+    return { ditches, hedges };
+  }
+  function drawHedgesAndDitches(g, rnd) {
+    const { ditches, hedges } = edgeStrips();
+    for (const { r, vertical } of ditches) {
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      const bank = vertical ? { x: cx - 5, y: r.y + 4, w: 10, h: r.h - 8 } : { x: r.x + 4, y: cy - 5, w: r.w - 8, h: 10 };
+      const water = vertical ? { x: cx - 2.5, y: r.y + 6, w: 5, h: r.h - 12 } : { x: r.x + 6, y: cy - 2.5, w: r.w - 12, h: 5 };
+      g.fillStyle = '#5c7f3a'; g.fillRect(bank.x, bank.y, bank.w, bank.h);
+      g.fillStyle = '#3f6f8f'; g.fillRect(water.x, water.y, water.w, water.h);
+      g.fillStyle = 'rgba(170,215,240,0.45)';
+      const len = vertical ? water.h : water.w;
+      for (let s = 4; s < len; s += 9 + rnd() * 8) vertical ? g.fillRect(water.x + 1, water.y + s, 1.2, 3) : g.fillRect(water.x + s, water.y + 1, 3, 1.2);
+      // riet en gele lis langs de kant
+      for (let s = 2; s < len; s += 5 + rnd() * 6) {
+        const side = rnd() < 0.5 ? -1 : 1;
+        const px = vertical ? cx + side * 4 : water.x + s, py = vertical ? water.y + s : cy + side * 4;
+        g.fillStyle = rnd() < 0.15 ? '#e8c43a' : '#3d6b2a'; g.fillRect(px - 0.5, py - 1.5, 1, 3);
+      }
+    }
+    for (const { r, vertical } of hedges) {
+      const len = vertical ? r.h : r.w, mid = len / 2;
+      for (let s = 4; s < len - 4; s += 3.2) {
+        if (Math.abs(s - mid) < 18) continue;   // opening om het veld in te rijden
+        const x = vertical ? r.x + r.w / 2 + (rnd() - 0.5) * 2 : r.x + s, y = vertical ? r.y + s : r.y + r.h / 2 + (rnd() - 0.5) * 2;
+        const rad = 3 + rnd() * 1.6;
+        g.fillStyle = 'rgba(0,0,0,0.18)'; g.beginPath(); g.arc(x + 1.5, y + 2, rad, 0, Math.PI * 2); g.fill();
+        g.fillStyle = rnd() < 0.5 ? '#3e7a2c' : '#356b26'; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
+        g.fillStyle = 'rgba(140,190,90,0.45)'; g.beginPath(); g.arc(x - rad * 0.3, y - rad * 0.3, rad * 0.45, 0, Math.PI * 2); g.fill();
+        if (rnd() < 0.06) { g.fillStyle = '#f4f1e6'; g.fillRect(x, y, 1, 1); }   // meidoornbloesem
+      }
+    }
   }
 
   // ---------- seizoenen ----------
@@ -321,7 +385,7 @@ window.AT = window.AT || {};
   function drawFarmZone(state, dt) {
     for (const key of Object.keys(D.animals)) {
       const d = D.animals[key], a = state.animals[key];
-      SP().fence(ctx, d.pen);
+      SP().fence(ctx, d.pen, AT.farm.penGate(key));
       if (!a.owned) { SP().buildingLot(ctx, d.barn); continue; }
       SP().barn(ctx, d.barn, { cows: '#9c3b2c', chickens: '#a8834f', sheep: '#7d8a8f', pigs: '#c27c6b' }[key] || '#8a6a4a');
       const tr = AT.farm.troughRect(key), full = AT.farm.troughTons(key) / (d.trough * D.barnLevels[AT.farm.animal(key).level]);
@@ -333,6 +397,7 @@ window.AT = window.AT || {};
     SP().trader(ctx, D.trader.lot, D.trader.pit, time);
     for (const [id, sp] of Object.entries(D.sellPoints)) if (sp.lot) SP().sellPoint(ctx, id, sp, time);
     SP().dock(ctx, D.dock);
+    SP().fuelPump(ctx, D.fuelPump.x, D.fuelPump.y);
     // kassen
     AT.farm.greenhouses().forEach((gh, i) => {
       const lot = D.greenhouse.lots[i];
@@ -352,6 +417,7 @@ window.AT = window.AT || {};
       const d = D.factories[key], f = state.factories[key];
       if (!f.owned) { SP().buildingLot(ctx, d.lot); continue; }
       SP().factory(ctx, key, d.lot, d.roof, time, f.running && f.on);
+      if (Object.keys(D.factories[key].in).concat(...(D.factories[key].alt || []).map(a => Object.keys(a.in))).some(k => D.crops[k] || k === 'hay')) SP().pit(ctx, AT.farm.factoryPit(key));
     }
   }
 
@@ -418,6 +484,10 @@ window.AT = window.AT || {};
       { r: D.trader.lot, txt: `Graanhandel · ${AT.fmtMoney(G().cropPrice('wheat'))}/t tarwe`, bg: 'rgba(63,110,140,0.92)' },
       ...Object.entries(D.sellPoints).filter(([, sp]) => sp.lot).map(([, sp]) => ({ r: sp.lot, txt: sp.name, bg: 'rgba(63,110,140,0.92)' })),
       { r: { x: D.dock.x - 20, y: D.dock.y - 40, w: D.dock.w + 40, h: 54 }, txt: 'Laadperron (vrachtwagen)', bg: 'rgba(0,0,0,0.55)', small: true },
+      { r: { x: D.fuelPump.x - 30, y: D.fuelPump.y - 30, w: 60, h: 44 }, txt: 'Diesel (T)', bg: 'rgba(192,57,43,0.9)', small: true },
+      ...Object.keys(D.factories).filter(k => state.factories[k].owned && AT.farm.recipes(k).some(r => Object.keys(r.in).some(g => AT.farm.factoryAccepts(k, g)))).map(k => {
+        const p = AT.farm.factoryPit(k); return { r: { x: p.x - 10, y: p.y - 30, w: p.w + 20, h: 44 }, txt: 'Stortplaats (U)', bg: 'rgba(0,0,0,0.55)', small: true };
+      }),
       ...AT.farm.greenhouses().map((gh, i) => ({ r: D.greenhouse.lots[i], txt: gh.owned ? `Kas: ${D.products[gh.crop].name.toLowerCase()} · ${gh.status || ''}` : `Kas · bouw ${AT.fmtMoney(D.greenhouse.price)}`, bg: gh.owned ? 'rgba(0,0,0,0.55)' : 'rgba(45,106,45,0.92)' })),
       (() => { const wl = AT.farm.woodlot(); const ready = wl.trees.filter(t => t.growth >= 0.95).length;
         return { r: D.woodlot.area, txt: wl.owned ? `Bosperceel · ${ready} bomen kapklaar` : `Bosperceel · koop ${AT.fmtMoney(D.woodlot.price)}`, bg: wl.owned ? 'rgba(0,0,0,0.55)' : 'rgba(45,106,45,0.92)' }; })(),
@@ -517,21 +587,25 @@ window.AT = window.AT || {};
   }
 
   // ---------- velden: cellen tekenen (offscreen) ----------
-  // sleutel = basis × 32 + beeld-bits: 1 kunstmest, 2 mest, 4 verdicht, 8 onkruid, 16 ziekte
+  // sleutel = basis × 512 + beeld-bits × 4 + sneeuw (0..3)
+  // beeld-bits: 1 kunstmest, 2 mest, 4 verdicht, 8 onkruid, 16 ziekte, 32 stenen, 64 gerold
+  function snowLevel() { const v = AT.state.snow || 0; return v < 0.15 ? 0 : v < 0.45 ? 1 : v < 0.75 ? 2 : 3; }
   function visKey(f, i) {
     const st = f.cells.state[i], dir = f.cells.dir[i], raw = f.cells.fert[i];
-    let fe = (raw & 3) | (raw & G().COMPACT ? 4 : 0);
+    let fe = (raw & 3) | (raw & G().COMPACT ? 4 : 0) | (raw & G().STONE ? 32 : 0) | (raw & G().ROLLED ? 64 : 0);
+    let snow = snowLevel();
     if (st === G().ST.MOWN) {
       const d = G().hayDryness(f, i);
-      return (4 + (d >= 1 ? 2 : d >= 0.5 ? 1 : 0)) * 32 + fe;
+      return (4 + (d >= 1 ? 2 : d >= 0.5 ? 1 : 0)) * 512 + fe * 4 + snow;
     }
     // onkruid en ziekte op een deel van de cellen (hoeveel hangt af van hoe erg het is)
     const hv = hash(f.id * 31337 + i) % 1000 / 1000;
     if (st !== G().ST.STUBBLE || f.weeds > 0.5) { if (hv < (f.weeds || 0) * 0.7) fe |= 8; }
-    if (st !== G().ST.SOWN) return (st * 2 + dir) * 32 + fe;
+    if (st !== G().ST.SOWN) return (st * 2 + dir) * 512 + fe * 4 + snow;
     if ((1 - hv) < (f.disease || 0) * 0.6) fe |= 16;
     const stage = G().isReady(f, i) ? (G().isWithering(f, i) ? 6 : 5) : Math.min(4, Math.floor(G().cellGrowth(f, i) * 5));
-    return (10 + (f.cells.crop[i] * 8 + stage) * 2 + dir) * 32 + fe;
+    if (stage >= 3) snow = Math.max(0, snow - 1);   // hoge gewassen steken boven de sneeuw uit
+    return (10 + (f.cells.crop[i] * 8 + stage) * 2 + dir) * 512 + fe * 4 + snow;
   }
 
   const STUBBLE = ['#c9ae6b', '#c3a764', '#cfb576', '#c6aa69'];
@@ -709,18 +783,29 @@ window.AT = window.AT || {};
     const def = G().fieldDef(id), f = G().field(id), L = layers[id], g = L.ctx;
     const full = visKey(f, i);
     L.vis[i] = full;
-    drawCellBase(def, g, id, i, full >> 5);
-    // bemesting zichtbaar: witte korrels (kunstmest) en donkere plukjes (mest)
-    const fe = full & 31;
-    if (!fe) return;
+    const base = full >>> 9, fe = (full >> 2) & 127, snow = full & 3;
+    drawCellBase(def, g, id, i, base);
     const x = (i % def.cols) * C, y = Math.floor(i / def.cols) * C, h = hash(id * 7919 + i);
-    const dirH = ((full >> 5) & 1);
+    const dirH = base & 1;
+    // gerold: gladde, lichte banen
+    if (fe & 64) {
+      g.fillStyle = 'rgba(255,255,255,0.07)';
+      if (dirH) g.fillRect(x, y, C, C / 2); else g.fillRect(x, y, C / 2, C);
+    }
     // verdicht: diepe natte bandensporen
     if (fe & 4) {
       g.fillStyle = 'rgba(45,28,14,0.5)';
       if (dirH) { g.fillRect(x, y + 1.5, C, 1.3); g.fillRect(x, y + 5.2, C, 1.3); } else { g.fillRect(x + 1.5, y, 1.3, C); g.fillRect(x + 5.2, y, 1.3, C); }
       g.fillStyle = 'rgba(120,140,150,0.25)';
       if (dirH) g.fillRect(x + (h & 3), y + 1.8, 2, 0.6); else g.fillRect(x + 1.8, y + (h & 3), 0.6, 2);
+    }
+    // stenen: grijze keien
+    if (fe & 32) {
+      for (let k = 0; k < 2; k++) {
+        const px = x + 1 + ((h >> (k * 6 + 1)) % 6), py = y + 1 + ((h >> (k * 6 + 4)) % 6), r = 0.7 + ((h >> (k + 20)) & 1) * 0.5;
+        g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.arc(px + 0.3, py + 0.4, r, 0, Math.PI * 2); g.fill();
+        g.fillStyle = k ? '#9a968c' : '#b5b1a6'; g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.fill();
+      }
     }
     // onkruid: donkergroene plukjes en een paarse distel
     if (fe & 8) {
@@ -733,9 +818,29 @@ window.AT = window.AT || {};
       g.fillStyle = 'rgba(190,160,50,0.6)'; g.beginPath(); g.arc(x + ((h >> 2) & 7), y + ((h >> 6) & 7), 1.6, 0, Math.PI * 2); g.fill();
       g.fillStyle = 'rgba(110,70,30,0.55)'; g.beginPath(); g.arc(x + ((h >> 9) & 7), y + ((h >> 13) & 7), 1, 0, Math.PI * 2); g.fill();
     }
-    if (!(fe & 3)) return;
+    // bemesting zichtbaar: witte korrels (kunstmest) en donkere plukjes (mest)
     if (fe & 2) { g.fillStyle = 'rgba(60,38,20,0.55)'; for (let k = 0; k < 3; k++) g.fillRect(x + ((h >> (k * 3)) & 7), y + ((h >> (k * 3 + 9)) & 7), 1.2, 0.8); }
     if (fe & 1) { g.fillStyle = 'rgba(255,255,255,0.85)'; for (let k = 0; k < 3; k++) g.fillRect(x + ((h >> (k * 4 + 1)) & 7) + 0.25, y + ((h >> (k * 4 + 13)) & 7) + 0.25, 0.5, 0.5); }
+    if (snow) drawSnow(g, x, y, h, snow, dirH, base);
+  }
+
+  // sneeuw op de akker: eerst in de voren, daarna een dicht wit pak met stoppels en kluiten die nog uitsteken
+  function drawSnow(g, x, y, h, level, dirH, base) {
+    const R = (a, c, len, w) => dirH ? g.fillRect(x + a, y + c, len, w) : g.fillRect(x + c, y + a, w, len);
+    if (level === 1) {
+      g.fillStyle = 'rgba(245,248,252,0.85)';
+      for (const c of [1.2, 4.2, 6.6]) R(0, c, C, 1.1);
+      g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(x + (h & 7), y + ((h >> 3) & 7), 1.4, 1);
+      return;
+    }
+    g.fillStyle = level === 3 ? '#f4f7fa' : 'rgba(242,246,250,0.82)'; g.fillRect(x, y, C, C);
+    g.fillStyle = 'rgba(170,190,215,0.35)';
+    for (let k = 0; k < 2; k++) g.fillRect(x + ((h >> (k * 4)) & 7), y + ((h >> (k * 4 + 2)) & 7), 2.2, 0.8);
+    // wat er nog door de sneeuw steekt
+    const stubble = base < 2, plowed = base >= 2 && base < 4;
+    const n = level === 3 ? 2 : 4;
+    g.fillStyle = stubble ? '#b59c5e' : plowed ? '#6e4a2e' : base >= 10 ? '#5f8f3c' : '#8faa62';
+    for (let k = 0; k < n; k++) R((h >> (k * 3)) & 7, (h >> (k * 3 + 12)) & 7, stubble ? 0.6 : 1.2, stubble ? 1.2 : 0.7);
   }
 
   function drawCellBase(def, g, id, i, key) {
@@ -920,6 +1025,10 @@ window.AT = window.AT || {};
       drawCrew(f.job.machines, G().jobPose(G().fieldDef(f.id), f.job), f.job.phase !== 'to', f.job.type);
     }
     for (const tr of state.trips || []) drawCrew(tr.machines, tr.pos, false, tr.type);
+    if (state.chaser) {
+      const c = state.chaser, t = G().machine(c.tractor), tl = G().machine(c.trailer);
+      if (t && tl) SP().machine(ctx, t.type, c.pos.x, c.pos.y, c.pos.angle, { implType: tl.type, implLoad: tl.load, lowered: false, wheel: time * 30, t: time, lights, beacon: (time * 2) % 1 < 0.5 });
+    }
     for (const dv of state.deliveries || []) {
       const t = G().machine(dv.truck);
       if (!t) continue;
@@ -1137,7 +1246,8 @@ window.AT = window.AT || {};
       if (info.crop) lines.push([`Zaaigoed: ${info.crop}  (C = wisselen)`, '#ddd', '600 13px']);
       if (info.extra) lines.push([info.extra, '#ddd', '600 13px']);
       if (info.load) lines.push([info.load, info.loadFrac > 0.95 ? '#ffb38a' : '#ffe08a', '700 13px']);
-      lines.push(['WASD rijden · Shift sneller · Spatie werktuig · F koppelen · U lossen · E uitstappen', '#bbb', '12px']);
+      if (info.fuel) lines.push([info.fuel, info.fuelLow ? '#ffb38a' : '#ddd', '600 13px']);
+      lines.push(['WASD rijden · Shift sneller · Spatie werktuig · F koppelen · U lossen · T tanken · E uitstappen', '#bbb', '12px']);
     } else {
       lines.push(['Te voet', '#fff', '700 14px']);
       lines.push(['WASD lopen · Shift sneller · E instappen', '#bbb', '12px']);
@@ -1219,6 +1329,6 @@ window.AT = window.AT || {};
 
   AT.render = {
     init, draw, view, cam, screenToWorld, eventPos, fieldAt, zoomAt, centerOn, buildingAt,
-    inMinimap, minimapToWorld, refreshAll,
+    inMinimap, minimapToWorld, refreshAll, trees: () => trees,
   };
 })();

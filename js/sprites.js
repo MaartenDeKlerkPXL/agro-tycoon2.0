@@ -184,6 +184,34 @@ window.AT = window.AT || {};
       ctx.strokeStyle = shade(c, -0.45); ctx.lineWidth = 0.6;
       for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(bx + L * k / 4, -Wt / 2 + 0.6); ctx.lineTo(bx + L * k / 4, -Wt / 2 + 1.6); ctx.stroke(); }
       if (o.tipping) { ctx.fillStyle = 'rgba(255,255,255,0.18)'; rr(ctx, bx, -Wt / 2 + 0.6, L, Wt - 1.2, 1); ctx.fill(); }
+    } else if (id.kind === 'cultivator') {
+      // cultivator: frame met drie rijen tanden
+      ctx.fillStyle = '#333'; ctx.fillRect(x0 - 3, -1, 3.5, 2);
+      ctx.fillStyle = shade(c, -0.1); ctx.fillRect(x0 - 4, -W / 2, 2, W); ctx.fillRect(x0 - 12, -W / 2, 2, W);
+      ctx.fillStyle = c; ctx.fillRect(x0 - 12, -1.2, 9, 2.4);
+      ctx.fillStyle = '#d0d3d4';
+      for (const tx of [x0 - 6, x0 - 9, x0 - 13.5]) for (let s = -W / 2 + 1.5 + (tx === x0 - 9 ? 1.5 : 0); s < W / 2 - 0.5; s += 3) ctx.fillRect(tx, s, 1.4, 0.9);
+      ctx.fillStyle = '#5d6d7e'; ctx.fillRect(x0 - 16, -W / 2, 2.4, W);   // rol achteraan
+    } else if (id.kind === 'roller') {
+      // rol: segmenten van gietijzeren ringen
+      ctx.fillStyle = '#333'; ctx.fillRect(x0 - 3, -0.8, 3.5, 1.6);
+      ctx.fillStyle = shade(c, -0.2); ctx.fillRect(x0 - 5, -W / 2, 1.6, W);
+      const g = ctx.createLinearGradient(x0 - 11, 0, x0 - 6, 0);
+      g.addColorStop(0, '#5d6466'); g.addColorStop(0.5, '#a9b0b2'); g.addColorStop(1, '#4b5153');
+      ctx.fillStyle = g; ctx.fillRect(x0 - 11, -W / 2, 5, W);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      const off = ((o.wheel || 0) % 2 + 2) % 2;
+      for (let s = -W / 2 + off; s < W / 2; s += 2) ctx.fillRect(x0 - 11, s, 5, 0.5);
+    } else if (id.kind === 'stonepicker') {
+      // stenenraper: opraapwals voor en een bak met stenen
+      ctx.fillStyle = '#333'; ctx.fillRect(x0 - 3, -0.8, 3.5, 1.6);
+      wheel(ctx, x0 - 12, -7, 4.5, 2, o.wheel || 0); wheel(ctx, x0 - 12, 7, 4.5, 2, o.wheel || 0);
+      ctx.fillStyle = '#444'; ctx.fillRect(x0 - 20, -W / 2, 2.5, W);
+      const g = ctx.createLinearGradient(0, -6, 0, 6);
+      g.addColorStop(0, shade(c, 0.3)); g.addColorStop(1, shade(c, -0.25));
+      ctx.fillStyle = g; rr(ctx, x0 - 17, -6, 13, 12, 1); ctx.fill();
+      ctx.fillStyle = '#8e8e86';
+      for (let k = 0; k < 9; k++) circle(ctx, x0 - 15 + (k % 3) * 4, -3.5 + Math.floor(k / 3) * 3.5, 1.2);
     } else if (id.kind === 'lime') {
       // kalkstrooier: brede bak met kalk en een strooibalk
       ctx.fillStyle = '#333'; ctx.fillRect(x0 - 3, -0.8, 3.5, 1.6);
@@ -223,11 +251,15 @@ window.AT = window.AT || {};
     const c = d.color;
     if (o.implDef) implement(ctx, o.implDef, -11.5, Object.assign({}, o, { load: o.implLoad }));
     ctx.fillStyle = '#2d2d2d'; ctx.fillRect(-12.5, -0.8, 3, 1.6);
-    // wielen
-    wheel(ctx, -5.5, -6.6, 8.5, 3.4, o.wheel);
-    wheel(ctx, -5.5, 6.6, 8.5, 3.4, o.wheel);
-    wheel(ctx, 6.5, -5, 5, 2.4, o.wheel * 1.6, o.steer);
-    wheel(ctx, 6.5, 5, 5, 2.4, o.wheel * 1.6, o.steer);
+    // wielen (of rupsen)
+    if (d.tracks) {
+      for (const sy of [-6.4, 6.4]) wheel(ctx, 0.5, sy, 21, 3.8, o.wheel);
+    } else {
+      wheel(ctx, -5.5, -6.6, 8.5, 3.4, o.wheel);
+      wheel(ctx, -5.5, 6.6, 8.5, 3.4, o.wheel);
+      wheel(ctx, 6.5, -5, 5, 2.4, o.wheel * 1.6, o.steer);
+      wheel(ctx, 6.5, 5, 5, 2.4, o.wheel * 1.6, o.steer);
+    }
     // spatborden
     ctx.fillStyle = shade(c, -0.2);
     rr(ctx, -10, -8.7, 9, 2.1, 1); ctx.fill();
@@ -388,7 +420,7 @@ window.AT = window.AT || {};
     const c = document.createElement('canvas');
     c.width = 112; c.height = 72;
     const g = c.getContext('2d');
-    if (d.kind === 'plow' || d.kind === 'seeder' || d.kind === 'sprayer' || d.kind === 'lime') {
+    if (['plow', 'seeder', 'sprayer', 'lime', 'cultivator', 'roller', 'stonepicker'].includes(d.kind)) {
       // werktuig dwars in beeld zodat de werkbreedte goed zichtbaar is
       const s = Math.min(100 / (d.width + 4), 60 / 14, 4);
       g.translate(56, 36 + 5 * s); g.scale(s, s);
@@ -596,13 +628,29 @@ window.AT = window.AT || {};
     ctx.strokeStyle = shade(roof, -0.5); ctx.lineWidth = 1.2; ctx.strokeRect(r.x, r.y, r.w, r.h);
   }
 
-  function fence(ctx, r, gateSide = 'top') {
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1.2;
-    ctx.strokeRect(r.x + 1.5, r.y + 2, r.w, r.h);
-    ctx.strokeStyle = '#8b6a45'; ctx.strokeRect(r.x, r.y, r.w, r.h);
+  // hek rond een weide; gate = { x0, x1 } = opening in de bovenkant
+  function fence(ctx, r, gate = null) {
+    const segs = [[r.x, r.y + r.h, r.x + r.w, r.y + r.h], [r.x, r.y, r.x, r.y + r.h], [r.x + r.w, r.y, r.x + r.w, r.y + r.h]];
+    if (gate) segs.push([r.x, r.y, gate.x0, r.y], [gate.x1, r.y, r.x + r.w, r.y]); else segs.push([r.x, r.y, r.x + r.w, r.y]);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    for (const [a, b, c, d] of segs) { ctx.beginPath(); ctx.moveTo(a + 1.5, b + 2); ctx.lineTo(c + 1.5, d + 2); ctx.stroke(); }
+    ctx.strokeStyle = '#8b6a45';
+    for (const [a, b, c, d] of segs) { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); }
     ctx.fillStyle = '#5e4129';
-    for (let x = r.x; x <= r.x + r.w; x += 12) { ctx.fillRect(x - 1, r.y - 1, 2, 2); ctx.fillRect(x - 1, r.y + r.h - 1, 2, 2); }
-    for (let y = r.y; y <= r.y + r.h; y += 12) { ctx.fillRect(r.x - 1, y - 1, 2, 2); ctx.fillRect(r.x + r.w - 1, y - 1, 2, 2); }
+    for (const [a, b, c, d] of segs) {
+      const len = Math.hypot(c - a, d - b);
+      for (let s = 0; s <= len; s += 12) ctx.fillRect(a + (c - a) * s / len - 1, b + (d - b) * s / len - 1, 2, 2);
+    }
+    if (gate) { ctx.fillStyle = '#4a3320'; ctx.fillRect(gate.x0 - 1.5, r.y - 2, 3, 4); ctx.fillRect(gate.x1 - 1.5, r.y - 2, 3, 4); }
+  }
+  // dieselpomp op het erf
+  function fuelPump(ctx, x, y) {
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; rr(ctx, x - 3, y - 4, 8, 10, 1.5); ctx.fill();
+    ctx.fillStyle = '#c0392b'; rr(ctx, x - 4, y - 5, 8, 10, 1.5); ctx.fill();
+    ctx.fillStyle = '#f4f1e6'; ctx.fillRect(x - 2.8, y - 3.6, 5.6, 3);
+    ctx.fillStyle = '#222'; ctx.fillRect(x + 4, y - 1, 2.5, 0.8); ctx.fillRect(x + 6, y - 1, 0.8, 4);
+    ctx.fillStyle = '#7f8c8d'; ctx.fillRect(x - 9, y + 6, 18, 2);   // betonplaat
   }
 
   function trough(ctx, x, y, w, full, frac = full ? 1 : 0) {
@@ -786,5 +834,5 @@ window.AT = window.AT || {};
     ctx.fillStyle = 'rgba(160,140,100,0.25)'; ctx.fillRect(r.x, r.y, r.w, r.h);
   }
 
-  AT.sprites = { bale, machine, thumb, house, hall, silo, tree, treeShadow, treeSprite, animal, barn, fence, trough, factory, buildingLot, pit, trader, greenhouse, sellPoint, dock, shade, mix, rr, circle };
+  AT.sprites = { fuelPump, bale, machine, thumb, house, hall, silo, tree, treeShadow, treeSprite, animal, barn, fence, trough, factory, buildingLot, pit, trader, greenhouse, sellPoint, dock, shade, mix, rr, circle };
 })();

@@ -8,8 +8,9 @@ window.AT = window.AT || {};
   const CROP_KEYS = Object.keys(D.crops);           // index+1 = gewas-id in cellen (0 = geen)
   const ST = { STUBBLE: 0, PLOWED: 1, SOWN: 2, MOWN: 3 };  // celtoestanden (MOWN = gemaaid gras dat droogt)
   // bits in cells.fert: TEDDED = gras is geschud, LIME = gekalkt, SPRAYED = gespoten, COMPACT = verdicht (nat bereden)
-  const FERT = 1, MANURE = 2, TEDDED = 4, LIME = 8, SPRAYED = 16, COMPACT = 32;
-  const IMPLEMENT_KINDS = ['plow', 'seeder', 'spreader', 'manure', 'trailer', 'mower', 'tedder', 'baler', 'lime', 'sprayer'];
+  // STONE = stenen boven gekomen bij het ploegen, ROLLED = na het zaaien gerold
+  const FERT = 1, MANURE = 2, TEDDED = 4, LIME = 8, SPRAYED = 16, COMPACT = 32, STONE = 64, ROLLED = 128;
+  const IMPLEMENT_KINDS = ['plow', 'seeder', 'spreader', 'manure', 'trailer', 'mower', 'tedder', 'baler', 'lime', 'sprayer', 'cultivator', 'roller', 'stonepicker'];
   const isImplement = kind => IMPLEMENT_KINDS.includes(kind);
 
   // ---------- kleine event-bus zodat UI kan reageren ----------
@@ -44,10 +45,13 @@ window.AT = window.AT || {};
 
   function newField(def) {
     return { id: def.id, owned: !!def.owned, cells: newCells(def), job: null, readyNotified: false, soil: D.startSoil, damage: 0,
-      ph: D.soilPh.start, weeds: 0, disease: 0, pests: 0, pestLoss: 0, irrigated: false };
+      ph: D.soilPh.start, weeds: 0, disease: 0, pests: 0, pestLoss: 0, irrigated: false, stoniness: stoninessOf(def.id) };
   }
+  // hoe steenachtig een veld is (vast per veld)
+  function stoninessOf(id) { return 0.04 + ((id * 2654435761) >>> 0) % 22 / 100; }
   // oudere saves: ontbrekende veldgegevens aanvullen
   function fieldDefaults(f) {
+    if (f.stoniness == null) f.stoniness = stoninessOf(f.id);
     if (f.ph == null) f.ph = D.soilPh.start;
     for (const k of ['weeds', 'disease', 'pests', 'pestLoss']) if (f[k] == null) f[k] = 0;
     if (f.irrigated == null) f.irrigated = false;
@@ -262,6 +266,8 @@ window.AT = window.AT || {};
     const over = overripe(f, i);
     if (over > D.witherAfter) k *= Math.max(0.4, 1 - (over - D.witherAfter) * 0.6); // verwelkt
     if (c.fert[i] & COMPACT) k *= D.compaction;
+    if (c.fert[i] & STONE) k *= D.stoneYield;
+    if (c.fert[i] & ROLLED) k *= D.rollBonus;
     k *= phFactor(f);
     return k * (1 - f.damage) * (1 - (f.pestLoss || 0));
   }
@@ -288,7 +294,7 @@ window.AT = window.AT || {};
     const c = f.cells, n = c.state.length;
     const out = { total: n, stubble: 0, plowed: 0, growing: 0, ready: 0, crops: {}, readyTons: 0, minGrowth: 1,
       fert: 0, manure: 0, needFert: 0, needManure: 0, prev: {}, factorSum: 0, factorN: 0, readyCrops: {}, clover: 0, withering: 0,
-      grass: 0, mown: 0, needTed: 0, dryHay: 0, hayTons: 0, needLime: 0, needSpray: 0, compact: 0, sprayed: 0 };
+      grass: 0, mown: 0, needTed: 0, dryHay: 0, hayTons: 0, needLime: 0, needSpray: 0, compact: 0, sprayed: 0, stones: 0, needRoll: 0 };
     for (let i = 0; i < n; i++) {
       const s = c.state[i];
       const fe = c.fert[i];
@@ -322,6 +328,8 @@ window.AT = window.AT || {};
       if (s === ST.SOWN && !ready && !(fe & SPRAYED)) out.needSpray++;
       if (fe & SPRAYED) out.sprayed++;
       if (fe & COMPACT) out.compact++;
+      if (fe & STONE) out.stones++;
+      if (s === ST.SOWN && !(fe & ROLLED) && !ready && !D.crops[CROP_KEYS[c.crop[i] - 1]].perennial && cellGrowth(f, i) < 0.5) out.needRoll++;
     }
     out.avgFactor = out.factorN ? out.factorSum / out.factorN : null;
     return out;
@@ -369,8 +377,10 @@ window.AT = window.AT || {};
 
     if (op === 'plow') {
       const cropDef = c.state[i] === ST.SOWN ? D.crops[CROP_KEYS[c.crop[i] - 1]] : null;
+      const cult = tool && tool.kind === 'cultivator';   // cultivator: sneller, maar ploegt geen gras om en werkt minder diep
       if (c.state[i] === ST.MOWN) return 'skip';
       if (c.state[i] !== ST.STUBBLE && !(cropDef && (cropDef.greenManure || cropDef.perennial))) return 'skip';
+      if (cult && cropDef && cropDef.perennial) return 'grass';
       if (cropDef) {
         // groenbemester onderploegen: hoe verder gegroeid, hoe beter voor de bodem
         f.soil = Math.min(1, f.soil + (cropDef.greenManure || 0.05) * cellGrowth(f, i) / (def.cols * def.rows));
@@ -380,9 +390,11 @@ window.AT = window.AT || {};
       }
       c.state[i] = ST.PLOWED;
       c.dir[i] = dir;
-      c.fert[i] &= ~(SPRAYED | LIME);
-      if (!tooWet()) c.fert[i] &= ~COMPACT;     // ploegen maakt verdichte grond weer los (niet als het nat is)
-      f.weeds = Math.max(0, (f.weeds || 0) - 1 / (def.cols * def.rows));   // onkruid wordt ondergeploegd
+      c.fert[i] &= ~(SPRAYED | LIME | ROLLED);
+      if (!tooWet() && !cult) c.fert[i] &= ~COMPACT;     // ploegen maakt verdichte grond weer los (niet als het nat is; een cultivator gaat niet diep genoeg)
+      f.weeds = Math.max(0, (f.weeds || 0) - (cult ? 0.5 : 1) / (def.cols * def.rows));   // onkruid wordt ondergewerkt
+      // ploegen haalt stenen naar boven (cultivator minder)
+      if (Math.random() < (f.stoniness || 0) * (cult ? 0.4 : 1)) c.fert[i] |= STONE;
       s.stats.plowedHa += ha;
     } else if (op === 'sow') {
       if (c.state[i] !== ST.PLOWED) return 'skip';
@@ -421,6 +433,15 @@ window.AT = window.AT || {};
       c.fert[i] |= MANURE;
       f.soil = Math.min(1, f.soil + D.manureSoil / (def.cols * def.rows));
       s.stats.fertHa += ha;
+    } else if (op === 'roll') {
+      // rollen na het zaaien: betere kieming (+6%)
+      if (c.state[i] !== ST.SOWN || (c.fert[i] & ROLLED) || isReady(f, i) || cellGrowth(f, i) >= 0.5) return 'skip';
+      if (D.crops[CROP_KEYS[c.crop[i] - 1]].perennial) return 'skip';
+      c.fert[i] |= ROLLED;
+    } else if (op === 'stones') {
+      if (!(c.fert[i] & STONE)) return 'skip';
+      c.fert[i] &= ~STONE;
+      s.stats.stonesHa = (s.stats.stonesHa || 0) + ha;
     } else if (op === 'lime') {
       const ready = c.state[i] === ST.SOWN && isReady(f, i);
       if (ready || c.state[i] === ST.MOWN || (c.fert[i] & LIME)) return 'skip';
@@ -497,7 +518,8 @@ window.AT = window.AT || {};
       c.prev[i] = c.crop[i];
       c.state[i] = ST.STUBBLE;
       c.crop[i] = 0;
-      c.fert[i] &= COMPACT;   // verdichting blijft tot je ploegt
+      c.fert[i] &= COMPACT | STONE;   // verdichting en stenen blijven tot je ploegt/raapt
+      if (tool && bunker && (c.fert[i] & STONE) && bunker.m) bunker.m.wear = Math.min(1, (bunker.m.wear || 0) + 0.0015);   // stenen beschadigen het maaibord
       c.dir[i] = dir;
       s.stats.harvestedHa += ha;
     }
@@ -508,14 +530,17 @@ window.AT = window.AT || {};
   }
 
   // ---------- loonwerkers (automatische taken) ----------
-  const TASK_IMPLEMENT = { plow: 'plow', sow: 'seeder', fertilize: 'spreader', manure: 'manure', mow: 'mower', ted: 'tedder', bale: 'baler', lime: 'lime', spray: 'sprayer' };
-  const TASK_OP = { plow: 'plow', sow: 'sow', harvest: 'harvest', fertilize: 'fertilize', manure: 'manure', mow: 'mow', ted: 'ted', bale: 'bale', lime: 'lime', spray: 'spray' };
-  const IMPL_NAMES = { plow: 'ploeg', seeder: 'zaaimachine', spreader: 'kunstmeststrooier', manure: 'mestverspreider', trailer: 'aanhanger', mower: 'maaier', tedder: 'schudder', baler: 'balenpers', lime: 'kalkstrooier', sprayer: 'spuitmachine' };
+  const TASK_IMPLEMENT = { plow: 'plow', sow: 'seeder', fertilize: 'spreader', manure: 'manure', mow: 'mower', ted: 'tedder', bale: 'baler', lime: 'lime', spray: 'sprayer', roll: 'roller', stones: 'stonepicker' };
+  const TASK_OP = { plow: 'plow', sow: 'sow', harvest: 'harvest', fertilize: 'fertilize', manure: 'manure', mow: 'mow', ted: 'ted', bale: 'bale', lime: 'lime', spray: 'spray', roll: 'roll', stones: 'stones' };
+  const IMPL_NAMES = { plow: 'ploeg', seeder: 'zaaimachine', spreader: 'kunstmeststrooier', manure: 'mestverspreider', trailer: 'aanhanger', mower: 'maaier', tedder: 'schudder', baler: 'balenpers', lime: 'kalkstrooier', sprayer: 'spuitmachine', cultivator: 'cultivator', roller: 'rol', stonepicker: 'stenenraper' };
+  // welke werktuigen kunnen een taak doen (ploegen kan ook met een cultivator, behalve gras omploegen)
+  const taskKinds = (task, grass) => task === 'plow' && !grass ? ['plow', 'cultivator'] : [TASK_IMPLEMENT[task]];
   const PLANTER_NAMES = { seeder: 'zaaimachine', potato: 'aardappelpootmachine', beet: 'bietenzaaier' };
 
   // snelheidsbonus als de tractor sterker is dan het werktuig nodig heeft
   function speedFactor(tractorDef, implDef) {
-    const extra = (tractorDef.power - implDef.minPower) / implDef.minPower;
+    const base = Math.max(implDef.minPower, 1);    // een oldtimer werkt trager dan een gewone tractor
+    const extra = (tractorDef.power - base) / base;
     return Math.min(1 + extra * 0.5, 1.75);
   }
 
@@ -527,9 +552,9 @@ window.AT = window.AT || {};
   }
   const HARVESTER_NAMES = { combine: 'maaidorser', potato: 'aardappelrooier', beet: 'bietenrooier', grass: 'maaier' };
 
-  function bestRig(task, fieldId, crop) {
+  function bestRig(task, fieldId, crop, grass = false) {
     const ha = fieldDef(fieldId).ha;
-    const free = S().machines.filter(m => !m.busy);
+    const free = S().machines.filter(m => !m.busy && !m.broken);
     const wage = D.workerWagePerHour;
     let best = null;
 
@@ -545,13 +570,13 @@ window.AT = window.AT || {};
       return best;
     }
 
-    const implKind = TASK_IMPLEMENT[task];
+    const kinds = taskKinds(task, grass);
     for (const t of free) {
       const td = machineDef(t);
       if (td.kind !== 'tractor') continue;
       for (const i of free) {
         const id = machineDef(i);
-        if (id.kind !== implKind || td.power < id.minPower) continue;
+        if (!kinds.includes(id.kind) || td.power < id.minPower) continue;
         if (task === 'sow' && crop && id.sows !== (D.crops[crop].planter || 'seeder')) continue;
         if (t.impl && t.impl !== i.uid && machine(t.impl).busy) continue; // ander werktuig in gebruik
         if (i.attached && i.attached !== t.uid) continue;  // werktuig hangt aan een andere tractor
@@ -569,7 +594,7 @@ window.AT = window.AT || {};
       if (crop && !need) return `${D.crops[crop].name} oogst je niet: ploeg het onder voor een betere bodem.`;
       if (need && !all.some(m => machineDef(m).harvests === need)) return `Voor ${D.crops[crop].name.toLowerCase()} heb je een ${HARVESTER_NAMES[need]} nodig (Winkel).`;
     }
-    const needKinds = task === 'harvest' ? ['harvester'] : ['tractor', TASK_IMPLEMENT[task]];
+    const needKinds = task === 'harvest' ? ['harvester'] : ['tractor', ...taskKinds(task)];
     if (all.some(m => m.busy === 'player' && needKinds.includes(machineDef(m).kind)))
       return 'Je rijdt zelf met de machine die hiervoor nodig is. Stap eerst uit (E).';
     const has = kind => all.some(m => machineDef(m).kind === kind);
@@ -581,7 +606,8 @@ window.AT = window.AT || {};
       if (!all.some(m => machineDef(m).sows === pl)) return `Voor ${D.crops[crop].name.toLowerCase()} heb je een ${PLANTER_NAMES[pl]} nodig (Winkel).`;
     }
     if (!has('tractor')) return 'Je hebt geen tractor.';
-    if (!has(implKind)) return `Je hebt geen ${implName}.`;
+    if (!taskKinds(task).some(has)) return `Je hebt geen ${implName}.`;
+    if (all.some(m => m.broken)) return `Geen werkende tractor + ${implName}: er is een machine kapot (repareer in de Garage).`;
     return `Geen vrije tractor + ${implName} (of tractor te zwak).`;
   }
 
@@ -620,11 +646,11 @@ window.AT = window.AT || {};
     if (!f || !f.owned || f.job) return 'veld is bezig';
     const sum = summary(f);
     const eligible = { plow: sum.stubble + sum.clover + (task === 'plow' && opts.plowGrass ? sum.grass : 0), sow: sum.plowed, harvest: sum.ready - (sum.readyCrops.grass || 0), fertilize: sum.needFert, manure: sum.needManure,
-      mow: sum.readyCrops.grass || 0, ted: sum.needTed, bale: sum.dryHay, lime: sum.needLime, spray: sum.needSpray }[task];
+      mow: sum.readyCrops.grass || 0, ted: sum.needTed, bale: sum.dryHay, lime: sum.needLime, spray: sum.needSpray, roll: sum.needRoll, stones: sum.stones }[task];
     if (!eligible) return 'niets te doen';
     if (task === 'sow' && !canSowNow(crop)) return fail(`${D.crops[crop].name} kun je nu niet zaaien.`);
 
-    const rig = bestRig(task, fieldId, crop);
+    const rig = bestRig(task, fieldId, crop, !!opts.plowGrass);
     if (!rig) return fail(missingFor(task, fieldId, crop));
     const worker = opts.worker || (AT.staff && AT.staff.freeWorker());
     if (!worker) return fail('Geen vrije werknemer. Neem iemand aan in de tab Team of sta loonwerkers toe.');
@@ -666,7 +692,7 @@ window.AT = window.AT || {};
       snapshot,
       type: task, crop, machines: rig.machines.map(m => m.uid), hours,
       progress: 0, idx: 0, laneCols: Math.max(1, Math.round(rig.width / D.CELL)), lost: 0,
-      tool: task === 'harvest' ? rig.machines[0].type : null,
+      tool: task === 'harvest' ? rig.machines[0].type : task === 'plow' && rig.machines[1] ? rig.machines[1].type : null,
       workerId: worker.id, workerName: worker.name, phase: 'work',
     };
     // eerst over de weg naar het veld rijden
@@ -680,7 +706,7 @@ window.AT = window.AT || {};
     f.job = job;
     if (!worker.external) { worker.status = 'job'; worker.fieldId = fieldId; }
     const names = rig.machines.map(m => machineDef(m).name).join(' + ');
-    const verb = { plow: 'ploegt', sow: 'zaait', harvest: 'oogst', fertilize: 'strooit kunstmest op', manure: 'rijdt mest uit op', mow: 'maait', ted: 'schudt het gras op', bale: 'perst hooi op', lime: 'strooit kalk op', spray: 'spuit' }[task];
+    const verb = { plow: 'ploegt', sow: 'zaait', harvest: 'oogst', fertilize: 'strooit kunstmest op', manure: 'rijdt mest uit op', mow: 'maait', ted: 'schudt het gras op', bale: 'perst hooi op', lime: 'strooit kalk op', spray: 'spuit', roll: 'rolt', stones: 'raapt stenen op' }[task];
     log(`${worker.name} ${verb} Veld ${fieldId} met ${names} (${AT.fmtHours(hours)}, ${AT.fmtMoney(cost)}).`);
     AT.emit('change');
     return true;
@@ -721,7 +747,8 @@ window.AT = window.AT || {};
     const job = f.job, s = S();
     const def = fieldDef(f.id);
     s.stats.workerJobs++;
-    const done = { plow: 'geploegd', sow: 'ingezaaid', harvest: 'geoogst', fertilize: 'bemest met kunstmest', manure: 'bemest met mest', mow: 'gemaaid', ted: 'geschud', bale: 'tot hooi geperst', lime: 'gekalkt', spray: 'gespoten' }[job.type];
+    for (const uid of job.machines) addWear(machine(uid), job.hours);
+    const done = { plow: 'geploegd', sow: 'ingezaaid', harvest: 'geoogst', fertilize: 'bemest met kunstmest', manure: 'bemest met mest', mow: 'gemaaid', ted: 'geschud', bale: 'tot hooi geperst', lime: 'gekalkt', spray: 'gespoten', roll: 'gerold', stones: 'steenvrij' }[job.type];
     log(`${job.workerName || 'Loonwerker'} klaar: Veld ${f.id} is ${done}.`, 'good');
     if (job.lost > 0) log(`Silo vol! ${AT.fmtTons(job.lost)} ging verloren.`, 'warn');
     f.job = null;
@@ -749,6 +776,7 @@ window.AT = window.AT || {};
       if (trip.machines.includes(m.uid)) m.busy = null;
       const snap = (trip.snapshot || []).find(x => x.uid === m.uid);
       if (snap && !m.busy) Object.assign(m, snap);
+      if (trip.machines.includes(m.uid) && fuelCap(m)) m.fuel = fuelCap(m);   // werknemer tankt bij terugkomst (zat in de kosten)
     });
     const w = AT.staff && trip.workerId !== 'ext' ? s.staff.employees.find(e => e.id === trip.workerId) : null;
     if (w) {
@@ -865,6 +893,71 @@ window.AT = window.AT || {};
       if (d < bd) { bd = d; best = m; }
     }
     return best;
+  }
+
+  // ---------- diesel, slijtage, reparatie, huur en GPS ----------
+  const fuelCap = m => { const d = machineDef(m); return d.fuelPerHour ? (d.fuelTank || Math.round(d.fuelPerHour * 12)) : 0; };
+  function fuelOf(m) { if (m.fuel == null) m.fuel = fuelCap(m); return m.fuel; }
+  function addWear(m, hours) {
+    if (!m) return;
+    const d = machineDef(m);
+    m.wear = Math.min(1, (m.wear || 0) + hours * D.wearPerHour * (d.wearRate || 1));
+  }
+  // versleten machines zijn trager en verbruiken meer
+  const wearSpeed = m => 1 - 0.3 * Math.max(0, ((m && m.wear) || 0) - 0.5) / 0.5;
+  const wearFuel = m => 1 + 0.5 * ((m && m.wear) || 0);
+  function atYard(m) { const Y = D.yard; return m.x >= Y.x && m.x <= Y.x + Y.w && m.y >= Y.y && m.y <= Y.y + Y.h; }
+  function repairCost(m) { return Math.round(machineDef(m).price * D.repairShare * (m.wear || 0) + (m.broken ? 300 : 0) + (atYard(m) ? 0 : D.repairCallOut)); }
+  function repair(uid) {
+    const m = machine(uid);
+    if (!m || (m.busy && m.busy !== 'player')) return;
+    const cost = repairCost(m);
+    if (S().money < cost) { log('Niet genoeg geld voor de reparatie.', 'warn'); return; }
+    spend(cost, 'onderhoud');
+    m.wear = 0; m.broken = false;
+    log(`${machineDef(m).name} is gerepareerd${atYard(m) ? ' in de werkplaats' : ' door de monteur ter plekke'} (${AT.fmtMoney(cost)}).`, 'money');
+    AT.emit('change');
+  }
+  // tanken bij de dieselpomp (of de tankservice laten komen)
+  function refuel(m, service = false) {
+    const cap = fuelCap(m), need = cap - fuelOf(m);
+    if (need < 0.5) return 0;
+    const cost = need * D.fuelPrice + (service ? D.fuelService : 0);
+    if (S().money < cost) { log('Niet genoeg geld om te tanken.', 'warn'); return 0; }
+    spend(cost, 'brandstof');
+    m.fuel = cap;
+    S().stats.refuels = (S().stats.refuels || 0) + 1;
+    log(`${machineDef(m).name} getankt: ${Math.round(need)} L diesel (${AT.fmtMoney(cost)}${service ? ', met tankservice' : ''}).`, 'money');
+    AT.emit('change');
+    return need;
+  }
+  const rentPrice = type => Math.max(40, Math.round(D.machines[type].price * D.rentPerDay));
+  function rentMachine(type) {
+    const d = D.machines[type], cost = rentPrice(type);
+    if (S().money < cost) { log(`Niet genoeg geld om de ${d.name} te huren.`, 'warn'); return; }
+    spend(cost, 'huur');
+    const sl = freeSlot();
+    S().machines.push({ uid: newUid(), type, busy: null, x: sl.x, y: sl.y, angle: 0, impl: null, attached: null, rented: true });
+    log(`${d.name} gehuurd voor ${AT.fmtMoney(cost)} per dag. Breng hem terug in de Garage als je hem niet meer nodig hebt.`, 'money');
+    AT.emit('change');
+  }
+  function returnMachine(uid) {
+    const s = S(), m = machine(uid);
+    if (!m || !m.rented || m.busy) return;
+    if (m.impl) { const im = machine(m.impl); const h = hitchPoint(m); Object.assign(im, { x: h.x, y: h.y, angle: m.angle, attached: null }); }
+    if (m.attached) machine(m.attached).impl = null;
+    s.machines = s.machines.filter(x => x !== m);
+    log(`${machineDef(m).name} teruggebracht naar de verhuur.`);
+    AT.emit('change');
+  }
+  function buyGps(uid) {
+    const m = machine(uid);
+    if (!m || m.gps) return;
+    if (S().money < D.gpsPrice) { log('Niet genoeg geld voor GPS.', 'warn'); return; }
+    spend(D.gpsPrice, 'machines');
+    m.gps = true;
+    log(`GPS ingebouwd in de ${machineDef(m).name}. Druk G tijdens het rijden: hij houdt zelf een rechte lijn.`, 'money');
+    AT.emit('change');
   }
 
   // vrije parkeerplek op het erf voor een nieuwe machine
@@ -1005,7 +1098,7 @@ window.AT = window.AT || {};
     const s = S();
     let v = 0;
     for (const f of s.fields) if (f.owned && !f.leased) v += fieldPrice(f.id);
-    for (const m of s.machines) v += machineDef(m).price * 0.6;
+    for (const m of s.machines) if (!m.rented) v += machineDef(m).price * 0.6;
     return v;
   }
   function maxLoan() { return Math.round((D.bank.base + assetsValue() * D.bank.maxShare) / 1000) * 1000; }
@@ -1098,7 +1191,7 @@ window.AT = window.AT || {};
   function sellMachine(uid) {
     const s = S();
     const m = s.machines.find(x => x.uid === uid);
-    if (!m || m.busy) return;
+    if (!m || m.busy || m.rented) return;
     const value = Math.round(machineDef(m).price * 0.6);
     if (m.impl) { const im = machine(m.impl); const h = hitchPoint(m); Object.assign(im, { x: h.x, y: h.y, angle: m.angle, attached: null }); }
     if (m.attached) machine(m.attached).impl = null;
@@ -1253,6 +1346,8 @@ window.AT = window.AT || {};
       if (AT.staff) AT.staff.payday();
       if (s.loan > 0) { const rente = s.loan * D.bank.ratePerDay; spend(rente, 'rente'); }
       for (const f of s.fields) if (f.leased) spend(leaseRent(f.id), 'pacht');
+      const rented = s.machines.filter(m => m.rented);
+      if (rented.length) spend(rented.reduce((a, m) => a + rentPrice(m.type), 0), 'huur');
       if (s.insurance && s.insurance.crops) spend(insurancePremium(), 'verzekering');
       checkContracts();
       save();
@@ -1429,6 +1524,7 @@ window.AT = window.AT || {};
 
   AT.game = {
     dropBale, collectBales, goodDef, goodName, goodColor, leaseField, endLease, leaseRent, toggleInsurance, insurancePremium, insuredDamage,
+    STONE, ROLLED, fuelCap, fuelOf, addWear, wearSpeed, wearFuel, repairCost, repair, refuel, rentPrice, rentMachine, returnMachine, buyGps, atYard, taskKinds,
     ST, CROP_KEYS, FERT, MANURE, LIME, SPRAYED, COMPACT, isImplement, IMPL_NAMES, phFactor, compactAt, wetGround, buyIrrigation, fieldDefaults,
     price, stock, take, addGood, sellGood, yieldFactor, canSowNow, spend, earn, hayDryness, TEDDED, PLANTER_NAMES,
     accepts, sellAt, saturate, warehouseCapacity, palletsUsed, warehouseRoom, upgradeWarehouse,

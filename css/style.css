@@ -39,9 +39,19 @@ body {
 .stat {
   background: rgba(255,255,255,.08);
   border-radius: 8px;
-  padding: 4px 12px;
+  padding: 4px 12px 4px 8px;
   min-width: 110px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+.stat .ico { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; flex: none; }
+.stat .ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.stat .ico.money { background: rgba(224,184,76,.22); color: #f1cf6b; }
+.stat .ico.time { background: rgba(127,178,74,.25); color: #a9d77c; }
+.stat .ico.weather { background: rgba(120,180,230,.22); color: #a9d3f5; }
+.stat .ico.silo { background: rgba(200,170,120,.22); color: #e2c79a; }
+.stat .ico.silo.full { background: rgba(217,83,79,.35); color: #ffb3a8; }
 .stat small { display: block; font-size: 11px; opacity: .7; }
 .stat b { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .speed { display: flex; gap: 4px; }

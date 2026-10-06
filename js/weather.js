@@ -67,6 +67,12 @@ window.AT = window.AT || {};
       onNewWeather(w.type);
       fillQueue();
     }
+    // sneeuwdek op de akkers: groeit bij sneeuw, smelt bij dooi (sneller bij regen of buiten de winter)
+    if (w.type === 'snow') s.snow = Math.min(1, (s.snow || 0) + dtHours / 5);
+    else if (s.snow) {
+      const melt = season() === 3 ? (w.type === 'rain' ? 1 / 6 : 1 / 30) : (w.type === 'rain' || w.type === 'sun' ? 1 / 4 : 1 / 8);
+      s.snow = Math.max(0, s.snow - dtHours * melt);
+    }
     // bodemvocht
     const wt = D.weatherTypes[w.type];
     const sunDry = w.type === 'sun' && season() === 1 ? 1.4 : 1;

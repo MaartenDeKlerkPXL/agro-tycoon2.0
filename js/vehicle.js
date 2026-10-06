@@ -6,7 +6,7 @@ window.AT = window.AT || {};
   const keys = new Set();
   AT.input = { keys, moved: 0 };
 
-  const OP = { plow: 'plow', seeder: 'sow', harvester: 'harvest', spreader: 'fertilize', manure: 'manure', mower: 'mow', tedder: 'ted', baler: 'bale', lime: 'lime', sprayer: 'spray' };
+  const OP = { plow: 'plow', seeder: 'sow', harvester: 'harvest', spreader: 'fertilize', manure: 'manure', mower: 'mow', tedder: 'ted', baler: 'bale', lime: 'lime', sprayer: 'spray', cultivator: 'plow', roller: 'roll', stonepicker: 'stones' };
   const PX = D.kmhToPx;            // km/u -> pixels per seconde
   const KMH = 1 / D.kmhToPx;       // pixels per seconde -> km/u (snelheidsmeter)
 
@@ -38,6 +38,78 @@ window.AT = window.AT || {};
     if (warnTime > 0) warnTime -= dt;
   }
 
+  // ---------- botsen met gebouwen, hekken en bomen ----------
+  let obst = null, obstAge = 99;
+  AT.on('change', () => { obstAge = 99; });
+  function buildObstacles() {
+    const s = AT.state, rects = [], circles = [], Y = D.yard, t = 2;
+    // hek rond het erf, met de poort open
+    rects.push({ x: Y.x - 1, y: Y.y - 1, w: Y.w + 2, h: t }, { x: Y.x - 1, y: Y.y + Y.h - 1, w: Y.w + 2, h: t }, { x: Y.x - 1, y: Y.y - 1, w: t, h: Y.h + 2 },
+      { x: Y.x + Y.w - 1, y: Y.y - 1, w: t, h: Y.gate.y - Y.y + 1 }, { x: Y.x + Y.w - 1, y: Y.gate.y + Y.gate.h, w: t, h: Y.y + Y.h - Y.gate.y - Y.gate.h + 1 });
+    rects.push(D.house, D.hall);
+    const S = D.silos;
+    for (let i = 0; i <= s.siloLevel; i++) circles.push({ x: S.x + (i % S.perRow) * S.dx, y: S.y + Math.floor(i / S.perRow) * S.dy, r: S.r });
+    circles.push({ x: D.fuelPump.x, y: D.fuelPump.y, r: 3 });
+    // weides: hek met een poort bovenaan
+    for (const [key, a] of Object.entries(D.animals)) {
+      const P = a.pen, g = AT.farm.penGate(key);
+      rects.push({ x: P.x - 1, y: P.y - 1, w: g.x0 - P.x + 1, h: t }, { x: g.x1, y: P.y - 1, w: P.x + P.w - g.x1 + 1, h: t },
+        { x: P.x - 1, y: P.y + P.h - 1, w: P.w + 2, h: t }, { x: P.x - 1, y: P.y - 1, w: t, h: P.h + 2 }, { x: P.x + P.w - 1, y: P.y - 1, w: t, h: P.h + 2 });
+      if (s.animals[key].owned) rects.push(a.barn);
+    }
+    for (const [key, d] of Object.entries(D.factories)) {
+      if (!s.factories[key].owned) continue;
+      const r = d.lot;
+      rects.push({ x: r.x + 10, y: r.y + 10, w: r.w * 0.58, h: r.h - 20 });
+    }
+    AT.farm.greenhouses().forEach((gh, i) => { if (gh.owned) { const l = D.greenhouse.lots[i]; rects.push({ x: l.x + 6, y: l.y + 6, w: l.w - 12, h: l.h - 12 }); } });
+    // bomen: alleen de stam
+    for (const tr of (AT.render && AT.render.trees ? AT.render.trees() : [])) circles.push({ x: tr.x, y: tr.y, r: Math.max(2, tr.R * 0.28) });
+    for (const tr of AT.farm.woodlot().trees) if (tr.growth > 0.4) circles.push({ x: tr.x, y: tr.y, r: 2.5 });
+    for (const key of Object.keys(D.plantations)) if (key === 'orchard') for (const pl of AT.farm.plantation(key).plants) circles.push({ x: pl.x, y: pl.y, r: 2.2 });
+    // raster zodat we alleen obstakels in de buurt testen
+    const grid = new Map(), C = 64;
+    const add = (o, x0, y0, x1, y1) => {
+      for (let gx = Math.floor(x0 / C); gx <= Math.floor(x1 / C); gx++) for (let gy = Math.floor(y0 / C); gy <= Math.floor(y1 / C); gy++) {
+        const k = gx * 1000 + gy; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(o);
+      }
+    };
+    for (const r of rects) add({ rect: r }, r.x, r.y, r.x + r.w, r.y + r.h);
+    for (const c of circles) add({ circle: c }, c.x - c.r, c.y - c.r, c.x + c.r, c.y + c.r);
+    return grid;
+  }
+  function blocked(x, y, rad) {
+    if (!obst || obstAge > 3) { obst = buildObstacles(); obstAge = 0; }
+    const list = obst.get(Math.floor(x / 64) * 1000 + Math.floor(y / 64)) || [];
+    for (const o of list) {
+      if (o.rect) {
+        const r = o.rect, cx = Math.max(r.x, Math.min(x, r.x + r.w)), cy = Math.max(r.y, Math.min(y, r.y + r.h));
+        if ((x - cx) ** 2 + (y - cy) ** 2 < rad * rad) return true;
+      } else if ((x - o.circle.x) ** 2 + (y - o.circle.y) ** 2 < (rad + o.circle.r) ** 2) return true;
+    }
+    return false;
+  }
+  // probeer te bewegen; glij langs obstakels; geeft false als je vast zit
+  let bumpT = 0;
+  function tryMove(p, nx, ny, rad) {
+    nx = Math.max(8, Math.min(D.world.w - 8, nx)); ny = Math.max(8, Math.min(D.world.h - 8, ny));
+    if (!blocked(nx, ny, rad) || blocked(p.x, p.y, rad)) { p.x = nx; p.y = ny; return true; }
+    if (!blocked(nx, p.y, rad)) { p.x = nx; return false; }
+    if (!blocked(p.x, ny, rad)) { p.y = ny; return false; }
+    if (bumpT <= 0) { AT.emit('sfx', 'hitch'); bumpT = 0.6; }
+    return false;
+  }
+  const RADIUS = { tractor: 6, harvester: 9, truck: 7 };
+
+  // ondergrond: weg/erf, akker of gras
+  function surface(x, y) {
+    if (D.roads.some(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)) return 'road';
+    const Y = D.yard;
+    if (x >= Y.x && x <= Y.x + Y.w && y >= Y.y && y <= Y.y + Y.h) return 'road';
+    if (D.fields.some(f => x >= f.x && x <= f.x + f.w && y >= f.y && y <= f.y + f.h)) return 'field';
+    return 'grass';
+  }
+
   // ---------- lopen ----------
   function updateFoot(p, dt) {
     let dx = (pressed('KeyD', 'ArrowRight') ? 1 : 0) - (pressed('KeyA', 'ArrowLeft') ? 1 : 0);
@@ -45,15 +117,12 @@ window.AT = window.AT || {};
     const len = Math.hypot(dx, dy);
     if (len) {
       const sp = (pressed('ShiftLeft', 'ShiftRight') ? D.runSpeed : D.walkSpeed) * PX;
-      p.x += dx / len * sp * dt;
-      p.y += dy / len * sp * dt;
+      tryMove(p, p.x + dx / len * sp * dt, p.y + dy / len * sp * dt, 2.5);
       p.angle = Math.atan2(dy, dx);
       p.speed = sp;
       p.walk = (p.walk || 0) + sp * dt;
       AT.input.moved = 1;
     } else p.speed = 0;
-    p.x = Math.max(6, Math.min(D.world.w - 6, p.x));
-    p.y = Math.max(6, Math.min(D.world.h - 6, p.y));
   }
 
   // ---------- rijden ----------
@@ -67,7 +136,14 @@ window.AT = window.AT || {};
     const heavy = src && r.mainDef.kind === 'tractor' ? 1 - 0.25 * (src.load.tons / src.cap) : 1;
     // Shift = een stukje sneller (25%)
     const boost = pressed('ShiftLeft', 'ShiftRight') ? D.shiftBoost : 1;
-    const maxSpeed = (working ? r.toolDef.workSpeed : r.mainDef.speed) * PX * heavy * boost;
+    // ondergrond: niet-werkend over akkers en gras gaat langzamer (rupsen hebben er minder last van)
+    const surf = surface(p.x, p.y), tracks = !!r.mainDef.tracks;
+    let ground = D.surfaceSpeed[surf];
+    if (tracks) ground = 1 - (1 - ground) * 0.4;
+    if (r.mainDef.kind === 'truck' && surf !== 'road') ground *= 0.75;
+    const fuelLeft = G().fuelOf(r.main);
+    const dead = fuelLeft <= 0 || r.main.broken;
+    const maxSpeed = dead ? 0 : (working ? r.toolDef.workSpeed : r.mainDef.speed * ground) * PX * heavy * boost * G().wearSpeed(r.main);
     const throttle = (pressed('KeyW', 'ArrowUp') ? 1 : 0) - (pressed('KeyS', 'ArrowDown') ? 1 : 0);
     const steerIn = (pressed('KeyD', 'ArrowRight') ? 1 : 0) - (pressed('KeyA', 'ArrowLeft') ? 1 : 0);
     if (throttle || steerIn) AT.input.moved = 1;
@@ -90,25 +166,42 @@ window.AT = window.AT || {};
     p.steer = (p.steer || 0) + (steerIn * 0.45 - (p.steer || 0)) * Math.min(1, dt * 8);
     const turnRate = r.mainDef.kind === 'harvester' ? 1.6 : 2.0;
     p.angle += steerIn * turnRate * dt * Math.max(-1, Math.min(1, p.speed / (8 * PX)));
+    // GPS: zonder stuurinput trekt hij zelf recht op de dichtstbijzijnde rijrichting
+    if (p.autosteer && !steerIn && Math.abs(p.speed) > 0.5) {
+      const target = Math.round(p.angle / (Math.PI / 2)) * (Math.PI / 2);
+      p.angle += (target - p.angle) * Math.min(1, dt * 3);
+    }
 
     const step = p.speed * dt;
-    p.x = Math.max(8, Math.min(D.world.w - 8, p.x + Math.cos(p.angle) * step));
-    p.y = Math.max(8, Math.min(D.world.h - 8, p.y + Math.sin(p.angle) * step));
+    const free = tryMove(p, p.x + Math.cos(p.angle) * step, p.y + Math.sin(p.angle) * step, RADIUS[r.mainDef.kind] || 6);
+    if (!free && Math.abs(p.speed) > 3) p.speed *= 0.5;
+    if (bumpT > 0) bumpT -= dt;
     p.dist = (p.dist || 0) + step;
 
     // machine staat waar jij rijdt
     Object.assign(r.main, { x: p.x, y: p.y, angle: p.angle });
 
+    // diesel en slijtage
     if (Math.abs(p.speed) > 1) {
-      const cost = r.mainDef.fuelPerHour * D.fuelPrice * dtHours;
-      G().spend(cost, 'brandstof');
+      r.main.fuel = Math.max(0, fuelLeft - r.mainDef.fuelPerHour * dtHours * G().wearFuel(r.main) * (working ? 1.2 : 1));
+      G().addWear(r.main, dtHours);
+      if (working && r.impl) G().addWear(r.impl, dtHours);
+      if ((r.main.wear || 0) > 0.9 && !r.main.broken && Math.random() < 0.25 * dtHours) {
+        r.main.broken = true;
+        G().log(`${r.mainDef.name} is kapot! Laat hem repareren in de Garage (een monteur komt ook naar je toe).`, 'warn');
+        AT.emit('change');
+      }
+      const cap = G().fuelCap(r.main);
+      if (cap && r.main.fuel < cap * 0.1 && !r.main.lowWarned) { r.main.lowWarned = true; G().log(`Bijna geen diesel meer in de ${r.mainDef.name}! Tank bij de dieselpomp op het erf (T).`, 'warn'); }
+      if (cap && r.main.fuel > cap * 0.2) r.main.lowWarned = false;
     }
+    if (dead && throttle) warn(r.main.broken ? 'Deze machine is kapot. Laat hem repareren in de Garage.' : 'De tank is leeg! Bel de tankservice in de Garage of loop naar de dieselpomp.');
     if (working && p.speed > 3) workUnderTool(p, r);
     if (Math.abs(p.speed) > 0.5) pickupBales(r);
     // rijden over natte akkers verdicht de grond (onder de machine en de aanhanger/het werktuig)
     if (Math.abs(p.speed) > 1 && r.mainDef.kind !== 'truck') {
-      G().compactAt(p.x, p.y);
-      if (r.impl) { const h = G().hitchPoint(r.main); G().compactAt(h.x - Math.cos(p.angle) * 6, h.y - Math.sin(p.angle) * 6); }
+      if (!r.mainDef.tracks) G().compactAt(p.x, p.y);
+      if (r.impl && !r.mainDef.tracks) { const h = G().hitchPoint(r.main); G().compactAt(h.x - Math.cos(p.angle) * 6, h.y - Math.sin(p.angle) * 6); }
     }
     if (p.unloading) unload(p, r, dt);
   }
@@ -134,7 +227,7 @@ window.AT = window.AT || {};
   function unloadTarget(src) {
     if (src.kind === 'harvester') {
       for (const m of AT.state.machines) {
-        if (D.machines[m.type].kind !== 'trailer' || (m.busy && m.busy !== 'player')) continue;
+        if (D.machines[m.type].kind !== 'trailer' || (m.busy && m.busy !== 'player' && m.busy !== 'chaser')) continue;
         const c = G().trailerPose(m).center;
         if (Math.hypot(c.x - src.point.x, c.y - src.point.y) < 14) return { kind: 'trailer', m, point: c };
       }
@@ -145,6 +238,13 @@ window.AT = window.AT || {};
       if (!inRect(src.point, tr, 12)) continue;
       if (!D.animals[key].feeds.includes(src.load.crop)) return { kind: 'refuse', point: tr, name: `De ${D.animals[key].name.toLowerCase()}`, verb: 'eten' };
       return { kind: 'trough', key, point: { x: tr.x + tr.w / 2, y: tr.y + tr.h / 2 } };
+    }
+    for (const key of Object.keys(D.factories)) {
+      if (!AT.state.factories[key].owned) continue;
+      const pit = AT.farm.factoryPit(key);
+      if (!inRect(src.point, pit, 8)) continue;
+      if (!AT.farm.factoryAccepts(key, src.load.crop)) return { kind: 'refuse', point: pit, name: `De ${D.factories[key].name.toLowerCase()}`, verb: 'gebruikt' };
+      return { kind: 'factory', key, point: { x: pit.x + pit.w / 2, y: pit.y + pit.h / 2 } };
     }
     if (inRect(src.point, D.siloPit, 10)) return { kind: D.crops[src.load.crop] ? 'silo' : 'store', point: { x: D.siloPit.x + D.siloPit.w / 2, y: D.siloPit.y + D.siloPit.h / 2 } };
     const sp = sellPointAt(src.point);
@@ -205,6 +305,10 @@ window.AT = window.AT || {};
       amount = Math.min(amount, G().warehouseRoom(crop));
       if (amount <= 0.0001) { warn('De opslagloods is vol! Verkoop producten of breid de loods uit.'); return; }
       AT.state.goods[crop] += amount;
+    } else if (target.kind === 'factory') {
+      amount = AT.farm.deliverToFactory(target.key, crop, amount);
+      if (amount <= 0.0001) { warn('De stortplaats van de fabriek zit vol. Wacht tot hij meer heeft verwerkt.'); return; }
+      AT.state.stats.deliveredTons += amount;
     } else if (target.kind === 'trough') {
       amount = AT.farm.fillTrough(target.key, crop, amount);
       if (amount <= 0.0001) { warn('De voerbak zit vol.'); return; }
@@ -218,6 +322,7 @@ window.AT = window.AT || {};
       src.load.tons = 0; src.load.crop = null; p.unloading = false;
       if (target.kind === 'silo') G().log(`${src.kind === 'harvester' ? 'Bunker' : 'Aanhanger'} gelost in de silo.`, 'good');
       if (target.kind === 'store') G().log(`${G().goodDef(crop).name} gelost in de opslagloods.`, 'good');
+      if (target.kind === 'factory') G().log(`Gelost bij de ${D.factories[target.key].name.toLowerCase()}: vers geleverd = ${Math.round((D.factoryBonus - 1) * 100)}% meer product.`, 'good');
       if (target.kind === 'trough') G().log(`Voerbak bij de ${D.animals[target.key].building.toLowerCase()} gevuld.`, 'good');
       finishSale();
       AT.emit('change');
@@ -282,7 +387,7 @@ window.AT = window.AT || {};
       const hit = G().cellAt(cx - sin * s, cy + cos * s);
       if (!hit) continue;
       if (!hit.f.owned) { notOwned = true; continue; }
-      const bunker = r.mainDef.kind === 'harvester' ? { load: G().getLoad(r.main), cap: G().loadCap(r.main) }
+      const bunker = r.mainDef.kind === 'harvester' ? { load: G().getLoad(r.main), cap: G().loadCap(r.main), m: r.main }
         : r.toolDef.kind === 'baler' ? { baler: true, m: r.impl } : null;
       const res = G().workCell(hit.f, hit.i, op, p.crop, 'player', dir, r.toolDef, bunker);
       if (res === 'tankfull') { warn('Bunker vol! Los in een aanhanger (U) of rij naar de stortput bij de silo.'); break; }
@@ -292,6 +397,7 @@ window.AT = window.AT || {};
       if (res === 'full') { warn('Silo vol! Verkoop graan of vergroot de silo.'); break; }
       if (res === 'season') { warn(`${D.crops[p.crop].name} kun je nu niet zaaien (wel in: ${D.crops[p.crop].sow.map(i => D.months[i].toLowerCase()).join(', ')}). Kies ander zaaigoed met C.`); break; }
       if (res === 'wet') { warn('Te nat om te oogsten. Wacht tot het droog is.'); break; }
+      if (res === 'grass') { warn('Met een cultivator kun je geen gras omwerken. Gebruik een ploeg.'); break; }
       if (res === 'nomanure') { warn('Geen mest meer. Koeien en schapen maken mest.'); break; }
       if (res === 'wrongtool' && op === 'sow') {
         const pl = D.crops[p.crop].planter || 'seeder';
@@ -380,12 +486,14 @@ window.AT = window.AT || {};
     const src = loadSource(r);
     if (src) {
       const t = src.load.tons > 0.01 ? unloadTarget(src) : null;
-      const where = t => t.kind === 'trailer' ? 'in de aanhanger' : t.kind === 'silo' ? 'in de silo' : t.kind === 'store' ? 'in de opslagloods' : t.kind === 'trough' ? 'in de voerbak' : t.kind === 'sell' ? `bij ${D.sellPoints[t.sp].name.toLowerCase()} (verkopen)` : '';
+      const where = t => t.kind === 'trailer' ? 'in de aanhanger' : t.kind === 'silo' ? 'in de silo' : t.kind === 'store' ? 'in de opslagloods' : t.kind === 'trough' ? 'in de voerbak' : t.kind === 'factory' ? `bij de ${D.factories[t.key].name.toLowerCase()}` : t.kind === 'sell' ? `bij ${D.sellPoints[t.sp].name.toLowerCase()} (verkopen)` : '';
       if (p.unloading) prompt = t && t.kind !== 'refuse' ? `Lossen ${where(t)}… (U = stoppen)` : 'Lossen: zoek een aanhanger, stortput of verkooppunt';
       else if (t && t.kind !== 'refuse') prompt = `U = lossen ${where(t)}`;
       else if (t) prompt = `${t.name} ${t.verb || 'koopt'} dit niet`;
     }
     const toolName = r.toolDef && r.toolDef.kind === 'harvester' ? 'Maaibord' : r.toolDef && r.toolDef.kind !== 'trailer' ? r.toolDef.name : null;
+    if (!prompt && Math.hypot(p.x - D.fuelPump.x, p.y - D.fuelPump.y) < 22 && G().fuelOf(r.main) < G().fuelCap(r.main) - 1) prompt = 'T = tanken';
+    const cap = G().fuelCap(r.main), fuel = G().fuelOf(r.main), wear = r.main.wear || 0;
     return {
       mode: 'drive',
       name: r.mainDef.name + (r.impl ? ' + ' + D.machines[r.impl.type].name : ''),
@@ -398,6 +506,8 @@ window.AT = window.AT || {};
       loadFrac: src ? src.load.tons / src.cap : 0,
       extra: r.toolDef && r.toolDef.kind === 'manure' ? `Mest: ${AT.fmtTons(AT.state.goods.manure)}` : r.toolDef && r.toolDef.kind === 'spreader' ? `Kunstmest: ${AT.fmtMoney(D.fertCostPerHa)}/ha`
         : r.toolDef && r.toolDef.kind === 'lime' ? `Kalk: ${AT.fmtMoney(D.limeCostPerHa)}/ha` : r.toolDef && r.toolDef.kind === 'sprayer' ? `Spuiten: ${AT.fmtMoney(D.sprayCostPerHa)}/ha (alleen groeiend gewas)` : null,
+      fuel: cap ? `Diesel: ${Math.round(fuel)} / ${cap} L${wear > 0.05 ? ` · slijtage ${Math.round(wear * 100)}%` : ''}${r.main.gps ? ` · GPS ${p.autosteer ? 'AAN' : 'uit'} (G)` : ''}` : null,
+      fuelLow: cap && fuel < cap * 0.15 || wear > 0.85 || r.main.broken,
       prompt,
       warn: warnTime > 0 ? warnText : '',
     };
@@ -414,6 +524,17 @@ window.AT = window.AT || {};
     if (e.code === 'Space') toggleTool();
     if (e.code === 'KeyC') cycleCrop();
     if (e.code === 'KeyU') toggleUnload();
+    if (e.code === 'KeyG' && p.mode === 'drive') {
+      const r = rig();
+      if (!r.main.gps) warn('Deze machine heeft geen GPS. Koop het in de Garage.');
+      else { p.autosteer = !p.autosteer; G().log(p.autosteer ? 'GPS aan: laat het stuur los en hij rijdt kaarsrecht.' : 'GPS uit.'); }
+    }
+    if (e.code === 'KeyT' && p.mode === 'drive') {
+      const r = rig();
+      if (Math.hypot(p.x - D.fuelPump.x, p.y - D.fuelPump.y) > 22) warn('Rij naar de dieselpomp op het erf (naast de stortput) om te tanken.');
+      else if (!G().refuel(r.main)) warn('De tank is al vol.');
+    }
+    if (e.code === 'KeyK') { const res = AT.staff.toggleChaser(); if (typeof res === 'string') warn(res); }
     if (e.code === 'KeyH' && p.mode === 'foot' && AT.farm.nearestRipe(p.x, p.y)) {
       const hit = AT.farm.nearestRipe(p.x, p.y);
       const got = AT.farm.pick(hit.key, hit.plant, false);
@@ -446,5 +567,5 @@ window.AT = window.AT || {};
 
   AT.on('change', () => { const p = AT.state.player; if (p.mode !== 'drive' && p.unloading) { p.unloading = false; finishSale(); } });
 
-  AT.vehicle = { update, rig, toggleTool, cycleCrop, hudInfo, pressed, KMH, loadSource, toggleUnload };
+  AT.vehicle = { update, rig, toggleTool, cycleCrop, hudInfo, pressed, KMH, loadSource, toggleUnload, blocked, surface, warn };
 })();
