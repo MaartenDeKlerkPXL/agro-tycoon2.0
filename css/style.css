@@ -305,3 +305,18 @@ label.check input { margin-top: 4px; }
 .keycap.wait { background: #ffe9a8; border-color: #e0b84c; }
 .seg { display: flex; gap: 6px; flex-wrap: wrap; }
 .slot { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; margin: 6px 0; background: #fff; }
+
+/* ---------- nieuw spel en prestaties ---------- */
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.card.choice { display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer; font: inherit; border: 2px solid var(--line); }
+.card.choice.on { border-color: var(--green, #3c8d40); background: #eef7e9; }
+.ach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.ach { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; opacity: .55; }
+.ach.got { opacity: 1; border-color: #e0b84c; background: #fffaeb; }
+.ach-icon { font-size: 24px; line-height: 1; }
+.ach small { color: #8a6a10; }
+.ach-toast { position: fixed; top: 76px; left: 50%; transform: translate(-50%, -140%); transition: transform .4s ease; z-index: 50;
+  display: flex; gap: 12px; align-items: center; background: #2f3d2a; color: #fff; border: 2px solid #e0b84c; border-radius: 12px; padding: 10px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+.ach-toast.show { transform: translate(-50%, 0); }
+.ach-toast small { display: block; color: #f1cf6b; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+.ach-toast .ach-icon { font-size: 30px; }

@@ -10,7 +10,7 @@ window.AT = window.AT || {};
   let activeTab = 'field';
 
   const JOB_NAMES = { plow: 'Ploegen', sow: 'Zaaien', harvest: 'Oogsten', fertilize: 'Kunstmest strooien', manure: 'Mest uitrijden', mow: 'Maaien', ted: 'Schudden', bale: 'Hooi persen', lime: 'Kalk strooien', spray: 'Spuiten', roll: 'Rollen', stones: 'Stenen rapen' };
-  const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser', spreader: 'Kunstmeststrooier', manure: 'Mestverspreider', mower: 'Maaier', tedder: 'Schudder', baler: 'Balenpers', truck: 'Vrachtwagen', trailer: 'Aanhanger', lime: 'Kalkstrooier', sprayer: 'Spuitmachine', cultivator: 'Cultivator', roller: 'Rol', stonepicker: 'Stenenraper' };
+  const KIND_NAMES = { tractor: 'Tractor', plow: 'Ploeg', seeder: 'Zaaimachine', harvester: 'Maaidorser', spreader: 'Kunstmeststrooier', manure: 'Mestverspreider', mower: 'Maaier', tedder: 'Schudder', baler: 'Balenpers', truck: 'Vrachtwagen', trailer: 'Aanhanger', lime: 'Kalkstrooier', sprayer: 'Spuitmachine', cultivator: 'Cultivator', roller: 'Rol', stonepicker: 'Stenenraper', fruitharvester: 'Fruitoogstmachine', mixer: 'Voermengwagen' };
   const seasonName = i => D.seasons[i].name.toLowerCase();
   const monthShort = i => D.months[i].slice(0, 3).toLowerCase();
   // maanden als korte reeks: "mrt–apr, sep–okt"
@@ -292,7 +292,7 @@ window.AT = window.AT || {};
     </ul></div>`;
 
     html += `<h3>Jouw machines</h3>`;
-    const order = ['tractor', 'harvester', 'truck', 'trailer', 'plow', 'cultivator', 'roller', 'stonepicker', 'seeder', 'spreader', 'manure', 'lime', 'sprayer', 'mower', 'tedder', 'baler'];
+    const order = ['tractor', 'harvester', 'fruitharvester', 'truck', 'trailer', 'mixer', 'plow', 'cultivator', 'roller', 'stonepicker', 'seeder', 'spreader', 'manure', 'lime', 'sprayer', 'mower', 'tedder', 'baler'];
     // (rooiers vallen onder 'harvester')
     const sorted = [...s.machines].sort((a, b) => order.indexOf(D.machines[a.type].kind) - order.indexOf(D.machines[b.type].kind));
     for (const m of sorted) {
@@ -327,6 +327,8 @@ window.AT = window.AT || {};
   // ---------- Winkel ----------
   function machineSpecs(d) {
     if (d.kind === 'tractor') return `${d.power.toFixed(1)}× vermogen · ${d.speed} km/u · ${d.fuelPerHour} L/u${d.tracks ? ' · rupsen: geen bodemverdichting, sneller op de akker' : ''}${d.old ? ' · goedkoop, trager werk, slijt sneller' : ''}`;
+    if (d.kind === 'fruitharvester') return `${d.speed} km/u · oogst de ${D.plantations[d.harvests].name.toLowerCase()} (rijd langs de ${D.plantations[d.harvests].plants}, oogstkop omlaag). Werknemers oogsten ermee voor ${AT.fmtMoney(D.plantations[d.harvests].machineCost)} per ${D.plantations[d.harvests].plant} i.p.v. ${AT.fmtMoney(D.plantations[d.harvests].pickCost)}`;
+    if (d.kind === 'mixer') return `${d.capacity} t · mengt bij de silo kuilvoer/hooi + graan + soja tot mengvoer (+30% productie) en lost in de voerbak`;
     if (d.kind === 'cultivator') return `${d.width} m breed · sneller dan ploegen, maar geen gras omwerken en minder diep (verdichting blijft)`;
     if (d.kind === 'roller') return `${d.width} m breed · na het zaaien rollen: +${Math.round((D.rollBonus - 1) * 100)}% opbrengst`;
     if (d.kind === 'stonepicker') return `${d.width} m breed · raapt stenen (stenen kosten ${Math.round((1 - D.stoneYield) * 100)}% opbrengst en slijten de maaidorser)`;
@@ -350,7 +352,7 @@ window.AT = window.AT || {};
   function renderShop(s) {
     let html = `<h2>Winkel</h2>`;
     html += `<p class="muted">Kopen of huren: huren kost ${Math.round(D.rentPerDay * 100 * 10) / 10}% van de prijs per dag. Breng een gehuurde machine terug in de Garage.</p>`;
-    const groups = [['tractor', 'Tractoren'], ['trailer', 'Aanhangers'], ['truck', 'Vrachtwagens'], ['plow', 'Grondbewerking'], ['cultivator', ''], ['roller', ''], ['stonepicker', ''], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting en bodem'], ['manure', ''], ['lime', ''], ['sprayer', 'Gewasbescherming'], ['mower', 'Grasland'], ['tedder', ''], ['baler', ''], ['harvester', 'Oogstmachines']];
+    const groups = [['tractor', 'Tractoren'], ['trailer', 'Aanhangers'], ['truck', 'Vrachtwagens'], ['plow', 'Grondbewerking'], ['cultivator', ''], ['roller', ''], ['stonepicker', ''], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting en bodem'], ['manure', ''], ['lime', ''], ['sprayer', 'Gewasbescherming'], ['mower', 'Grasland'], ['tedder', ''], ['baler', ''], ['harvester', 'Oogstmachines'], ['fruitharvester', 'Fruit en druiven'], ['mixer', 'Dieren']];
     for (const [kind, title] of groups) {
       if (title) html += `<h3>${title}</h3>`;
       for (const [key, d] of Object.entries(D.machines)) {
@@ -699,7 +701,7 @@ window.AT = window.AT || {};
       }
       const status = pl.phase === 'ripe' ? `<b>${ripe} ${ripe === 1 ? d.plant : d.plants} plukklaar</b>` : pl.phase === 'grow' ? 'vruchten groeien' : `rust tot de lente · oogst in ${months}`;
       html += `<div class="card"><div class="row"><b class="grow">${d.name}</b><button class="btn small" data-action="look-plant" data-key="${key}">Zoek</button>
-          <button class="btn small primary" data-action="pickAll" data-key="${key}" ${ripe ? '' : 'disabled'}>Plukkers (${AT.fmtMoney(d.pickCost)}/${d.plant})</button></div>
+          <button class="btn small primary" data-action="pickAll" data-key="${key}" ${ripe ? '' : 'disabled'}>${AT.farm.harvestMachine(key) ? `Laat oogsten met machine (${AT.fmtMoney(d.machineCost)}/${d.plant})` : `Plukkers (${AT.fmtMoney(d.pickCost)}/${d.plant})`}</button></div>
         <div class="muted">${status} · dit jaar geplukt: ${AT.fmtAmount(pl.pickedTotal || 0, d.product)}. Zelf plukken: loop erheen en druk H. Wat je niet plukt, rot na ${D.months[d.harvest[d.harvest.length - 1]].toLowerCase()}.</div></div>`;
     }
     // hooibalen
@@ -718,6 +720,16 @@ window.AT = window.AT || {};
       <button class="btn small primary" data-action="cutAll" ${readyTrees ? '' : 'disabled'}>Laat kappen (${AT.fmtMoney(D.woodlot.cutCost)}/boom)</button></div>
       <div class="muted">Zelf kappen: loop naar een boom en druk H. Er groeit vanzelf een nieuwe boom (${D.woodlot.growDays} dagen, niet in de winter).</div>`;
     html += `</div>`;
+    // zelf bouwen
+    html += `<h3>Zelf bouwen</h3><p class="muted">Kies een gebouw en klik op de kaart waar het moet komen (op gras, niet op akkers of wegen). Esc of rechtsklik = annuleren. Handig bij verre velden zoals de Oostpolder.</p>`;
+    for (const [type, d] of Object.entries(D.buildables)) {
+      const n = G().builtOf(type).length, placing = AT.render.view.placing && AT.render.view.placing.type === type;
+      html += `<div class="card row"><div class="grow"><b>${d.name}</b>${n ? ` <span class="badge">${n}×</span>` : ''}<div class="muted">${d.desc}</div></div>
+        <button class="btn small ${placing ? '' : 'primary'}" data-action="place" data-type="${type}" ${s.money < d.price ? 'disabled' : ''}>${placing ? 'Klik op de kaart…' : 'Plaats ' + AT.fmtMoney(d.price)}</button></div>`;
+    }
+    if ((s.buildings || []).length) html += `<div class="card">${s.buildings.map(b => `<div class="row"><span class="grow">${D.buildables[b.type].name}</span>
+      <button class="btn small" data-action="look-built" data-x="${b.x}" data-y="${b.y}">Zoek</button>
+      <button class="btn small" data-action="demolish" data-b="${b.id}">Afbreken (+${AT.fmtMoney(D.buildables[b.type].price / 2)})</button></div>`).join('')}</div>`;
     // opslagloods
     const nextW = D.warehouse[(s.warehouseLevel || 0) + 1];
     html += `<h3>Opslagloods</h3><div class="card"><div class="row"><span class="grow">${AT.fmtNum(G().palletsUsed(), 1)} / ${G().warehouseCapacity()} pallets</span>
@@ -748,10 +760,9 @@ window.AT = window.AT || {};
       <div>Totale uitgaven: ${AT.fmtMoney(s.stats.spent)}</div>
     </div>
     <h3>Besturing</h3><div class="card muted">
-      WASD / pijltjes: lopen of rijden<br>Spatie: werktuig omlaag/omhoog · C: zaaigoed wisselen<br>
-      E: in-/uitstappen · F: werktuig aan-/afkoppelen · U: lossen · Shift: sneller<br>Scroll: zoomen · Slepen: rondkijken<br>P: pauze · 1 / 2 / 3 / 4: snelheid 1× / 5× / 20× / 60×
+      ${AT.keys.ACTIONS.map(([a, label]) => `${AT.keys.name(a)}: ${label.toLowerCase()}`).join(' · ')}<br>Scroll: zoomen · Slepen: rondkijken · 1 / 2 / 3 / 4: snelheid · toetsen wijzigen via ⚙️
     </div>
-    <button class="btn danger" data-action="reset">Nieuw spel starten</button></div>`;
+    <div class="row wrap"><button class="btn" data-open="achievements">🏆 Prestaties</button><button class="btn danger" data-action="reset">Nieuw spel…</button></div></div>`;
     return html;
   }
   function openGoals() { $('#modal').innerHTML = renderGoals(AT.state); $('#modal').hidden = false; }
@@ -853,7 +864,9 @@ window.AT = window.AT || {};
       <div class="row"><button class="btn small" data-set="resetKeys">Standaardtoetsen</button></div>
       <h3>Uitleg en geluid</h3>
       <div class="row wrap"><button class="btn small" data-set="tutorial">Uitleg opnieuw tonen</button><button class="btn small" data-open="sound">🔊 Geluid</button>
-        <button class="btn small danger" data-action="reset">Nieuw spel starten</button></div></div>`;
+        <button class="btn small" data-open="achievements">🏆 Prestaties</button>
+        <button class="btn small danger" data-action="reset">Nieuw spel…</button></div>
+      <p class="muted">Huidig spel: kaart <b>${D.maps[D.mapId].name}</b> · moeilijkheid <b>${D.difficulties[s.difficulty || 'normal'].name}</b></p></div>`;
     $('#modal').hidden = false;
   }
   function onSettings(e) {
@@ -889,6 +902,26 @@ window.AT = window.AT || {};
     setTimeout(() => { AT.keys.capturing = false; }, 0);
     renderSettings();
   }, true);
+
+  // ---------- nieuw spel: kaart en moeilijkheid ----------
+  const newGameChoice = { map: D.mapId, difficulty: 'normal' };
+  function renderNewGame() {
+    const opt = (group, key, d) => `<button class="card choice ${newGameChoice[group] === key ? 'on' : ''}" data-new="${group}" data-v="${key}"><b>${d.name}</b><span class="muted">${d.desc}</span></button>`;
+    $('#modal').innerHTML = `<div class="modal-card narrow"><div class="row"><h2 class="grow">🌱 Nieuw spel</h2><button class="btn small" data-close>Sluiten</button></div>
+      <h3>Kaart</h3><div class="choices">${Object.entries(D.maps).map(([k, m]) => opt('map', k, m)).join('')}</div>
+      <h3>Moeilijkheid</h3><div class="choices">${Object.entries(D.difficulties).map(([k, d]) => opt('difficulty', k, Object.assign({}, d, { desc: d.desc + (d.money < 1e7 ? ` Start: ${AT.fmtMoney(d.money)}.` : '') }))).join('')}</div>
+      <div class="row"><button class="btn primary" data-new="go">Start nieuw spel</button></div></div>`;
+    $('#modal').hidden = false;
+  }
+
+  // ---------- prestaties ----------
+  function renderAchievements() {
+    const list = AT.achievements.list(), done = list.filter(a => a.at).length;
+    $('#modal').innerHTML = `<div class="modal-card"><div class="row"><h2 class="grow">🏆 Prestaties <span class="muted">${done} / ${list.length}</span></h2><button class="btn small" data-close>Sluiten</button></div>
+      <p class="muted">Prestaties blijven bewaard, ook in een nieuw spel.${AT.state.difficulty === 'sandbox' ? ' <b>In sandbox tellen ze niet.</b>' : ''}</p>
+      <div class="ach-grid">${list.map(a => `<div class="ach ${a.at ? 'got' : ''}"><span class="ach-icon">${a.at ? a.icon : '🔒'}</span><div><b>${a.name}</b><div class="muted">${a.desc}</div>${a.at ? `<small>${new Date(a.at).toLocaleDateString('nl-NL')}</small>` : ''}</div></div>`).join('')}</div></div>`;
+    $('#modal').hidden = false;
+  }
 
   // geluidsinstellingen
   function renderSound() {
@@ -1016,6 +1049,9 @@ window.AT = window.AT || {};
       case 'buyWoodlot': AT.farm.buyWoodlot(); break;
       case 'cutAll': AT.farm.cutAll(); break;
       case 'buyPlantation': AT.farm.buyPlantation(a.key); break;
+      case 'place': AT.render.view.placing = { type: a.type }; G().log(`Klik op de kaart waar de ${D.buildables[a.type].name.toLowerCase()} moet komen (Esc = annuleren).`); renderPanel(); break;
+      case 'demolish': if (confirm('Dit gebouw afbreken? Je krijgt de helft van de prijs terug.')) G().demolish(a.b); break;
+      case 'look-built': AT.render.centerOn(Number(a.x) + 30, Number(a.y) + 30); break;
       case 'pickAll': AT.farm.pickAll(a.key); break;
       case 'collectBales': G().collectBales(a.id ? Number(a.id) : null); break;
       case 'look-plant': { const r = D.plantations[a.key].area; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
@@ -1046,6 +1082,12 @@ window.AT = window.AT || {};
     });
     window.addEventListener('mousemove', e => {
       const p = AT.render.eventPos(e);
+      const pl = AT.render.view.placing;
+      if (pl && e.target === canvas) {
+        const w = AT.render.screenToWorld(p.x, p.y), d = D.buildables[pl.type];
+        pl.x = Math.round(w.x - d.w / 2); pl.y = Math.round(w.y - d.h / 2);
+        canvas.style.cursor = G().placeProblem(pl.type, pl.x, pl.y) ? 'not-allowed' : 'copy';
+      }
       if (drag) {
         if (drag.mini) {
           const w = AT.render.minimapToWorld(p.x, p.y); AT.render.centerOn(w.x, w.y);
@@ -1069,6 +1111,18 @@ window.AT = window.AT || {};
       drag = null;
       if (wasDrag || e.target !== canvas) return;
       const p = AT.render.eventPos(e);
+      // plaatsen van een gebouw
+      const pl = AT.render.view.placing;
+      if (pl) {
+        if (e.button === 2) { AT.render.view.placing = null; return; }
+        const w = AT.render.screenToWorld(p.x, p.y), d = D.buildables[pl.type];
+        const why = G().placeProblem(pl.type, Math.round(w.x - d.w / 2), Math.round(w.y - d.h / 2));
+        if (why) { G().log(`Hier kun je niet bouwen: ${why}.`, 'warn'); return; }
+        AT.render.view.placing = null;
+        if (!G().placeBuilding(pl.type, Math.round(w.x - d.w / 2), Math.round(w.y - d.h / 2))) AT.render.view.placing = pl;
+        canvas.style.cursor = 'grab';
+        return;
+      }
       if (mini) {
         const w = AT.render.minimapToWorld(p.x, p.y);
         AT.render.centerOn(w.x, w.y);
@@ -1131,10 +1185,17 @@ window.AT = window.AT || {};
       if (e.target.closest('[data-open="settings"]')) { renderSettings(); e.target.closest('button').blur(); }
       if (e.target.closest('#modal [data-set]')) onSettings(e);
       if (e.target.closest('[data-open="goals"]') || e.target.closest('#goal')) openGoals();
-      if (e.target.closest('#modal [data-action="reset"]')) { if (confirm('Weet je zeker dat je opnieuw wilt beginnen? Je voortgang gaat verloren.')) { G().reset(); $('#modal').hidden = true; } }
+      if (e.target.closest('#modal [data-action="reset"]')) renderNewGame();
+      if (e.target.closest('#modal [data-new]')) {
+        const b = e.target.closest('[data-new]');
+        if (b.dataset.new === 'go') { if (confirm('Een nieuw spel beginnen? Je huidige spel wordt eerst bewaard als reservekopie; wil je het houden, zet het dan eerst op een opslagplek (⚙️).')) G().newGame(newGameChoice); }
+        else { newGameChoice[b.dataset.new] = b.dataset.v; renderNewGame(); }
+      }
+      if (e.target.closest('[data-open="achievements"]')) renderAchievements();
       if (e.target.closest('[data-close]') || e.target.id === 'modal') $('#modal').hidden = true;
     });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !capture) $('#modal').hidden = true; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !capture) { $('#modal').hidden = true; if (AT.render.view.placing) { AT.render.view.placing = null; G().log('Bouwen geannuleerd.'); } } });
+    $('#map').addEventListener('contextmenu', e => { if (AT.render.view.placing) { e.preventDefault(); AT.render.view.placing = null; } });
 
     document.addEventListener('keydown', e => {
       if (e.target.closest && e.target.closest('input, select, textarea')) return;

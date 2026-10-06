@@ -184,6 +184,21 @@ window.AT = window.AT || {};
       ctx.strokeStyle = shade(c, -0.45); ctx.lineWidth = 0.6;
       for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(bx + L * k / 4, -Wt / 2 + 0.6); ctx.lineTo(bx + L * k / 4, -Wt / 2 + 1.6); ctx.stroke(); }
       if (o.tipping) { ctx.fillStyle = 'rgba(255,255,255,0.18)'; rr(ctx, bx, -Wt / 2 + 0.6, L, Wt - 1.2, 1); ctx.fill(); }
+    } else if (id.kind === 'mixer') {
+      // voermengwagen: bak met mengvijzel en afvoerband opzij
+      const L = id.length, Wt = id.width;
+      ctx.fillStyle = '#333'; ctx.fillRect(x0 - 3.5, -0.8, 4, 1.6);
+      const bx = x0 - 3 - L;
+      for (const ax of [bx + L * 0.35, bx + L * 0.6]) { wheel(ctx, ax, -Wt / 2 - 0.2, 4.5, 2.2, o.wheel || 0); wheel(ctx, ax, Wt / 2 + 0.2, 4.5, 2.2, o.wheel || 0); }
+      const g = ctx.createLinearGradient(0, -Wt / 2, 0, Wt / 2);
+      g.addColorStop(0, shade(c, 0.3)); g.addColorStop(1, shade(c, -0.3));
+      ctx.fillStyle = g; rr(ctx, bx, -Wt / 2 + 0.6, L, Wt - 1.2, 2.5); ctx.fill();
+      ctx.fillStyle = '#2c3e50'; rr(ctx, bx + 1.2, -Wt / 2 + 1.8, L - 2.4, Wt - 3.6, 2); ctx.fill();
+      const frac = o.load && o.load.tons > 0 ? Math.min(1, o.load.tons / id.capacity) : 0;
+      if (frac > 0) { ctx.globalAlpha = 0.5 + 0.5 * frac; ctx.fillStyle = '#c49a5a'; rr(ctx, bx + 1.6, -Wt / 2 + 2.2, L - 3.2, Wt - 4.4, 1.8); ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(bx + 2, 0); for (let x = 0; x < L - 4; x += 1) ctx.lineTo(bx + 2 + x, Math.sin((x + (o.t || 0) * 10) * 0.9) * 1.6); ctx.stroke();
+      ctx.fillStyle = '#7f8c8d'; ctx.fillRect(bx + L * 0.4, Wt / 2 - 1, 4, 3);
     } else if (id.kind === 'cultivator') {
       // cultivator: frame met drie rijen tanden
       ctx.fillStyle = '#333'; ctx.fillRect(x0 - 3, -1, 3.5, 2);
@@ -406,7 +421,7 @@ window.AT = window.AT || {};
     ctx.translate(x, y); ctx.rotate(angle);
     const opts = Object.assign({ wheel: 0, steer: 0, t: 0, lowered: true }, o, { implDef });
     if (d.kind === 'tractor') tractor(ctx, d, opts);
-    else if (d.kind === 'harvester') harvester(ctx, d, opts);
+    else if (d.kind === 'harvester' || d.kind === 'fruitharvester') harvester(ctx, d, opts);
     else if (d.kind === 'truck') truck(ctx, d, opts);
     else parkedImplement(ctx, d, opts);
     ctx.restore();

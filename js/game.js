@@ -10,7 +10,8 @@ window.AT = window.AT || {};
   // bits in cells.fert: TEDDED = gras is geschud, LIME = gekalkt, SPRAYED = gespoten, COMPACT = verdicht (nat bereden)
   // STONE = stenen boven gekomen bij het ploegen, ROLLED = na het zaaien gerold
   const FERT = 1, MANURE = 2, TEDDED = 4, LIME = 8, SPRAYED = 16, COMPACT = 32, STONE = 64, ROLLED = 128;
-  const IMPLEMENT_KINDS = ['plow', 'seeder', 'spreader', 'manure', 'trailer', 'mower', 'tedder', 'baler', 'lime', 'sprayer', 'cultivator', 'roller', 'stonepicker'];
+  const IMPLEMENT_KINDS = ['plow', 'seeder', 'spreader', 'manure', 'trailer', 'mower', 'tedder', 'baler', 'lime', 'sprayer', 'cultivator', 'roller', 'stonepicker', 'mixer'];
+  const DRIVABLE = ['tractor', 'harvester', 'truck', 'fruitharvester'];
   const isImplement = kind => IMPLEMENT_KINDS.includes(kind);
 
   // ---------- kleine event-bus zodat UI kan reageren ----------
@@ -44,7 +45,7 @@ window.AT = window.AT || {};
   }
 
   function newField(def) {
-    return { id: def.id, owned: !!def.owned, cells: newCells(def), job: null, readyNotified: false, soil: D.startSoil, damage: 0,
+    return { id: def.id, owned: !!def.owned, cells: newCells(def), job: null, readyNotified: false, soil: (def.region && D.regionSoil[def.region]) || D.startSoil, damage: 0,
       ph: D.soilPh.start, weeds: 0, disease: 0, pests: 0, pestLoss: 0, irrigated: false, stoniness: stoninessOf(def.id) };
   }
   // hoe steenachtig een veld is (vast per veld)
@@ -58,6 +59,12 @@ window.AT = window.AT || {};
     return f;
   }
 
+  // instellingen voor een nieuw spel (gezet vlak voor het herladen)
+  const NEWGAME_KEY = SAVE_KEY + '-newgame', MAP_KEY = 'agro-tycoon-2-map';
+  function pendingNewGame() { try { return JSON.parse(localStorage.getItem(NEWGAME_KEY)) || null; } catch (e) { return null; } }
+  const diff = () => D.difficulties[(S() && S().difficulty) || 'normal'] || D.difficulties.normal;
+  const RUNNING = ['brandstof', 'zaaigoed', 'kunstmest', 'lonen', 'loonwerk', 'energie', 'onderhoud', 'voer', 'kalk', 'gewasbescherming', 'water', 'huur', 'pacht', 'dierenarts', 'verzekering'];
+
   function createState() {
     const market = {}, silo = {}, goods = {}, growClock = {};
     for (const key of CROP_KEYS) { market[key] = { factor: 1, history: [1] }; silo[key] = 0; growClock[key] = 0; }
@@ -67,9 +74,13 @@ window.AT = window.AT || {};
     for (const key of Object.keys(D.animals)) animals[key] = { owned: false, count: 0, fed: 1, produced: {} };
     for (const key of Object.keys(D.factories)) factories[key] = { owned: false, on: true, progress: 0, status: '', made: 0 };
 
+    const ng = pendingNewGame() || {};
+    const dkey = D.difficulties[ng.difficulty] ? ng.difficulty : 'normal', dd = D.difficulties[dkey];
     return {
       version: D.version,
-      money: D.start.money,
+      difficulty: dkey,
+      map: D.mapId,
+      money: dd.money,
       time: D.start.hour, // totaal aantal speluren sinds start
       speed: 1,
       paused: false,
@@ -81,7 +92,7 @@ window.AT = window.AT || {};
       weather: null,
       animals,
       factories,
-      fields: D.fields.map(f => newField(f)),
+      fields: D.fields.map(f => Object.assign(newField(f), dd.allFields ? { owned: true } : {})),
       machines: startMachines(),
       // speler: te voet (mode 'foot') of in een machine (mode 'drive', vehicle = uid)
       player: { mode: 'foot', x: D.start.farmer.x, y: D.start.farmer.y, angle: Math.PI, speed: 0, vehicle: null, lowered: false, crop: CROP_KEYS[0] },
@@ -89,6 +100,7 @@ window.AT = window.AT || {};
       warehouseLevel: 0,
       dryClock: D.start.hour,   // droogklok voor hooi: loopt langzamer als het regent
       bales: [],                // hooibalen op het veld { id, x, y, t, a, field }
+      buildings: [],            // zelf geplaatste gebouwen { id, type, x, y }
       loan: 0,
       ledger: [],          // per dag: inkomsten en uitgaven per categorie
       contracts: { offers: [], active: [], refreshed: -99 },
@@ -127,6 +139,7 @@ window.AT = window.AT || {};
     return e;
   }
   function spend(amount, cat = 'overig') {
+    if (RUNNING.includes(cat)) amount *= diff().cost;   // moeilijkheid: lopende kosten
     S().money -= amount; S().stats.spent += amount;
     if (amount >= 1000 && ['machines', 'land', 'gebouwen', 'dieren'].includes(cat)) AT.emit('sfx', 'spend');
     const e = ledgerToday(); e.expense[cat] = (e.expense[cat] || 0) + amount;
@@ -138,7 +151,8 @@ window.AT = window.AT || {};
     if (amount >= 50 && cat !== 'doelen') AT.emit('sfx', 'cash');
   }
 
-  function siloCapacity() { return D.silo[S().siloLevel].capacity; }
+  const builtOf = type => (S().buildings || []).filter(b => b.type === type);
+  function siloCapacity() { return D.silo[S().siloLevel].capacity + builtOf('silo').length * D.buildables.silo.capacity; }
   function siloUsed() { return Object.values(S().silo).reduce((a, b) => a + b, 0); }
   function siloRoom() { return siloCapacity() - siloUsed(); }
   // prijs per eenheid: basisprijs × dagkoers × maand × (1 − verzadiging) × verkooppunt
@@ -147,7 +161,7 @@ window.AT = window.AT || {};
     const m = S().market[key];
     const season = AT.weather ? AT.weather.priceFactor(key) : 1;
     const mult = point && D.sellPoints[point] ? (D.sellPoints[point].mult[key] || 1) : 1;
-    return base * m.factor * season * (1 - (m.sat || 0)) * mult;
+    return base * m.factor * season * (1 - (m.sat || 0)) * mult * diff().sell;
   }
   function cropPrice(crop, point) { return Math.round(rawPrice(crop, point)); }
   function price(key, point) { return D.crops[key] ? cropPrice(key, point) : rawPrice(key, point); }
@@ -181,7 +195,7 @@ window.AT = window.AT || {};
   }
 
   // ---------- opslagloods (pallets) ----------
-  function warehouseCapacity() { return D.warehouse[S().warehouseLevel || 0].pallets; }
+  function warehouseCapacity() { return D.warehouse[S().warehouseLevel || 0].pallets + builtOf('warehouse').length * D.buildables.warehouse.pallets; }
   function palletsUsed() {
     let p = 0;
     for (const [k, d] of Object.entries(D.products)) if (d.perPallet) p += S().goods[k] / d.perPallet;
@@ -739,7 +753,41 @@ window.AT = window.AT || {};
       }
       return;
     }
+    // pech: de monteur is bezig
+    if (job.breakdown) {
+      job.breakdown.left -= dtHours;
+      job.waiting = 'heeft pech, de monteur is bezig';
+      if (job.breakdown.left <= 0) {
+        const m = machine(job.breakdown.uid);
+        if (m) { m.wear = Math.max(0, (m.wear || 0) - 0.4); m.broken = false; }
+        log(`${job.workerName || 'Loonwerker'} kan weer verder op Veld ${f.id}: de ${m ? machineDef(m).name : 'machine'} is gemaakt.`, 'good');
+        job.breakdown = null;
+      }
+      return;
+    }
     if (job.type === 'harvest' && tooWet()) { job.waiting = true; return; } // wacht tot het droog is
+    // diesel en slijtage van de machines van de werknemer
+    for (const uid of job.machines) {
+      const m = machine(uid);
+      if (!m) continue;
+      addWear(m, dtHours);
+      const d = machineDef(m);
+      if (d.fuelPerHour && fuelCap(m)) {
+        m.fuel = Math.max(0, fuelOf(m) - d.fuelPerHour * dtHours * wearFuel(m));
+        if (m.fuel <= 0) {   // tank leeg: tankservice komt (brandstof zat al in de prijs, alleen de service betaal je)
+          spend(D.fuelService, 'brandstof');
+          m.fuel = fuelCap(m);
+          log(`${job.workerName || 'Loonwerker'} stond droog op Veld ${f.id}: tankservice kwam diesel brengen (${AT.fmtMoney(D.fuelService)}).`, 'warn');
+        }
+      }
+      if ((m.wear || 0) > 0.85 && Math.random() < 0.15 * dtHours) {
+        const cost = Math.round(D.repairCallOut + d.price * 0.04);
+        spend(cost, 'onderhoud');
+        job.breakdown = { uid, left: 2 };
+        log(`Pech op Veld ${f.id}: de ${d.name} van ${job.workerName || 'de loonwerker'} is kapot. Een monteur komt (${AT.fmtMoney(cost)}, ±2 uur). Laat versleten machines op tijd repareren!`, 'warn');
+        return;
+      }
+    }
     job.waiting = false;
     const harvester = job.type === 'harvest' ? machine(job.machines[0]) : null;
     const bunker = harvester ? { load: getLoad(harvester), cap: loadCap(harvester), m: harvester } : null;
@@ -774,7 +822,6 @@ window.AT = window.AT || {};
     const job = f.job, s = S();
     const def = fieldDef(f.id);
     s.stats.workerJobs++;
-    for (const uid of job.machines) addWear(machine(uid), job.hours);
     const done = { plow: 'geploegd', sow: 'ingezaaid', harvest: 'geoogst', fertilize: 'bemest met kunstmest', manure: 'bemest met mest', mow: 'gemaaid', ted: 'geschud', bale: 'tot hooi geperst', lime: 'gekalkt', spray: 'gespoten', roll: 'gerold', stones: 'steenvrij' }[job.type];
     log(`${job.workerName || 'Loonwerker'} klaar: Veld ${f.id} is ${done}.`, 'good');
     if (job.lost > 0) log(`Silo vol! ${AT.fmtTons(job.lost)} ging verloren.`, 'warn');
@@ -803,7 +850,7 @@ window.AT = window.AT || {};
       if (trip.machines.includes(m.uid)) m.busy = null;
       const snap = (trip.snapshot || []).find(x => x.uid === m.uid);
       if (snap && !m.busy) Object.assign(m, snap);
-      if (trip.machines.includes(m.uid) && fuelCap(m)) m.fuel = fuelCap(m);   // werknemer tankt bij terugkomst (zat in de kosten)
+      if (trip.machines.includes(m.uid) && fuelCap(m)) m.fuel = fuelCap(m);   // werknemer tankt bij terugkomst op het erf (zat in de kosten)
       // wat er nog in de bunker zit gaat bij terugkomst de silo in
       if (trip.machines.includes(m.uid) && machineDef(m).kind === 'harvester' && m.load && m.load.tons > 0.01 && AT.staff) AT.staff.depositGrain(m.load, trip.workerName || 'Loonwerker');
     });
@@ -844,7 +891,7 @@ window.AT = window.AT || {};
     const m = machine(uid);
     if (!m || m.busy || p.mode !== 'foot') return false;
     const kind = machineDef(m).kind;
-    if (kind !== 'tractor' && kind !== 'harvester' && kind !== 'truck') return false;
+    if (!DRIVABLE.includes(kind)) return false;
     m.busy = 'player';
     if (m.impl) machine(m.impl).busy = 'player';
     Object.assign(p, { mode: 'drive', vehicle: uid, x: m.x, y: m.y, angle: m.angle, speed: 0, lowered: false });
@@ -917,7 +964,7 @@ window.AT = window.AT || {};
     let best = null, bd = maxDist;
     for (const m of S().machines) {
       const k = machineDef(m).kind;
-      if (m.busy || (k !== 'tractor' && k !== 'harvester' && k !== 'truck')) continue;
+      if (m.busy || !DRIVABLE.includes(k)) continue;
       const d = Math.hypot(m.x - x, m.y - y);
       if (d < bd) { bd = d; best = m; }
     }
@@ -935,7 +982,58 @@ window.AT = window.AT || {};
   // versleten machines zijn trager en verbruiken meer
   const wearSpeed = m => 1 - 0.3 * Math.max(0, ((m && m.wear) || 0) - 0.5) / 0.5;
   const wearFuel = m => 1 + 0.5 * ((m && m.wear) || 0);
-  function atYard(m) { const Y = D.yard; return m.x >= Y.x && m.x <= Y.x + Y.w && m.y >= Y.y && m.y <= Y.y + Y.h; }
+  function atYard(m) {
+    const Y = D.yard;
+    if (m.x >= Y.x && m.x <= Y.x + Y.w && m.y >= Y.y && m.y <= Y.y + Y.h) return true;
+    // ook bij een eigen werkplaats
+    return builtOf('shed').some(b => Math.hypot(m.x - (b.x + 40), m.y - (b.y + 25)) < 80);
+  }
+  // dieselpompen: op het erf en bij elke werkplaats
+  function fuelPumps() { return [D.fuelPump, ...builtOf('shed').map(b => ({ x: b.x + D.buildables.shed.w + 8, y: b.y + D.buildables.shed.h / 2 }))]; }
+  const nearPump = (x, y, r = 22) => fuelPumps().some(pp => Math.hypot(x - pp.x, y - pp.y) < r);
+  // stortputten van zelf gebouwde silo's
+  const siloPits = () => builtOf('silo').map(b => ({ x: b.x - 10, y: b.y + D.buildables.silo.h + 6, w: D.buildables.silo.w + 20, h: 14 }));
+
+  // ---------- zelf bouwen ----------
+  const rectHit = (a, b, m = 0) => a.x < b.x + b.w + m && a.x + a.w + m > b.x && a.y < b.y + b.h + m && a.y + a.h + m > b.y;
+  function footprint(type, x, y) { const d = D.buildables[type]; return { x, y, w: d.w, h: d.h + (type === 'silo' ? 22 : 0) + (type === 'shed' ? 0 : 0), pw: type === 'shed' ? 16 : 0 }; }
+  // mag het hier? geeft null (ja) of een reden
+  function placeProblem(type, x, y) {
+    const fp = footprint(type, x, y), r = { x: fp.x, y: fp.y, w: fp.w + fp.pw, h: fp.h };
+    if (r.x < 4 || r.y < 4 || r.x + r.w > D.world.w - 4 || r.y + r.h > D.world.h - 4) return 'buiten de kaart';
+    if (D.fields.some(f => rectHit(r, f, 4))) return 'niet op een akker';
+    if (D.roads.some(q => rectHit(r, q, 3))) return 'niet op de weg';
+    const lots = [D.yard, D.trader.lot, D.woodlot.area, ...D.greenhouse.lots, ...Object.values(D.animals).map(a => a.pen), ...Object.values(D.factories).map(f => f.lot),
+      ...Object.values(D.sellPoints).filter(sp => sp.lot).map(sp => sp.lot), ...Object.values(D.plantations).map(p => p.area)];
+    if (lots.some(l => rectHit(r, l, 4))) return 'daar staat al iets';
+    const P = D.pond; if (rectHit(r, { x: P.x - P.rx, y: P.y - P.ry, w: P.rx * 2, h: P.ry * 2 }, 4)) return 'niet in de vijver';
+    if ((S().buildings || []).some(b => { const o = footprint(b.type, b.x, b.y); return rectHit(r, { x: o.x, y: o.y, w: o.w + o.pw, h: o.h }, 6); })) return 'te dicht bij een ander gebouw';
+    return null;
+  }
+  function placeBuilding(type, x, y) {
+    const d = D.buildables[type], s = S();
+    const why = placeProblem(type, x, y);
+    if (why) { log(`Hier kun je niet bouwen: ${why}.`, 'warn'); return false; }
+    if (s.money < d.price) { log(`Niet genoeg geld voor een ${d.name.toLowerCase()}.`, 'warn'); return false; }
+    spend(d.price, 'gebouwen');
+    s.buildings.push({ id: 'b' + Date.now().toString(36), type, x: Math.round(x), y: Math.round(y) });
+    log(`${d.name} gebouwd!`, 'money');
+    AT.emit('built');
+    AT.emit('change');
+    return true;
+  }
+  function demolish(id) {
+    const s = S(), b = s.buildings.find(x => x.id === id);
+    if (!b) return;
+    const d = D.buildables[b.type];
+    if (b.type === 'silo' && siloUsed() > siloCapacity() - d.capacity) { log('Haal eerst graan uit de silo: het past anders niet meer.', 'warn'); return; }
+    if (b.type === 'warehouse' && palletsUsed() > warehouseCapacity() - d.pallets) { log('De opslagloods is te vol om een loods af te breken.', 'warn'); return; }
+    s.buildings = s.buildings.filter(x => x !== b);
+    earn(d.price * 0.5, false, 'gebouwen');
+    log(`${d.name} afgebroken (${AT.fmtMoney(d.price * 0.5)} terug).`, 'money');
+    AT.emit('built');
+    AT.emit('change');
+  }
   function repairCost(m) { return Math.round(machineDef(m).price * D.repairShare * (m.wear || 0) + (m.broken ? 300 : 0) + (atYard(m) ? 0 : D.repairCallOut)); }
   function repair(uid) {
     const m = machine(uid);
@@ -1144,6 +1242,7 @@ window.AT = window.AT || {};
     amount = Math.min(amount ?? s.loan, s.loan, Math.max(0, s.money));
     if (amount <= 0) return;
     s.loan -= amount; s.money -= amount;
+    s.stats.loanRepaid = (s.stats.loanRepaid || 0) + amount;
     log(`${AT.fmtMoney(amount)} afgelost. Nog te betalen: ${AT.fmtMoney(s.loan)}.`, 'money');
     AT.emit('change');
   }
@@ -1373,7 +1472,7 @@ window.AT = window.AT || {};
     if (day() !== prevDay) {
       updateMarket();
       if (AT.staff) AT.staff.payday();
-      if (s.loan > 0) { const rente = s.loan * D.bank.ratePerDay; spend(rente, 'rente'); }
+      if (s.loan > 0) { const rente = s.loan * D.bank.ratePerDay * diff().interest; spend(rente, 'rente'); }
       for (const f of s.fields) if (f.leased) spend(leaseRent(f.id), 'pacht');
       const rented = s.machines.filter(m => m.rented);
       if (rented.length) spend(rented.reduce((a, m) => a + rentPrice(m.type), 0), 'huur');
@@ -1440,6 +1539,7 @@ window.AT = window.AT || {};
   function loadRaw(raw) {
     if (!slotInfo(raw)) return false;
     save();
+    try { const sv = JSON.parse(raw); localStorage.setItem(MAP_KEY, D.maps[sv.map] ? sv.map : 'standaard'); } catch (e) { /* ok */ }
     try { localStorage.setItem(SAVE_KEY + '-before-load', localStorage.getItem(SAVE_KEY) || ''); localStorage.setItem(SAVE_KEY, raw); } catch (e) { return false; }
     saveBlocked = true;
     location.reload();
@@ -1466,6 +1566,7 @@ window.AT = window.AT || {};
     let raw = null, saved = null;
     try { raw = localStorage.getItem(SAVE_KEY); saved = JSON.parse(raw); } catch (e) { saved = null; }
     const fresh = createState();
+    try { localStorage.removeItem(NEWGAME_KEY); } catch (e) { /* ok */ }
     if (!saved || typeof saved !== 'object' || !Array.isArray(saved.fields)) return fresh;
     const upgraded = saved.version !== D.version;
     if (upgraded) { try { localStorage.setItem(SAVE_KEY + '-backup-v' + saved.version, raw); } catch (e) { /* vol */ } }
@@ -1532,12 +1633,27 @@ window.AT = window.AT || {};
     if (state.siloLevel >= D.silo.length) state.siloLevel = D.silo.length - 1;
     if ((state.warehouseLevel || 0) >= D.warehouse.length) state.warehouseLevel = D.warehouse.length - 1;
     if (saved.dryClock == null) state.dryClock = state.time;
+    if (!saved.difficulty) state.difficulty = 'normal';
+    state.map = D.mapId;
     // bestaande spellers hoeven de uitleg niet meer te zien
     if (!saved.tutorial) state.tutorial = { step: 0, done: !!(saved.stats && saved.stats.harvestedHa > 0) };
     fillDefaults(state, base);
     state.version = D.version;
     if (upgraded) state.log.unshift({ day: Math.floor(state.time / 24) + 1, hour: Math.floor(state.time % 24), text: `Het spel is bijgewerkt (versie ${saved.version || '?'} → ${D.version}). Je voortgang is bewaard.`, type: 'goal' });
     return state;
+  }
+
+  // nieuw spel met kaart en moeilijkheid: opslaan wat je kiest en de pagina opnieuw laden
+  function newGame(opts = {}) {
+    try {
+      save();
+      localStorage.setItem(SAVE_KEY + '-before-new', localStorage.getItem(SAVE_KEY) || '');
+      localStorage.setItem(NEWGAME_KEY, JSON.stringify({ difficulty: opts.difficulty || 'normal' }));
+      localStorage.setItem(MAP_KEY, D.maps[opts.map] ? opts.map : 'standaard');
+      localStorage.removeItem(SAVE_KEY);
+    } catch (e) { /* ok */ }
+    saveBlocked = true;
+    location.reload();
   }
 
   function reset() {
@@ -1598,6 +1714,7 @@ window.AT = window.AT || {};
   };
 
   AT.game = {
+    placeBuilding, placeProblem, demolish, footprint, fuelPumps, nearPump, siloPits, builtOf,
     dropBale, collectBales, goodDef, goodName, goodColor, leaseField, endLease, leaseRent, toggleInsurance, insurancePremium, insuredDamage,
     STONE, ROLLED, fuelCap, fuelOf, addWear, wearSpeed, wearFuel, repairCost, repair, refuel, rentPrice, rentMachine, returnMachine, buyGps, atYard, taskKinds,
     ST, CROP_KEYS, FERT, MANURE, LIME, SPRAYED, COMPACT, isImplement, IMPL_NAMES, phFactor, compactAt, wetGround, buyIrrigation, fieldDefaults,
@@ -1606,7 +1723,7 @@ window.AT = window.AT || {};
     refreshOffers, acceptContract, deliverContract, fillContracts, maxLoan, borrow, repay, assetsValue, ledgerToday,
     tick, startJob, sell, buyField, buyMachine, sellMachine, upgradeSilo, enterVehicle, exitVehicle,
     toggleHitch, nearestImplement, nearestVehicle, hitchPoint, machine, HITCH, getLoad, loadCap, trailerPose,
-    save, load, reset, serialize, listSlots, saveSlot, loadSlot, deleteSlot, exportSave, importSave, slotInfo, bestRig, missingFor, canPull, workCell, cellAt, summary, mainCrop,
+    save, load, reset, newGame, serialize, listSlots, saveSlot, loadSlot, deleteSlot, exportSave, importSave, slotInfo, bestRig, missingFor, canPull, workCell, cellAt, summary, mainCrop,
     isReady, cellGrowth, overripe, isWithering, jobPosition, jobPose, log, readyCropOf, HARVESTER_NAMES,
     day, hour, siloCapacity, siloUsed, siloRoom, cropPrice, fieldPrice, fieldDef, field,
   };

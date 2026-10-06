@@ -4,10 +4,10 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 11,
+  version: 12,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
-  world: { w: 2700, h: 1900 },
+  world: { w: 3500, h: 1900 },   // met de Oostpolder (velden 20–26) achter de haven
   CELL: 8,
 
   start: {
@@ -102,9 +102,9 @@ AT.data = {
   // (zelf plukken met H, of plukkers inhuren). Wat je niet plukt, rot aan het eind van de oogsttijd.
   plantations: {
     orchard:  { name: 'Boomgaard', plant: 'boom', plants: 'bomen', price: 60000, area: { x: 2448, y: 846, w: 236, h: 182 },
-                product: 'apples', perPlant: 1200, grow: [1, 2, 3, 4], harvest: [5, 6, 7], pickCost: 40, spacing: [24, 22] },
+                product: 'apples', perPlant: 1200, grow: [1, 2, 3, 4], harvest: [5, 6, 7], pickCost: 40, machineCost: 12, spacing: [24, 22] },
     vineyard: { name: 'Wijngaard', plant: 'wijnstok', plants: 'wijnstokken', price: 70000, area: { x: 2448, y: 1600, w: 236, h: 284 },
-                product: 'grapes', perPlant: 90, grow: [1, 2, 3, 4, 5], harvest: [6, 7], pickCost: 4, spacing: [9, 16] },
+                product: 'grapes', perPlant: 90, grow: [1, 2, 3, 4, 5], harvest: [6, 7], pickCost: 4, machineCost: 1.2, spacing: [9, 16] },
   },
   // bosperceel: bomen groeien, kappen geeft hout (te voet: H bij een boom)
   woodlot: { price: 40000, area: { x: 2075, y: 1762, w: 305, h: 126 }, growDays: 8, woodPerTree: 2.5, cutCost: 15 },
@@ -278,6 +278,7 @@ AT.data = {
     lime_spreader:   { kind: 'lime',     name: 'Kalkstrooier',      price: 8000,  rate: 1.8, width: 36, workSpeed: 14, minPower: 1.0, color: '#9aa3a8' },
     sprayer:         { kind: 'sprayer',  name: 'Spuitmachine 24 m', price: 15000, rate: 3.0, width: 48, workSpeed: 16, minPower: 1.0, color: '#2e86c1' },
 
+    mixer_wagon:   { kind: 'mixer',   name: 'Voermengwagen 6 t',   price: 22000, capacity: 6,  width: 16, length: 18, minPower: 1.0, color: '#16a085' },
     trailer_small: { kind: 'trailer', name: 'Kipper 8 t',          price: 6000,  capacity: 8,  width: 14, length: 16, minPower: 0.7, color: '#b03a2e' },
     trailer_large: { kind: 'trailer', name: 'Kipper 16 t',         price: 14000, capacity: 16, width: 16, length: 20, minPower: 2.0, color: '#2e86c1' },
     trailer_huge:  { kind: 'trailer', name: 'Overlaadwagen 30 t',  price: 38000, capacity: 30, width: 18, length: 24, minPower: 3.5, color: '#7d3c98' },
@@ -285,6 +286,8 @@ AT.data = {
     harvester_old: { kind: 'harvester', harvests: 'combine', tank: 5, name: 'Maaidorser (oud)', price: 40000,  rate: 0.5, width: 24, speed: 20,  workSpeed: 7, fuelPerHour: 22, color: '#c9a227' },
     harvester_mid: { kind: 'harvester', harvests: 'combine', tank: 8, name: 'Maaidorser 6 m',   price: 120000, rate: 1.2, width: 40, speed: 22, workSpeed: 8, fuelPerHour: 35, color: '#27ae60' },
     harvester_big: { kind: 'harvester', harvests: 'combine', tank: 12, name: 'Maaidorser 9 m',   price: 260000, rate: 2.2, width: 56, speed: 25, workSpeed: 9, fuelPerHour: 50, color: '#d35400' },
+    grape_harvester: { kind: 'fruitharvester', harvests: 'vineyard', name: 'Druivenoogster', price: 95000, width: 10, speed: 20, workSpeed: 6, fuelPerHour: 18, color: '#8e44ad' },
+    tree_shaker:     { kind: 'fruitharvester', harvests: 'orchard',  name: 'Boomschudder',   price: 70000, width: 14, speed: 25, workSpeed: 5, fuelPerHour: 15, color: '#c0392b' },
     potato_harvester: { kind: 'harvester', harvests: 'potato', tank: 6, name: 'Aardappelrooier', price: 90000,  rate: 0.6, width: 16, speed: 20, workSpeed: 5, fuelPerHour: 25, color: '#7d4e9e' },
     beet_harvester:   { kind: 'harvester', harvests: 'beet',   tank: 10, name: 'Bietenrooier',    price: 150000, rate: 0.7, width: 24, speed: 20, workSpeed: 6, fuelPerHour: 35, color: '#2c7a7b' },
   },
@@ -332,12 +335,13 @@ AT.data = {
     { x: 1240, y: 0, w: 24, h: 1900 },
     { x: 1880, y: 0, w: 24, h: 1900 },
     { x: 2404, y: 0, w: 24, h: 1900 },
-    { x: 0, y: 1568, w: 2700, h: 24 },
-    { x: 0, y: 560, w: 2700, h: 24 },
-    { x: 0, y: 1040, w: 2700, h: 24 },
+    { x: 0, y: 1568, w: 3500, h: 24 },
+    { x: 0, y: 560, w: 3500, h: 24 },
+    { x: 0, y: 1040, w: 3500, h: 24 },
     { x: 624, y: 584, w: 16, h: 456 },
     { x: 872, y: 584, w: 16, h: 456 },
     { x: 808, y: 0, w: 24, h: 560 },
+    { x: 3060, y: 0, w: 24, h: 1592 },   // Oostpolder
   ],
 
   // Velden (veelvouden van CELL). ha wordt berekend uit de oppervlakte.
@@ -361,8 +365,24 @@ AT.data = {
     { id: 17, x: 1920, y: 48,   w: 440, h: 496 },
     { id: 18, x: 1920, y: 600,  w: 440, h: 424 },
     { id: 19, x: 1920, y: 1080, w: 440, h: 472 },
+    // Oostpolder: grote, vruchtbare velden ver van het erf (bouw er een werkplaats of silo bij)
+    { id: 20, x: 2712, y: 48,   w: 336, h: 496, region: 'oost' },
+    { id: 21, x: 3104, y: 48,   w: 352, h: 496, region: 'oost' },
+    { id: 22, x: 2712, y: 600,  w: 336, h: 424, region: 'oost' },
+    { id: 23, x: 3104, y: 600,  w: 352, h: 296, region: 'oost' },   // eronder: bouwkavel
+    { id: 24, x: 2712, y: 1080, w: 336, h: 472, region: 'oost' },
+    { id: 25, x: 3104, y: 1080, w: 352, h: 472, region: 'oost' },
+    { id: 26, x: 2712, y: 1608, w: 560, h: 264, region: 'oost' },   // rechts: bouwkavel
   ],
   landPricePerHa: 9000,
+  regionSoil: { oost: 0.88 },   // de polderklei is vruchtbaarder
+
+  // zelf bouwen: plaats ze waar je wilt op gras (niet op akkers of wegen)
+  buildables: {
+    silo:      { name: 'Extra silo',             price: 30000, w: 34, h: 34, capacity: 250, desc: '+250 t opslag, met eigen stortput' },
+    warehouse: { name: 'Extra opslagloods',      price: 45000, w: 92, h: 60, pallets: 150, desc: '+150 pallets voor producten' },
+    shed:      { name: 'Werkplaats + dieselpomp', price: 35000, w: 80, h: 50, desc: 'tanken (T) en repareren zonder voorrijkosten, ook ver van het erf' },
+  },
 
   // Silo-niveaus: capaciteit in ton en prijs om naar dat niveau te gaan
   silo: [
@@ -415,8 +435,40 @@ AT.data = {
   ],
 };
 
+// ---------- kaarten ----------
+// Dezelfde wereld (wegen, erf, gebouwen), maar een andere verkaveling. Kiezen bij "Nieuw spel".
+AT.data.maps = {
+  standaard: { name: 'Gemengd bedrijf', desc: '26 velden van klein tot groot, ideaal om rustig te beginnen.', fields: AT.data.fields },
+  groot: {
+    name: 'Grootschalig', desc: 'Minder maar veel grotere kavels: meer werk per veld, grote machines lonen.',
+    fields: [
+      { id: 1, x: 424, y: 600, w: 200, h: 128, owned: true }, { id: 2, x: 648, y: 600, w: 224, h: 176, owned: true },
+      { id: 3, x: 424, y: 744, w: 200, h: 280 }, { id: 4, x: 648, y: 792, w: 224, h: 232 },
+      { id: 5, x: 424, y: 48, w: 384, h: 496 }, { id: 7, x: 48, y: 48, w: 312, h: 496 },
+      { id: 9, x: 896, y: 600, w: 336, h: 424 }, { id: 10, x: 832, y: 48, w: 400, h: 496 },
+      { id: 12, x: 48, y: 1176, w: 312, h: 376 }, { id: 13, x: 424, y: 1080, w: 800, h: 472 },
+      { id: 14, x: 1280, y: 48, w: 584, h: 496 }, { id: 15, x: 1280, y: 600, w: 584, h: 424 }, { id: 16, x: 1280, y: 1080, w: 584, h: 472 },
+      { id: 17, x: 1920, y: 48, w: 440, h: 496 }, { id: 18, x: 1920, y: 600, w: 440, h: 424 }, { id: 19, x: 1920, y: 1080, w: 440, h: 472 },
+      { id: 20, x: 2712, y: 48, w: 744, h: 496, region: 'oost' }, { id: 22, x: 2712, y: 600, w: 336, h: 424, region: 'oost' },
+      { id: 23, x: 3104, y: 600, w: 352, h: 296, region: 'oost' }, { id: 24, x: 2712, y: 1080, w: 744, h: 472, region: 'oost' },
+      { id: 26, x: 2712, y: 1608, w: 560, h: 264, region: 'oost' },
+    ],
+  },
+};
+// moeilijkheid: startgeld, verkoopprijzen, lopende kosten en rente
+AT.data.difficulties = {
+  easy:    { name: 'Makkelijk', money: 60000,     sell: 1.15, cost: 0.85, interest: 0.5, desc: 'Meer startgeld, betere prijzen, lagere kosten.' },
+  normal:  { name: 'Normaal',   money: 20000,     sell: 1,    cost: 1,    interest: 1,   desc: 'Zoals het spel bedoeld is.' },
+  hard:    { name: 'Moeilijk',  money: 8000,      sell: 0.9,  cost: 1.15, interest: 1.5, desc: 'Weinig geld, lagere prijzen, hogere kosten en rente.' },
+  sandbox: { name: 'Sandbox',   money: 100000000, sell: 1,    cost: 1,    interest: 1,   allFields: true, desc: 'Alle velden en €100 miljoen: bouw en probeer alles uit. Prestaties tellen niet.' },
+};
+// welke kaart is gekozen (opgeslagen in de browser; een nieuw spel kan hem wijzigen)
+AT.data.mapId = (() => { try { return localStorage.getItem('agro-tycoon-2-map') || 'standaard'; } catch (e) { return 'standaard'; } })();
+if (!AT.data.maps[AT.data.mapId]) AT.data.mapId = 'standaard';
+AT.data.fields = AT.data.maps[AT.data.mapId].fields;
+
 // ha uit oppervlakte (1 px = 1 m → 10.000 px² = 1 ha), afgerond op 0,5
-AT.data.fields.forEach(f => {
+for (const m of Object.values(AT.data.maps)) m.fields.forEach(f => {
   f.ha = Math.max(0.5, Math.round((f.w * f.h) / 10000 * 2) / 2);
   f.cols = f.w / AT.data.CELL;
   f.rows = f.h / AT.data.CELL;

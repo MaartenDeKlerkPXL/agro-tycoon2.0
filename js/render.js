@@ -13,7 +13,7 @@ window.AT = window.AT || {};
   let lightCanvas, lctx;
   const view = { selected: 1, hover: null };
   const cam = { x: 340, y: 820, zoom: 2, free: false };
-  const MINI = { w: 210, scale: 210 / WW };
+  const MINI = { w: 250, scale: 250 / WW };
   const layers = {};
   let trees = [];
 
@@ -30,10 +30,12 @@ window.AT = window.AT || {};
       layers[def.id] = { canvas: c, ctx: g, vis: new Uint32Array(def.cols * def.rows).fill(0xffffffff) };
     }
     trees = placeTrees();
+    clearBuiltTrees();
+    AT.on('built', clearBuiltTrees);
     bg = paintBackground();
     AT.fx.init();
     AT.cellChanged = (id, i) => drawCell(id, i);
-    AT.on('reset', () => { if (AT.tutorial) AT.tutorial.render(); for (const id in layers) layers[id].vis.fill(0xffffffff); refreshAll(); AT.fx.reset(); cam.free = false; });
+    AT.on('reset', () => { if (AT.tutorial) AT.tutorial.render(); trees = placeTrees(); for (const id in layers) layers[id].vis.fill(0xffffffff); refreshAll(); AT.fx.reset(); cam.free = false; });
     new ResizeObserver(resize).observe(canvas);
     resize();
     refreshAll();
@@ -99,7 +101,7 @@ window.AT = window.AT || {};
 
   function placeTrees() {
     const rnd = rng(4242), list = [];
-    for (let k = 0; k < 14000 && list.length < 700; k++) {
+    for (let k = 0; k < 20000 && list.length < 950; k++) {
       const x = rnd() * WW, y = rnd() * WH;
       const variant = Math.floor(rnd() * 9);
       const R = SP().treeSprite(variant).R;
@@ -117,6 +119,14 @@ window.AT = window.AT || {};
       list.push({ x, y, variant, R, seed: k });
     }
     return list;
+  }
+
+  function clearBuiltTrees() {
+    for (const b of AT.state.buildings || []) {
+      const fp = G().footprint(b.type, b.x, b.y);
+      const r = { x: fp.x, y: fp.y, w: fp.w + fp.pw, h: fp.h };
+      trees = trees.filter(t => !(t.x > r.x - 8 && t.x < r.x + r.w + 8 && t.y > r.y - 8 && t.y < r.y + r.h + 8));
+    }
   }
 
   function paintBackground() {
@@ -413,6 +423,7 @@ window.AT = window.AT || {};
       SP().tree(ctx, t.x, t.y, t.variant, 0, se, 0.25 + 0.75 * t.growth);
     }
     drawPlantations(se);
+    drawBuildings(state);
     for (const key of Object.keys(D.factories)) {
       const d = D.factories[key], f = state.factories[key];
       if (!f.owned) { SP().buildingLot(ctx, d.lot); continue; }
@@ -462,6 +473,33 @@ window.AT = window.AT || {};
     for (const b of AT.state.bales) if (b.x > vr.x0 && b.x < vr.x1 && b.y > vr.y0 && b.y < vr.y1) SP().bale(ctx, b.x, b.y, b.a);
   }
 
+  // zelf gebouwde gebouwen + spookbeeld tijdens het plaatsen
+  function drawBuildings(state) {
+    for (const b of state.buildings || []) drawBuilt(b.type, b.x, b.y, 1);
+    const pl = view.placing;
+    if (pl && pl.x != null) {
+      const ok = !G().placeProblem(pl.type, pl.x, pl.y);
+      ctx.globalAlpha = 0.6; drawBuilt(pl.type, pl.x, pl.y, 0.6); ctx.globalAlpha = 1;
+      const fp = G().footprint(pl.type, pl.x, pl.y);
+      ctx.strokeStyle = ok ? 'rgba(80,220,80,0.95)' : 'rgba(230,60,40,0.95)'; ctx.lineWidth = 2 / cam.zoom; ctx.setLineDash([5 / cam.zoom, 4 / cam.zoom]);
+      ctx.strokeRect(fp.x - 2, fp.y - 2, fp.w + fp.pw + 4, fp.h + 4); ctx.setLineDash([]);
+    }
+  }
+  function drawBuilt(type, x, y) {
+    const d = D.buildables[type];
+    if (type === 'silo') {
+      SP().pit(ctx, { x: x - 10, y: y + d.h + 6, w: d.w + 20, h: 14 });
+      const fill = G().siloCapacity() ? G().siloUsed() / G().siloCapacity() : 0;
+      SP().silo(ctx, x + d.w / 2, y + d.h / 2, d.w / 2, fill);
+    } else if (type === 'warehouse') {
+      SP().hall(ctx, x, y, d.w, d.h);
+    } else if (type === 'shed') {
+      ctx.fillStyle = '#9e9a8f'; ctx.fillRect(x - 6, y - 6, d.w + 30, d.h + 12);
+      SP().barn(ctx, { x, y, w: d.w, h: d.h }, '#5d6d7e');
+      SP().fuelPump(ctx, x + d.w + 8, y + d.h / 2);
+    }
+  }
+
   // klik op een stal of fabriek
   function buildingAt(x, y) {
     for (const key of Object.keys(D.animals)) if (inRect(x, y, D.animals[key].pen, 0)) return { kind: 'animal', key };
@@ -485,6 +523,7 @@ window.AT = window.AT || {};
       ...Object.entries(D.sellPoints).filter(([, sp]) => sp.lot).map(([, sp]) => ({ r: sp.lot, txt: sp.name, bg: 'rgba(63,110,140,0.92)' })),
       { r: { x: D.dock.x - 20, y: D.dock.y - 40, w: D.dock.w + 40, h: 54 }, txt: 'Laadperron (vrachtwagen)', bg: 'rgba(0,0,0,0.55)', small: true },
       { r: { x: D.fuelPump.x - 30, y: D.fuelPump.y - 30, w: 60, h: 44 }, txt: 'Diesel (T)', bg: 'rgba(192,57,43,0.9)', small: true },
+      ...(state.buildings || []).map(b => { const d = D.buildables[b.type]; return { r: { x: b.x - 10, y: b.y - 6, w: d.w + 30, h: d.h + 30 }, txt: d.name, bg: 'rgba(0,0,0,0.55)', small: true }; }),
       ...Object.keys(D.factories).filter(k => state.factories[k].owned && AT.farm.recipes(k).some(r => Object.keys(r.in).some(g => AT.farm.factoryAccepts(k, g)))).map(k => {
         const p = AT.farm.factoryPit(k); return { r: { x: p.x - 10, y: p.y - 30, w: p.w + 20, h: 44 }, txt: 'Stortplaats (U)', bg: 'rgba(0,0,0,0.55)', small: true };
       }),
@@ -1334,5 +1373,7 @@ window.AT = window.AT || {};
   AT.render = {
     init, draw, view, cam, screenToWorld, eventPos, fieldAt, zoomAt, centerOn, buildingAt,
     inMinimap, minimapToWorld, refreshAll, trees: () => trees,
+    // bomen onder een nieuw gebouw weghalen
+    clearTrees(r) { trees = trees.filter(t => !(t.x > r.x - 6 && t.x < r.x + r.w + 6 && t.y > r.y - 6 && t.y < r.y + r.h + 6)); },
   };
 })();

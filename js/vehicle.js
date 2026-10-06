@@ -24,7 +24,7 @@ window.AT = window.AT || {};
     if (!main) return null;
     const impl = main.impl ? G().machine(main.impl) : null;
     const mainDef = D.machines[main.type];
-    const toolDef = mainDef.kind === 'harvester' ? mainDef : impl ? D.machines[impl.type] : null;
+    const toolDef = mainDef.kind === 'harvester' || mainDef.kind === 'fruitharvester' ? mainDef : impl ? D.machines[impl.type] : null;
     return { main, impl, mainDef, toolDef };
   }
 
@@ -44,6 +44,7 @@ window.AT = window.AT || {};
   // ---------- botsen met gebouwen, hekken en bomen ----------
   let obst = null, obstAge = 99;
   AT.on('change', () => { obstAge = 99; });
+  AT.on('built', () => { obstAge = 99; obst = null; });
   function buildObstacles() {
     const s = AT.state, rects = [], circles = [], Y = D.yard, t = 2;
     // hek rond het erf, met de poort open
@@ -53,6 +54,12 @@ window.AT = window.AT || {};
     const S = D.silos;
     for (let i = 0; i <= s.siloLevel; i++) circles.push({ x: S.x + (i % S.perRow) * S.dx, y: S.y + Math.floor(i / S.perRow) * S.dy, r: S.r });
     circles.push({ x: D.fuelPump.x, y: D.fuelPump.y, r: 3 });
+    for (const b of s.buildings || []) {
+      const d = D.buildables[b.type];
+      if (b.type === 'silo') circles.push({ x: b.x + d.w / 2, y: b.y + d.h / 2, r: d.w / 2 });
+      else rects.push({ x: b.x, y: b.y, w: d.w, h: d.h });
+      if (b.type === 'shed') circles.push({ x: b.x + d.w + 8, y: b.y + d.h / 2, r: 3 });
+    }
     // weides: hek met een poort bovenaan
     for (const [key, a] of Object.entries(D.animals)) {
       const P = a.pen, g = AT.farm.penGate(key);
@@ -133,7 +140,7 @@ window.AT = window.AT || {};
     const r = rig();
     if (!r) { p.mode = 'foot'; return; }
 
-    const working = p.lowered && r.toolDef && r.toolDef.kind !== 'trailer';
+    const working = p.lowered && r.toolDef && r.toolDef.kind !== 'trailer' && r.toolDef.kind !== 'mixer';
     // een volle aanhanger maakt je trager
     const src = loadSource(r);
     const heavy = src && r.mainDef.kind === 'tractor' ? 1 - 0.25 * (src.load.tons / src.cap) : 1;
@@ -175,9 +182,15 @@ window.AT = window.AT || {};
       p.angle += (target - p.angle) * Math.min(1, dt * 3);
     }
 
+    // kopakker-automaat: GPS aan + werktuig omlaag = aan het eind van het veld zelf keren naar de volgende baan
+    if (p.autosteer && !p.headland) startHeadland(p, r);
+    if (p.headland && steerIn) { p.lowered = p.headland.wasLowered; p.headland = null; }   // zelf sturen = automaat uit
     const step = p.speed * dt;
-    const free = tryMove(p, p.x + Math.cos(p.angle) * step, p.y + Math.sin(p.angle) * step, RADIUS[r.mainDef.kind] || 6);
-    if (!free && Math.abs(p.speed) > 3) p.speed *= 0.5;
+    if (p.headland) driveHeadland(p, dt);
+    else {
+      const free = tryMove(p, p.x + Math.cos(p.angle) * step, p.y + Math.sin(p.angle) * step, RADIUS[r.mainDef.kind] || 6);
+      if (!free && Math.abs(p.speed) > 3) p.speed *= 0.5;
+    }
     if (bumpT > 0) bumpT -= dt;
     p.dist = (p.dist || 0) + step;
 
@@ -199,7 +212,12 @@ window.AT = window.AT || {};
       if (cap && r.main.fuel > cap * 0.2) r.main.lowWarned = false;
     }
     if (dead && throttle) warn(r.main.broken ? 'Deze machine is kapot. Laat hem repareren in de Garage.' : 'De tank is leeg! Bel de tankservice in de Garage of loop naar de dieselpomp.');
-    if (working && p.speed > 3) workUnderTool(p, r);
+    if (working && p.speed > 3) {
+      workUnderTool(p, r);
+      const hr = G().hour();
+      if (r.mainDef.kind === 'harvester' && (hr < 4 || hr >= 23)) AT.state.stats.nightHarvest = true;
+    }
+    if (Math.abs(p.speed) > 3 && (AT.state.snow || 0) > 0.6) AT.state.stats.snowDrive = true;
     if (Math.abs(p.speed) > 0.5) pickupBales(r);
     // rijden over natte akkers verdicht de grond (onder de machine en de aanhanger/het werktuig)
     if (Math.abs(p.speed) > 1 && r.mainDef.kind !== 'truck') {
@@ -207,6 +225,77 @@ window.AT = window.AT || {};
       if (r.impl && !r.mainDef.tracks) { const h = G().hitchPoint(r.main); G().compactAt(h.x - Math.cos(p.angle) * 6, h.y - Math.sin(p.angle) * 6); }
     }
     if (p.unloading) unload(p, r, dt);
+  }
+
+  // ---------- voermengwagen: ruwvoer + graan + eiwit = mengvoer ----------
+  function mixFeed(m) {
+    const cap = G().loadCap(m), s = AT.state;
+    const parts = [[['silage', 'hay'], 0.5], [['corn', 'barley', 'wheat', 'oats'], 0.3], [['soy', 'beans'], 0.2]];
+    const pick = keys => keys.slice().sort((a, b) => G().stock(b) - G().stock(a))[0];
+    const plan = parts.map(([keys, share]) => { const k = pick(keys); return { k, want: cap * share, have: G().stock(k) }; });
+    if (plan[0].have < 0.1 || plan[1].have < 0.1) { warn('Voor mengvoer heb je ruwvoer (kuilvoer of hooi) én graan nodig.'); return; }
+    // wat ontbreekt aan eiwit vullen we aan met graan
+    let total = 0; const used = [];
+    plan.forEach((pl, i) => {
+      let amt = Math.min(pl.want, pl.have);
+      if (i === 1) amt = Math.min(pl.have, pl.want + Math.max(0, plan[2].want - plan[2].have));
+      if (amt > 0.01) { G().take(pl.k, amt); total += amt; used.push(`${AT.fmtTons(amt)} ${G().goodName(pl.k)}`); }
+    });
+    m.load = { crop: 'feedmix', tons: total };
+    AT.emit('sfx', 'hitch');
+    G().log(`Voermengwagen gemengd: ${AT.fmtTons(total)} mengvoer (${used.join(', ')}). Breng het naar een voerbak (${kn('unload')}).`, 'good');
+    AT.emit('change');
+  }
+
+  // ---------- fruit oogsten met een druivenoogster of boomschudder ----------
+  let pickMsgT = 0, pickAcc = 0;
+  function pickFruit(p, r) {
+    const key = r.mainDef.harvests, d = D.plantations[key], pl = AT.farm.plantation(key);
+    if (!pl.owned) { warn(`Koop eerst de ${d.name.toLowerCase()} (tab Bedrijf).`); return; }
+    if (pl.phase !== 'ripe') { warn(`De ${d.name.toLowerCase()} is nog niet rijp (oogst in ${d.harvest.map(m => D.months[m].toLowerCase()).join(', ')}).`); return; }
+    const half = r.mainDef.width / 2 + 3, fx = p.x + Math.cos(p.angle) * 10, fy = p.y + Math.sin(p.angle) * 10;
+    for (const plant of pl.plants) {
+      if (plant.picked || plant.fruit < 1 || Math.hypot(plant.x - fx, plant.y - fy) > half) continue;
+      const got = AT.farm.pick(key, plant, false);
+      if (!got) { warn('De opslagloods is vol.'); return; }
+      pickAcc += got;
+      if (AT.fx) AT.fx.stream({ x: plant.x, y: plant.y }, { x: p.x, y: p.y }, G().goodColor(d.product), 0.05);
+    }
+    pickMsgT += 1 / 60;
+    if (pickAcc > 0 && pickMsgT > 4) { G().log(`${r.mainDef.name}: +${AT.fmtAmount(pickAcc, d.product)} ${G().goodName(d.product)}.`, 'good'); pickAcc = 0; pickMsgT = 0; }
+  }
+
+  // ---------- kopakker-automaat ----------
+  const inside = (pt, f) => pt.x > f.x && pt.x < f.x + f.w && pt.y > f.y && pt.y < f.y + f.h;
+  function startHeadland(p, r) {
+    if (!r.toolDef || r.toolDef.kind === 'trailer' || !p.lowered || p.speed < 1) return;
+    const f = D.fields.find(fd => inside(p, fd));
+    if (!f) return;
+    if (p.hlField !== f.id) { p.hlField = f.id; p.hlSide = 0; }
+    const ax = Math.round(p.angle / (Math.PI / 2)) * (Math.PI / 2);
+    const dx = Math.cos(ax), dy = Math.sin(ax), px = -dy, py = dx;   // px/py = rechts van de rijrichting
+    if (inside({ x: p.x + dx * 10, y: p.y + dy * 10 }, f)) return;    // nog niet bij de kopakker
+    const W = Math.max(8, r.toolDef.width || 16);
+    const ok = side => inside({ x: p.x + px * side * W - dx * 6, y: p.y + py * side * W - dy * 6 }, f);
+    let side = p.hlSide ? -p.hlSide : (ok(1) ? 1 : -1);
+    if (!ok(side)) side = -side;
+    if (!ok(side)) { warn('Einde van het veld: alle banen gedaan.'); return; }
+    const cx = p.x + px * side * W / 2, cy = p.y + py * side * W / 2;
+    p.headland = { cx, cy, r: W / 2, a0: Math.atan2(p.y - cy, p.x - cx), side, t: 0, end: ax + Math.PI, wasLowered: p.lowered };
+    p.lowered = false;   // werktuig omhoog in de bocht
+  }
+  function driveHeadland(p, dt) {
+    const h = p.headland;
+    p.speed = Math.min(p.speed, 9 * PX);
+    if (p.speed < 0.3) return;
+    h.t = Math.min(1, h.t + p.speed * dt / (Math.PI * h.r));
+    const th = h.a0 + h.side * Math.PI * h.t;
+    p.x = h.cx + Math.cos(th) * h.r; p.y = h.cy + Math.sin(th) * h.r;
+    p.angle = th + h.side * Math.PI / 2;
+    if (h.t >= 1) {
+      p.angle = Math.atan2(Math.sin(h.end), Math.cos(h.end));
+      p.lowered = h.wasLowered; p.hlSide = h.side; p.headland = null;
+    }
   }
 
   // ---------- lossen (U) ----------
@@ -220,7 +309,7 @@ window.AT = window.AT || {};
     if (r.mainDef.kind === 'harvester') {
       return { m: r.main, load: G().getLoad(r.main), cap: G().loadCap(r.main), point: rot(p.x, p.y, p.angle, -2, -26), kind: 'harvester' };
     }
-    if (r.impl && r.toolDef.kind === 'trailer') {
+    if (r.impl && (r.toolDef.kind === 'trailer' || r.toolDef.kind === 'mixer')) {
       return { m: r.impl, load: G().getLoad(r.impl), cap: G().loadCap(r.impl), point: G().trailerPose(r.impl).rear, kind: 'trailer' };
     }
     return null;
@@ -249,6 +338,7 @@ window.AT = window.AT || {};
       if (!AT.farm.factoryAccepts(key, src.load.crop)) return { kind: 'refuse', point: pit, name: `De ${D.factories[key].name.toLowerCase()}`, verb: 'gebruikt' };
       return { kind: 'factory', key, point: { x: pit.x + pit.w / 2, y: pit.y + pit.h / 2 } };
     }
+    for (const pit of G().siloPits()) if (inRect(src.point, pit, 8)) return { kind: D.crops[src.load.crop] ? 'silo' : 'store', point: { x: pit.x + pit.w / 2, y: pit.y + pit.h / 2 } };
     if (inRect(src.point, D.siloPit, 10)) return { kind: D.crops[src.load.crop] ? 'silo' : 'store', point: { x: D.siloPit.x + D.siloPit.w / 2, y: D.siloPit.y + D.siloPit.h / 2 } };
     const sp = sellPointAt(src.point);
     if (sp) {
@@ -277,6 +367,12 @@ window.AT = window.AT || {};
     const src = loadSource(r);
     if (!src) { warn('Koppel eerst een aanhanger aan (F) om graan te vervoeren.'); return; }
     if (p.unloading) { p.unloading = false; finishSale(); return; }
+    // voermengwagen: leeg bij de stortput of het laadperron = voer mengen
+    if (r.toolDef.kind === 'mixer' && src.load.tons < 0.01) {
+      if (inRect(src.point, D.siloPit, 14) || inRect(src.point, D.dock, 14) || Math.hypot(p.x - D.siloPit.x - D.siloPit.w / 2, p.y - D.siloPit.y) < 60) mixFeed(r.impl);
+      else warn('Rij met de voermengwagen naar de stortput bij de silo of het laadperron om voer te mengen.');
+      return;
+    }
     if (src.load.tons < 0.01) { warn(src.kind === 'harvester' ? 'De bunker is leeg.' : 'De aanhanger is leeg.'); return; }
     p.unloading = true;
   }
@@ -378,6 +474,7 @@ window.AT = window.AT || {};
 
   // Bewerk alle cellen onder het werktuig (achter de tractor, of het maaibord vóór de maaidorser)
   function workUnderTool(p, r) {
+    if (r.toolDef.kind === 'fruitharvester') return pickFruit(p, r);
     const op = OP[r.toolDef.kind];
     const cos = Math.cos(p.angle), sin = Math.sin(p.angle);
     const offset = r.toolDef.kind === 'harvester' ? 15 : r.toolDef.kind === 'manure' ? -31 : -17;
@@ -444,7 +541,7 @@ window.AT = window.AT || {};
     const p = AT.state.player, r = rig();
     if (!r) return;
     if (!r.toolDef) { warn('Geen werktuig aangekoppeld. Rij achteruit tegen een werktuig en druk F.'); return; }
-    if (r.toolDef.kind === 'trailer') { warn('Een aanhanger hoeft niet omlaag. Druk U om te lossen.'); return; }
+    if (r.toolDef.kind === 'trailer' || r.toolDef.kind === 'mixer') { warn(`Een ${r.toolDef.kind === 'mixer' ? 'voermengwagen' : 'aanhanger'} hoeft niet omlaag. Druk ${kn('unload')} om te lossen of te mengen.`); return; }
     p.lowered = !p.lowered;
   }
 
@@ -494,8 +591,8 @@ window.AT = window.AT || {};
       else if (t && t.kind !== 'refuse') prompt = `${kn('unload')} = lossen ${where(t)}`;
       else if (t) prompt = `${t.name} ${t.verb || 'koopt'} dit niet`;
     }
-    const toolName = r.toolDef && r.toolDef.kind === 'harvester' ? 'Maaibord' : r.toolDef && r.toolDef.kind !== 'trailer' ? r.toolDef.name : null;
-    if (!prompt && Math.hypot(p.x - D.fuelPump.x, p.y - D.fuelPump.y) < 22 && G().fuelOf(r.main) < G().fuelCap(r.main) - 1) prompt = `${kn('refuel')} = tanken`;
+    const toolName = r.toolDef && r.toolDef.kind === 'harvester' ? 'Maaibord' : r.toolDef && r.toolDef.kind === 'fruitharvester' ? 'Oogstkop' : r.toolDef && r.toolDef.kind !== 'trailer' && r.toolDef.kind !== 'mixer' ? r.toolDef.name : null;
+    if (!prompt && G().nearPump(p.x, p.y) && G().fuelOf(r.main) < G().fuelCap(r.main) - 1) prompt = `${kn('refuel')} = tanken`;
     const cap = G().fuelCap(r.main), fuel = G().fuelOf(r.main), wear = r.main.wear || 0;
     return {
       mode: 'drive',
@@ -509,7 +606,7 @@ window.AT = window.AT || {};
       loadFrac: src ? src.load.tons / src.cap : 0,
       extra: r.toolDef && r.toolDef.kind === 'manure' ? `Mest: ${AT.fmtTons(AT.state.goods.manure)}` : r.toolDef && r.toolDef.kind === 'spreader' ? `Kunstmest: ${AT.fmtMoney(D.fertCostPerHa)}/ha`
         : r.toolDef && r.toolDef.kind === 'lime' ? `Kalk: ${AT.fmtMoney(D.limeCostPerHa)}/ha` : r.toolDef && r.toolDef.kind === 'sprayer' ? `Spuiten: ${AT.fmtMoney(D.sprayCostPerHa)}/ha (alleen groeiend gewas)` : null,
-      fuel: cap ? `Diesel: ${Math.round(fuel)} / ${cap} L${wear > 0.05 ? ` · slijtage ${Math.round(wear * 100)}%` : ''}${r.main.gps ? ` · GPS ${p.autosteer ? 'AAN' : 'uit'} (${kn('gps')})` : ''}` : null,
+      fuel: cap ? `Diesel: ${Math.round(fuel)} / ${cap} L${wear > 0.05 ? ` · slijtage ${Math.round(wear * 100)}%` : ''}${r.main.gps ? ` · GPS ${p.autosteer ? (p.headland ? 'keert…' : 'AAN + kopakker') : 'uit'} (${kn('gps')})` : ''}` : null,
       fuelLow: cap && fuel < cap * 0.15 || wear > 0.85 || r.main.broken,
       prompt,
       warn: warnTime > 0 ? warnText : '',
@@ -530,11 +627,11 @@ window.AT = window.AT || {};
     if (K(e, 'gps') && p.mode === 'drive') {
       const r = rig();
       if (!r.main.gps) warn('Deze machine heeft geen GPS. Koop het in de Garage.');
-      else { p.autosteer = !p.autosteer; G().log(p.autosteer ? 'GPS aan: laat het stuur los en hij rijdt kaarsrecht.' : 'GPS uit.'); }
+      else { p.autosteer = !p.autosteer; p.headland = null; p.hlSide = 0; G().log(p.autosteer ? 'GPS aan: laat het stuur los en hij rijdt kaarsrecht. Met het werktuig omlaag keert hij aan het eind van het veld zelf naar de volgende baan.' : 'GPS uit.'); }
     }
     if (K(e, 'refuel') && p.mode === 'drive') {
       const r = rig();
-      if (Math.hypot(p.x - D.fuelPump.x, p.y - D.fuelPump.y) > 22) warn('Rij naar de dieselpomp op het erf (naast de stortput) om te tanken.');
+      if (!G().nearPump(p.x, p.y)) warn('Rij naar een dieselpomp (op het erf of bij een eigen werkplaats) om te tanken.');
       else if (!G().refuel(r.main)) warn('De tank is al vol.');
     }
     if (K(e, 'chaser')) { const res = AT.staff.toggleChaser(); if (typeof res === 'string') warn(res); }

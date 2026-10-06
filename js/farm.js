@@ -391,10 +391,10 @@ window.AT = window.AT || {};
   }
   const ripeCount = key => plantation(key).plants.filter(p => p.fruit >= 1 && !p.picked).length;
   // één plant plukken; geeft terug hoeveel er geplukt is
-  function pick(key, plant, paid) {
+  function pick(key, plant, paid, cost = D.plantations[key].pickCost) {
     const d = D.plantations[key];
     if (plant.picked || plant.fruit < 1) return 0;
-    if (paid) { if (S().money < d.pickCost) return 0; G().spend(d.pickCost, 'loonwerk'); }
+    if (paid) { if (S().money < cost) return 0; G().spend(cost, 'loonwerk'); }
     const amount = d.perPlant * (0.9 + Math.random() * 0.2);
     const added = G().addGood(d.product, amount);
     if (added <= 0) return 0;
@@ -404,16 +404,20 @@ window.AT = window.AT || {};
     S().stats.picked = (S().stats.picked || 0) + added;
     return added;
   }
+  // eigen oogstmachine (vrij) = goedkoper dan plukkers
+  const harvestMachine = key => S().machines.find(m => D.machines[m.type].harvests === key && !m.busy && !m.broken);
   function pickAll(key) {
-    const d = D.plantations[key], pl = plantation(key);
+    const d = D.plantations[key], pl = plantation(key), mach = harvestMachine(key);
+    const cost = mach ? d.machineCost : d.pickCost;
     let n = 0, amount = 0;
     for (const p of pl.plants) {
       if (p.fruit < 1 || p.picked) continue;
-      const got = pick(key, p, true);
+      const got = pick(key, p, true, cost);
       if (!got) break;
       n++; amount += got;
     }
-    G().log(n ? `Plukkers: ${n} ${n === 1 ? d.plant : d.plants} geplukt, ${AT.fmtAmount(amount, d.product)} ${G().goodName(d.product)} (${AT.fmtMoney(n * d.pickCost)}).`
+    if (mach && n) G().addWear(mach, n * (key === 'orchard' ? 0.05 : 0.005));
+    G().log(n ? `${mach ? 'Werknemer met de ' + D.machines[mach.type].name.toLowerCase() : 'Plukkers'}: ${n} ${n === 1 ? d.plant : d.plants} geoogst, ${AT.fmtAmount(amount, d.product)} ${G().goodName(d.product)} (${AT.fmtMoney(n * cost)}).`
       : 'Niets geplukt: niets rijp, geen geld of de opslagloods is vol.', n ? 'good' : 'warn');
     AT.emit('change');
   }
@@ -462,5 +466,5 @@ window.AT = window.AT || {};
     updateWoodlot(dtHours);
   }
 
-  AT.farm = { factoryPit, factoryAccepts, deliverToFactory, penGate, buffer, animal, capacity, troughRect, troughTons, expandBarn, expandCost, toggleAutoFeed, fillTrough, callVet, vetCost, plantation, buyPlantation, pick, pickAll, nearestRipe, ripeCount, update, greenhouses, buyGreenhouse, setGreenhouseCrop, woodlot, buyWoodlot, cutTree, nearestTree, cutAll, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName, recipes };
+  AT.farm = { harvestMachine, factoryPit, factoryAccepts, deliverToFactory, penGate, buffer, animal, capacity, troughRect, troughTons, expandBarn, expandCost, toggleAutoFeed, fillTrough, callVet, vetCost, plantation, buyPlantation, pick, pickAll, nearestRipe, ripeCount, update, greenhouses, buyGreenhouse, setGreenhouseCrop, woodlot, buyWoodlot, cutTree, nearestTree, cutAll, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName, recipes };
 })();
