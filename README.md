@@ -5,7 +5,16 @@ Een farming tycoon die je in de browser speelt. Hij is geïnspireerd op [Agro Ty
 ## Spelen
 **Live:** https://maartendeklerkpxl.github.io/agro-tycoon2.0/
 
-Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
+Lokaal spelen of eraan werken (Node 22):
+```
+npm install
+npm run dev        # spel op http://localhost:5173 met automatisch herladen
+npm run build      # bouwt de site in dist/ (zo gaat hij ook live)
+npm test           # unit tests van de spellogica
+npm run test:browser   # speltest in een echte browser (Chromium)
+npm run balans     # balans-spreadsheet: docs/BALANS.md + docs/balans/*.csv
+```
+Sinds de overstap naar ES-modules + Vite werkt `index.html` dubbelklikken niet meer; gebruik de live link of `npm run dev`.
 
 **Besturing**
 | Toets | Actie |
@@ -54,10 +63,16 @@ Of open `index.html` lokaal in je browser (desktop). Een server is niet nodig.
 24. **Cultivator** (snel), **rol** (+6%) en **stenenraper** (ploegen haalt stenen boven). Breng oogst met een kipper naar de **stortplaats van je eigen fabriek** voor 10% meer product
 25. **Personeel** heeft werktijden, een vrije dag per week en wordt moe. Bij het oogsten rijdt een tweede werknemer met de kipper mee; werknemers vullen ook voerbakken en rijden mest uit
 26. Nieuw? Een **uitleg** met pijlen helpt je de eerste oogst binnen te halen (opnieuw tonen via ⚙️)
+27. **Kopakker-automaat**: met GPS aan en het werktuig omlaag keert je tractor aan het eind van het veld zelf naar de volgende baan
+28. **Druivenoogster** en **boomschudder**, en een **voermengwagen** die kuilvoer/hooi + graan + soja mengt tot mengvoer
+29. **Oostpolder**: 7 vruchtbare velden achter de haven. **Zelf bouwen** (tab Bedrijf): extra silo, opslagloods of werkplaats met dieselpomp waar je maar wilt
+30. **Nieuw spel** (⚙️): kies de kaart (Gemengd bedrijf of Grootschalig) en de moeilijkheid (makkelijk, normaal, moeilijk of sandbox). **🏆 Prestaties** blijven bewaard
 
 ## Projectstructuur
 ```
 index.html        pagina + layout
+vite.config.js    Vite-instellingen (build naar dist/)
+js/index.js       startpunt: importeert alle onderdelen in de juiste volgorde
 css/style.css     opmaak
 js/data.js        ALLE content: gewassen, machines, velden, silo, doelen
 js/game.js        spellogica (cellen, bodem, taken, economie, contracten, bank, opslaan)
@@ -71,8 +86,12 @@ js/render.js      tekenen: wereld, camera, velden, licht, minimap, HUD
 js/ui.js          zijpaneel, topbalk, logboek
 js/keys.js        instelbare toetsen
 js/tutorial.js    uitleg bij de eerste keer (stappen + pijl op de kaart)
+js/achievements.js prestaties met meldingen
 js/audio.js       geluid (alles live opgewekt): motoren, omgeving, effecten, muziek
 js/main.js        opstarten + game loop
+tests/            unit tests (node --test) en de browsertest
+tools/balans.mjs  rekent de balans uit (gewassen, machines, fabrieken, dieren, fruit)
+docs/BALANS.md    uitkomst van de balans (+ CSV's in docs/balans/)
 docs/ONDERZOEK.md onderzoek naar Agro Tycoon en concurrenten
 todo.md           roadmap met alle extra's
 ```

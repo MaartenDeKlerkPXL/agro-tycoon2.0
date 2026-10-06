@@ -65,8 +65,8 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Botsen met gebouwen, hekken (erf en weides, met poorten) en bomen
 - [x] Langzamer rijden over akkers en gras dan over de weg (rupsen hebben er minder last van)
 - [x] GPS-upgrade per machine: G = houdt zelf een kaarsrechte lijn
-- [ ] Kopakker-automaat (GPS keert zelf aan het eind van het veld)
-- [ ] Werknemers gebruiken de dieseltank en kunnen pech krijgen
+- [x] Kopakker-automaat: met GPS + werktuig omlaag keert hij zelf naar de volgende baan
+- [x] Werknemersmachines verbruiken diesel, slijten tijdens de klus en kunnen pech krijgen (monteur komt)
 
 ## 👷 Fase 2: Personeel en automatisering
 - [x] Vaste werknemers aannemen (dagloon, eigen snelheid en zuinigheid; ervaring maakt ze sneller)
@@ -111,7 +111,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Regen vertraagt het drogen van hooi
 - [x] Echte balen op het veld: ophalen met tractor + kipper (eroverheen rijden) of laten ophalen
 - [x] Boomgaard (appels) en wijngaard (druiven → wijnmakerij): plukken met H of plukkers inhuren
-- [ ] Fruit- en druivenoogstmachine
+- [x] Druivenoogster en boomschudder (zelf rijden, of werknemer laat oogsten voor minder dan plukkers)
 
 **Waarom zou je niet altijd het duurste gewas kiezen?** Elk gewas moet een eigen reden hebben:
 - [x] **Seizoenen**: niet elk gewas mag in elk seizoen gezaaid worden (tarwe in lente/herfst, gerst en maïs in lente/zomer)
@@ -136,7 +136,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Hooi als voer voor koeien en schapen
 - [x] Voer maken van eigen oogst: sleufsilo (kuilvoer) en veevoermengerij (mengvoer) geven meer productie
 - [x] Dierengezondheid (ziektes, dierenarts), jongen en stallen uitbreiden (×2, ×3 plek)
-- [ ] Voermengwagen als eigen machine
+- [x] Voermengwagen: mengt bij de silo kuilvoer/hooi + graan + soja tot mengvoer en lost in de voerbak
 
 ## 🏭 Fase 6: Productie en economie
 - [x] Fabrieken: graanmolen (meel), bakkerij (brood van meel + eieren), kaasmakerij (kaas van melk), brouwerij (bier van gerst)
@@ -154,10 +154,10 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Grond pachten in plaats van kopen (huur per dag, later alsnog kopen)
 
 ## 🗺️ Fase 7: Wereld en progressie
-- [ ] Nog grotere kaart / meerdere kaarten
-- [ ] Gebouwen zelf plaatsen (silo's, schuren, stallen)
-- [ ] Sandbox-modus + moeilijkheidsgraden
-- [ ] Prestaties (achievements)
+- [x] Grotere kaart (Oostpolder, 7 extra velden) en een tweede kaart (Grootschalig) te kiezen bij een nieuw spel
+- [x] Zelf bouwen: extra silo (met stortput), opslagloods en werkplaats met dieselpomp, overal op gras
+- [x] Moeilijkheid (makkelijk/normaal/moeilijk) en sandbox (alle velden, €100 miljoen)
+- [x] 28 prestaties met meldingen, bewaard over spellen heen
 
 ## 🎨 Fase 8: Presentatie en gemak
 - [x] Geluid: motoren, werktuigen, wind/regen/onweer, vogels, krekels, dieren, effecten en rustige muziek (🔊-knop, M = dempen)
@@ -168,7 +168,7 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Toetsen zelf instellen (pijltjes werken altijd)
 
 ## 🛠️ Techniek
-- [ ] Unit tests voor `game.js` (economie, cycli) en een vaste speltest in de browser
+- [x] Unit tests (`npm test`, 13 tests, draaien ook bij elke deploy) en een vaste speltest in de browser (`npm run test:browser`)
 - [x] Opslag behouden bij updates (oude saves worden omgezet, met reservekopie)
-- [ ] Balans-spreadsheet (verdienen per uur per gewas/machine)
-- [ ] Overstappen op ES-modules + Vite wanneer het project groter wordt
+- [x] Balans-spreadsheet (`npm run balans` → docs/BALANS.md + CSV's); kuilvoer en olie daarmee rechtgetrokken
+- [x] ES-modules + Vite (`npm run dev` / `npm run build`); GitHub Pages bouwt met Vite

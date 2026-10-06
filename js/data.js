@@ -4,7 +4,7 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 12,
+  version: 13,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
   world: { w: 3500, h: 1900 },   // met de Oostpolder (velden 20–26) achter de haven
@@ -157,7 +157,7 @@ AT.data = {
     bread:  { name: 'Brood',  unit: 'st', basePrice: 1.4,  decimals: 0, perPallet: 800 },
     cheese: { name: 'Kaas',   unit: 'kg', basePrice: 9,    decimals: 0, perPallet: 400 },
     beer:   { name: 'Bier',   unit: 'L',  basePrice: 1.2,  decimals: 0, perPallet: 1000 },
-    oil:    { name: 'Olie',   unit: 'L',  basePrice: 1.5,  decimals: 0, perPallet: 1000 },
+    oil:    { name: 'Olie',   unit: 'L',  basePrice: 1.8,  decimals: 0, perPallet: 1000 },
     sugar:  { name: 'Suiker', unit: 'kg', basePrice: 0.6,  decimals: 0, perPallet: 1000 },
     chips:  { name: 'Chips',  unit: 'zakken', basePrice: 0.35, decimals: 0, perPallet: 1500 },
     hay:    { name: 'Hooi',   unit: 't',  basePrice: 120,  decimals: 1, perPallet: 1, cheapMonth: 3, color: '#cdb86a' },
@@ -167,7 +167,7 @@ AT.data = {
     lettuce:  { name: 'Sla',     unit: 'krop', basePrice: 0.8, decimals: 0, perPallet: 1000, cheapMonth: 3 },
     apples:   { name: 'Appels',  unit: 'kg', basePrice: 0.45, decimals: 0, perPallet: 1000, cheapMonth: 6, color: '#c0392b' },
     grapes:   { name: 'Druiven', unit: 'kg', basePrice: 0.9,  decimals: 0, perPallet: 1000, cheapMonth: 7, color: '#6c3483' },
-    silage:   { name: 'Kuilvoer', unit: 't', basePrice: 70,  decimals: 1, perPallet: 2, color: '#7a8f3a' },
+    silage:   { name: 'Kuilvoer', unit: 't', basePrice: 180, decimals: 1, perPallet: 2, color: '#7a8f3a' },
     feedmix:  { name: 'Mengvoer', unit: 't', basePrice: 330, decimals: 1, perPallet: 1, color: '#c49a5a' },
     wine:     { name: 'Wijn',    unit: 'L',  basePrice: 3.8,  decimals: 0, perPallet: 600, color: '#7b241c' },
   },

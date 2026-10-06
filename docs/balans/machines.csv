@@ -1,0 +1,24 @@
+﻿Machine;Soort;Prijs €;ha per uur;Werkbreedte m;Werksnelheid km/u;Trekker;Kosten €/uur (diesel + loonwerker);Kosten €/ha;Prijs per ha/uur capaciteit €
+Ploeg 3-schaar;plow;4000;0,5;16;8;Oldtimer 50 pk;30;59,2;8000
+Ploeg 6-schaar;plow;14000;1,1;32;10;Tractor 150 pk;49;44,4;12727
+Ploeg 10-schaar;plow;30000;2;52;11;Tractor 300 pk;71;35,6;15000
+Cultivator 4 m;cultivator;11000;1,6;32;14;Tractor 75 pk;36;22,5;6875
+Cultivator 9 m;cultivator;36000;3,6;72;16;Tractor 300 pk;71;19,8;10000
+Rol 6 m;roller;6000;2,4;48;15;Oldtimer 50 pk;30;12,3;2500
+Stenenraper;stonepicker;14000;1;20;8;Tractor 75 pk;36;36;14000
+Zaaimachine 3 m;seeder;6000;0,7;24;12;Oldtimer 50 pk;30;42,3;8571
+Zaaimachine 6 m;seeder;20000;1,5;48;14;Tractor 150 pk;49;32,5;13333
+Aardappelpootmachine;seeder;18000;0,6;12;8;Tractor 75 pk;36;60;30000
+Bietenzaaier;seeder;16000;0,9;18;10;Tractor 75 pk;36;40;17778
+Maaier 3 m;mower;9000;1,2;22;14;Oldtimer 50 pk;30;24,7;7500
+Schudder;tedder;7000;1,6;30;14;Oldtimer 50 pk;30;18,5;4375
+Balenpers;baler;28000;0,8;10;10;Tractor 75 pk;36;45;35000
+Kunstmeststrooier;spreader;7000;2;40;15;Oldtimer 50 pk;30;14,8;3500
+Mestverspreider;manure;12000;0,8;20;10;Tractor 75 pk;36;45;15000
+Kalkstrooier;lime;8000;1,8;36;14;Tractor 75 pk;36;20;4444
+Spuitmachine 24 m;sprayer;15000;3;48;16;Tractor 75 pk;36;12;5000
+Maaidorser (oud);harvester;40000;0,5;24;7;zelfrijdend;55;110,4;80000
+Maaidorser 6 m;harvester;120000;1,2;40;8;zelfrijdend;76;63,3;100000
+Maaidorser 9 m;harvester;260000;2,2;56;9;zelfrijdend;100;45,5;118182
+Aardappelrooier;harvester;90000;0,6;16;5;zelfrijdend;60;100;150000
+Bietenrooier;harvester;150000;0,7;24;6;zelfrijdend;76;108,6;214286

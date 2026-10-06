@@ -1,0 +1,16 @@
+﻿Fabriek;Bouwprijs €;In;Uit;Waarde in €;Waarde uit €;Energie €;Marge per keer €;Keer per dag;Marge per dag €;Terugverdientijd (dagen)
+Graanmolen;45000;1 Tarwe;0.85 Meel;220;408;20;168;8;1344;33,5
+Bakkerij;70000;0.2 Meel + 40 Eieren;250 Brood;120;350;10;220;6;1320;53
+Kaasmakerij;55000;200 Melk;22 Kaas;110;198;5;83;8;664;82,8
+Brouwerij;60000;0.5 Gerst;300 Bier;100;360;20;240;5;1200;50
+Oliepers;50000;0.5 Koolzaad;200 Olie;225;360;15;120;6;720;69,4
+Oliepers (recept 2);50000;0.5 Zonnebloem;180 Olie;210;324;15;99;6;594;84,2
+Suikerfabriek;90000;5 Suikerbieten;800 Suiker;250;480;30;200;6;1200;75
+Zagerij;40000;2 Hout;1.5 Planken;140;390;15;235;6;1410;28,4
+Wijnmakerij;80000;150 Druiven;100 Wijn;135;380;25;220;8;1760;45,5
+Sleufsilo (kuilvoer);25000;1 Maïs;1.25 Kuilvoer;210;225;5;10;10;100;250
+Sleufsilo (kuilvoer) (recept 2);25000;0.8 Hooi;1 Kuilvoer;96;180;5;79;10;790;31,6
+Veevoermengerij;50000;0.5 Kuilvoer + 0.3 Gerst + 0.2 Soja;1 Mengvoer;230;330;10;90;8;720;69,4
+Veevoermengerij (recept 2);50000;0.5 Kuilvoer + 0.3 Haver + 0.2 Veldbonen;1 Mengvoer;219;330;10;101;8;808;61,9
+Veevoermengerij (recept 3);50000;0.5 Maïs + 0.3 Tarwe + 0.2 Soja;0.9 Mengvoer;251;297;10;36;8;288;173,6
+Chipsfabriek;75000;1 Aardappelen + 20 Olie;1200 Chips;176;420;20;224;6;1344;55,8

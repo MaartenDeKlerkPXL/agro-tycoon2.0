@@ -1,0 +1,13 @@
+﻿Gewas;Zaaimaanden;Groeidagen;Opbrengst t/ha;Basisprijs €/t;Zaaigoed €/ha;Omzet €/ha;Winst €/ha;Winst €/ha per groeidag;Bodem per oogst;Oogstmachine;Bijzonder
+Aardappelen;maa apr;4;30;140;600;4200;3600;900;−10%;potato;
+Gerst;maa apr mei jun;2;6,5;200;100;1300;1200;600;−6%;combine;
+Haver;maa apr mei;2;5,5;230;90;1265;1175;588;−4%;combine;
+Tarwe;maa apr sep okt;3;8;220;120;1760;1640;547;−8%;combine;winterhard
+Maïs;apr mei jun;5;11;210;220;2310;2090;418;−12%;combine;
+Veldbonen;maa apr;3;4,5;300;150;1350;1200;400;+8%;combine;
+Koolzaad;aug sep;5;4;450;80;1800;1720;344;−10%;combine;winterhard
+Gras;maa apr mei jun jul aug sep;2;6;120 (hooi);90;720;630;315;−3%;grass;meerjarig
+Suikerbieten;maa apr;6;40;50;250;2000;1750;292;−10%;beet;
+Zonnebloem;apr mei;4;3;420;110;1260;1150;288;−7%;combine;droogtebestendig
+Soja;apr mei;4;3,2;400;130;1280;1150;288;+6%;combine;
+Klaver;maa apr mei jun jul aug sep;2;0;0;60;0;-60;-30;−0%;onderploegen;groenbemester
