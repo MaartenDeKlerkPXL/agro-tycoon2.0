@@ -29,6 +29,7 @@ Sinds de overstap naar ES-modules + Vite werkt `index.html` dubbelklikken niet m
 | H | Te voet: boom kappen (bosperceel) of plukken (boomgaard, wijngaard) |
 | T | Tanken bij de rode dieselpomp op het erf |
 | G | GPS aan/uit (rijdt zelf recht; in te bouwen in de Garage) |
+| R | Cruise control aan/uit (houdt je snelheid vast; W = sneller, S = uit) |
 | K | In de maaidorser: chauffeur met kipper roepen of naar huis sturen |
 | ⚙️ | Instellingen: opslagplekken, exporteren/importeren, daglengte, **toetsen zelf instellen**, uitleg opnieuw |
 | M | Geluid dempen (🔊-knop rechtsboven voor volume, muziek en omgeving) |
@@ -67,6 +68,9 @@ Sinds de overstap naar ES-modules + Vite werkt `index.html` dubbelklikken niet m
 28. **Druivenoogster** en **boomschudder**, en een **voermengwagen** die kuilvoer/hooi + graan + soja mengt tot mengvoer
 29. **Oostpolder**: 7 vruchtbare velden achter de haven. **Zelf bouwen** (tab Bedrijf): extra silo, opslagloods of werkplaats met dieselpomp waar je maar wilt
 30. **Nieuw spel** (⚙️): kies de kaart (Gemengd bedrijf of Grootschalig) en de moeilijkheid (makkelijk, normaal, moeilijk of sandbox). **🏆 Prestaties** blijven bewaard
+31. **Kippen en schapen**: raap eieren (H bij het kippenhok) of koop een eierband; scheer je schapen (H in de wei) of huur een scheerder in
+32. **Kassen**: 7 gewassen en 4 upgrades; bouw er zelf meer. **🎪 Landbouwbeurs** in november bij de haven: korting op machines
+33. **Rijden**: Shift = 50 km/u, R = cruise control, aanhangers knikken mee, de GPS-kopakker bewerkt het hele veld. **Verkopen**: ook velden, gebouwen en percelen (voor minder dan je betaalde)
 
 ## Projectstructuur
 ```

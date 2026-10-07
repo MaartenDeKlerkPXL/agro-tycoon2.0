@@ -328,7 +328,10 @@ AT.data = {
 
   fuelPrice: 1.6,          // € per liter diesel
   // dieselpomp op het erf (T = tanken); tankinhoud = fuelTank of tankHours uur rijden
+  // eigen spullen verkopen: deel van wat het nieuw kost
+  resale: { machine: 0.6, wearLoss: 0.4, field: 0.75, building: 0.5, plantation: 0.6 },
   tankHours: 60,
+  tankMult: { harvester: 3, fruitharvester: 3 },   // oogstmachines: 3× zo grote tank
   fuelWarnCrossings: 1.5,   // waarschuwing als je nog maar ±1,5 keer de kaart over kunt rijden
   fuelPump: { x: 318, y: 758, r: 7 },
   fuelService: 150,        // tankservice die naar je toe komt

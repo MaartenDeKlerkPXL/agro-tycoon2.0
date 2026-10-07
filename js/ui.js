@@ -93,6 +93,8 @@ window.AT = window.AT || {};
       }
     }
 
+    if (f.owned && !f.leased) html += `<div class="card row small sell-row"><span class="grow muted">Veld verkopen: je krijgt ${Math.round(D.resale.field * 100)}% van de koopprijs terug. Wat erop staat ben je kwijt.</span>
+      <button class="btn small danger" data-action="sellField" data-id="${id}" ${f.job ? 'disabled' : ''}>Verkoop ${AT.fmtMoney(G().fieldSellValue(id))}</button></div>`;
     html += `<h3>Alle velden</h3><div class="field-list">`;
     for (const fd of D.fields) {
       const ff = G().field(fd.id);
@@ -297,7 +299,7 @@ window.AT = window.AT || {};
     const sorted = [...s.machines].sort((a, b) => order.indexOf(D.machines[a.type].kind) - order.indexOf(D.machines[b.type].kind));
     for (const m of sorted) {
       const d = D.machines[m.type];
-      const value = Math.round(d.price * 0.6);
+      const value = G().machineValue(m);
       const sellable = !m.busy && !(m.attached && G().machine(m.attached).busy);
       const wear = Math.round((m.wear || 0) * 100), cap = G().fuelCap(m);
       const info = [esc(whereIs(m))];
@@ -318,7 +320,7 @@ window.AT = window.AT || {};
         <div class="col">
           <button class="btn small" data-action="findMachine" data-uid="${m.uid}">Zoek</button>
           ${m.rented ? `<button class="btn small" data-action="returnMachine" data-uid="${m.uid}" ${m.busy ? 'disabled' : ''}>Terugbrengen</button>`
-            : `<button class="btn small" data-action="sellMachine" data-uid="${m.uid}" ${sellable ? '' : 'disabled'} title="Verkoop voor 60% van de nieuwprijs">${AT.fmtMoney(value)}</button>`}
+            : `<button class="btn small" data-action="sellMachine" data-uid="${m.uid}" ${sellable ? '' : 'disabled'} title="Verkopen: 60% van de nieuwprijs, minder als hij versleten of kapot is">Verkoop ${AT.fmtMoney(value)}</button>`}
         </div></div>`;
     }
     return html;
@@ -690,6 +692,7 @@ window.AT = window.AT || {};
           <button class="btn small" data-action="feedRun" data-key="${key}" ${(s.feedRuns || []).some(r => r.key === key) ? 'disabled' : ''}>Laat voerbak vullen</button>
           <button class="btn small ${a.sick || a.health < 0.7 ? 'primary' : ''}" data-action="vet" data-key="${key}" ${a.count && s.money >= AT.farm.vetCost(key) ? '' : 'disabled'}>Dierenarts ${AT.fmtMoney(AT.farm.vetCost(key))}</button>
           ${nextLevel ? `<button class="btn small" data-action="expandBarn" data-key="${key}" ${s.money < AT.farm.expandCost(key) ? 'disabled' : ''}>Stal uitbreiden → ${d.capacity * D.barnLevels[a.level + 1]} (${AT.fmtMoney(AT.farm.expandCost(key))})</button>` : ''}
+          <button class="btn small danger" data-action="sellBuilding" data-key="${key}" ${a.count ? 'disabled title="Verkoop eerst alle dieren"' : ''}>Verkoop ${d.building.toLowerCase()} ${AT.fmtMoney(AT.farm.barnValue(key))}</button>
         </div>
         ${animalExtra(key, d, a, s)}
         <div class="muted">Jongen: gezonde, goed gevoerde dieren krijgen ${d.young} als er plek is. Mengvoer en kuilvoer geven meer productie.${d.graze ? ` Buiten de winter grazen ze: ${Math.round(d.graze * 100)}% minder voer nodig.` : ''}</div></div>`;
@@ -706,7 +709,8 @@ window.AT = window.AT || {};
       }
       html += `<div class="card"><div class="row"><b class="grow">${d.name}</b>
           <button class="btn small" data-action="look-factory" data-key="${key}">Zoek</button>
-          <button class="btn small ${f.on ? '' : 'primary'}" data-action="toggleFactory" data-key="${key}">${f.on ? 'Zet uit' : 'Zet aan'}</button></div>
+          <button class="btn small ${f.on ? '' : 'primary'}" data-action="toggleFactory" data-key="${key}">${f.on ? 'Zet uit' : 'Zet aan'}</button>
+          <button class="btn small danger" data-action="sellFactory" data-key="${key}">Verkoop ${AT.fmtMoney(AT.farm.factoryValue(key))}</button></div>
         <div class="muted">${line} · max ${d.batchesPerDay}× per dag · €${d.costPerBatch} energie per keer</div>
         <div class="${f.running ? '' : 'warn'}">Status: ${esc(f.status || 'start op')}</div>
         ${AT.farm.recipes(key).some(r => Object.keys(r.in).some(g => AT.farm.factoryAccepts(key, g))) ? `<div class="muted">Stortplaats: ${Object.entries(AT.farm.buffer(key)).filter(([, v]) => v > 0.01).map(([k, v]) => `${AT.fmtTons(v)} ${G().goodName(k)}`).join(', ') || 'leeg'} · breng oogst met een kipper (U) voor ${Math.round((D.factoryBonus - 1) * 100)}% meer product</div>` : ''}</div>`;
@@ -727,7 +731,8 @@ window.AT = window.AT || {};
         <div class="row wrap">${Object.entries(D.greenhouse.crops).map(([k, c]) => `<button class="btn small ${g.crop === k ? 'primary' : ''}" data-action="ghCrop" data-gh="${id}" data-crop="${k}" title="±${AT.fmtMoney(c.perDay * G().price(k))}/dag">${D.products[k].name} (${c.perDay} ${D.products[k].unit}/dag)</button>`).join('')}</div>
         <div class="row wrap">${Object.entries(D.greenhouse.upgrades).map(([k, u]) => g.up[k] ? `<span class="badge" title="${u.desc}">✓ ${u.name}</span>`
           : `<button class="btn small" data-action="ghUp" data-gh="${id}" data-up="${k}" title="${u.desc}" ${s.money < u.price ? 'disabled' : ''}>${u.name} ${AT.fmtMoney(u.price)}</button>`).join('')}</div>
-        <div class="muted">${Object.values(D.greenhouse.upgrades).map(u => `${u.name}: ${u.desc}`).join(' · ')}</div></div>`;
+        <div class="muted">${Object.values(D.greenhouse.upgrades).map(u => `${u.name}: ${u.desc}`).join(' · ')}</div>
+        <div class="row"><span class="grow"></span><button class="btn small danger" data-action="sellGh" data-gh="${id}">${lot == null ? 'Afbreken' : 'Verkoop'} ${AT.fmtMoney(AT.farm.ghValue(g))}</button></div></div>`;
     });
     // boomgaard en wijngaard
     html += `<h3>Boomgaard en wijngaard</h3>`;
@@ -743,6 +748,7 @@ window.AT = window.AT || {};
       }
       const status = pl.phase === 'ripe' ? `<b>${ripe} ${ripe === 1 ? d.plant : d.plants} plukklaar</b>` : pl.phase === 'grow' ? 'vruchten groeien' : `rust tot de lente · oogst in ${months}`;
       html += `<div class="card"><div class="row"><b class="grow">${d.name}</b><button class="btn small" data-action="look-plant" data-key="${key}">Zoek</button>
+          <button class="btn small danger" data-action="sellPlantation" data-key="${key}">Verkoop ${AT.fmtMoney(AT.farm.plantationValue(key))}</button>
           <button class="btn small primary" data-action="pickAll" data-key="${key}" ${ripe ? '' : 'disabled'}>${AT.farm.harvestMachine(key) ? `Laat oogsten met machine (${AT.fmtMoney(d.machineCost)}/${d.plant})` : `Plukkers (${AT.fmtMoney(d.pickCost)}/${d.plant})`}</button></div>
         <div class="muted">${status} · dit jaar geplukt: ${AT.fmtAmount(pl.pickedTotal || 0, d.product)}. Zelf plukken: loop erheen en druk H. Wat je niet plukt, rot na ${D.months[d.harvest[d.harvest.length - 1]].toLowerCase()}.</div></div>`;
     }
@@ -760,7 +766,8 @@ window.AT = window.AT || {};
     if (!wl.owned) html += `<div class="row"><span class="grow">${wl.trees.length} bomen · hout voor de zagerij</span><button class="btn small primary" data-action="buyWoodlot" ${s.money < D.woodlot.price ? 'disabled' : ''}>Koop ${AT.fmtMoney(D.woodlot.price)}</button></div>`;
     else html += `<div class="row"><span class="grow">${readyTrees} van ${wl.trees.length} bomen kapklaar</span><button class="btn small" data-action="look-wood">Zoek</button>
       <button class="btn small primary" data-action="cutAll" ${readyTrees ? '' : 'disabled'}>Laat kappen (${AT.fmtMoney(D.woodlot.cutCost)}/boom)</button></div>
-      <div class="muted">Zelf kappen: loop naar een boom en druk H. Er groeit vanzelf een nieuwe boom (${D.woodlot.growDays} dagen, niet in de winter).</div>`;
+      <div class="muted">Zelf kappen: loop naar een boom en druk H. Er groeit vanzelf een nieuwe boom (${D.woodlot.growDays} dagen, niet in de winter).</div>
+      <div class="row"><span class="grow"></span><button class="btn small danger" data-action="sellWoodlot">Verkoop bosperceel ${AT.fmtMoney(AT.farm.woodlotValue())}</button></div>`;
     html += `</div>`;
     // zelf bouwen
     html += `<h3>Zelf bouwen</h3><p class="muted">Kies een gebouw en klik op de kaart waar het moet komen (op gras, niet op akkers of wegen). Esc of rechtsklik = annuleren. Handig bij verre velden zoals de Oostpolder.</p>`;
@@ -981,9 +988,30 @@ window.AT = window.AT || {};
   }
   function soundIcon() { const b = $('#sound-btn'); if (b) b.textContent = AT.audio && AT.audio.settings.muted ? '🔇' : '🔊'; }
 
+  // geen logbalk meer: waarschuwingen en doelen verschijnen even over de kaart; alles staat in het logboek (📜)
+  let lastLog = null;
   function renderLog() {
-    $('#log').innerHTML = AT.state.log.slice(0, 30).map(l =>
-      `<div class="log-${l.type}"><span class="muted">Dag ${l.day} ${String(l.hour).padStart(2, '0')}:00</span> ${esc(l.text)}</div>`).join('');
+    const log = AT.state.log, fresh = [];
+    for (const l of log) { if (l === lastLog) break; fresh.push(l); if (fresh.length >= 3) break; }
+    const first = lastLog === null;
+    lastLog = log[0] || null;
+    if (first) return;   // bij het laden geen oude meldingen tonen
+    const box = $('#notes');
+    if (!box) return;
+    for (const l of fresh.reverse()) {
+      if (l.type !== 'warn' && l.type !== 'goal') continue;
+      const el = document.createElement('div');
+      el.className = `note log-${l.type}`;
+      el.textContent = l.text;
+      box.prepend(el);
+      while (box.children.length > 3) box.lastChild.remove();
+      setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 500); }, 6000);
+    }
+  }
+  function renderLogbook() {
+    $('#modal').innerHTML = `<div class="modal-card"><div class="row"><h2 class="grow">📜 Logboek</h2><button class="btn small" data-close>Sluiten</button></div>
+      <div class="logbook">${AT.state.log.slice(0, 200).map(l => `<div class="log-${l.type}"><span class="muted">Dag ${l.day} ${String(l.hour).padStart(2, '0')}:00</span> ${esc(l.text)}</div>`).join('') || '<p class="muted">Nog niets gebeurd.</p>'}</div></div>`;
+    $('#modal').hidden = false;
   }
 
   // waarden die steeds veranderen, zonder knoppen opnieuw op te bouwen
@@ -1041,6 +1069,12 @@ window.AT = window.AT || {};
       case 'buyField': G().buyField(id); break;
       case 'irrigate': G().buyIrrigation(id); break;
       case 'leaseField': G().leaseField(id); break;
+      case 'sellField': if (confirm(`Veld ${id} verkopen voor ${AT.fmtMoney(G().fieldSellValue(id))}? Wat erop staat ben je kwijt.`)) G().sellField(id); break;
+      case 'sellBuilding': if (confirm(`${D.animals[a.key].building} verkopen voor ${AT.fmtMoney(AT.farm.barnValue(a.key))}?`)) AT.farm.sellBuilding(a.key); break;
+      case 'sellFactory': if (confirm(`${D.factories[a.key].name} verkopen voor ${AT.fmtMoney(AT.farm.factoryValue(a.key))}? Wat er op de stortplaats ligt ben je kwijt.`)) AT.farm.sellFactory(a.key); break;
+      case 'sellGh': if (confirm('Deze kas verkopen?')) AT.farm.sellGreenhouse(a.gh); break;
+      case 'sellPlantation': if (confirm(`${D.plantations[a.key].name} verkopen voor ${AT.fmtMoney(AT.farm.plantationValue(a.key))}?`)) AT.farm.sellPlantation(a.key); break;
+      case 'sellWoodlot': if (confirm(`Bosperceel verkopen voor ${AT.fmtMoney(AT.farm.woodlotValue())}?`)) AT.farm.sellWoodlot(); break;
       case 'endLease': if (confirm('Pacht beëindigen? Wat er op het veld staat ben je kwijt.')) G().endLease(id); break;
       case 'insurance': G().toggleInsurance(); break;
       case 'deliver-truck': AT.staff.startDelivery(); break;
@@ -1061,7 +1095,7 @@ window.AT = window.AT || {};
       case 'gps': G().buyGps(Number(a.uid)); break;
       case 'fuelService': { const m = G().machine(Number(a.uid)); if (m) G().refuel(m, true); break; }
       case 'chaser': { const res = AT.staff.toggleChaser(); if (typeof res === 'string') G().log(res, 'warn'); break; }
-      case 'sellMachine': G().sellMachine(Number(a.uid)); break;
+      case 'sellMachine': { const m = G().machine(Number(a.uid)); if (m && confirm(`${D.machines[m.type].name} verkopen voor ${AT.fmtMoney(G().machineValue(m))}?`)) G().sellMachine(Number(a.uid)); break; }
       case 'upgradeSilo': G().upgradeSilo(); break;
       case 'findMachine': {
         const m = G().machine(Number(a.uid));
@@ -1232,6 +1266,7 @@ window.AT = window.AT || {};
       if (e.target.closest('[data-open="calendar"]')) renderCalendar();
       if (e.target.closest('[data-open="prices"]')) renderPriceCalendar();
       if (e.target.closest('[data-open="sound"]')) { renderSound(); e.target.closest('button').blur(); }
+      if (e.target.closest('[data-open="log"]')) { renderLogbook(); e.target.closest('button').blur(); }
       if (e.target.closest('[data-open="settings"]')) { renderSettings(); e.target.closest('button').blur(); }
       if (e.target.closest('#modal [data-set]')) onSettings(e);
       if (e.target.closest('[data-open="goals"]') || e.target.closest('#goal')) openGoals();

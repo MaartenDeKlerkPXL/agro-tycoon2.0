@@ -1066,10 +1066,12 @@ window.AT = window.AT || {};
         grainColor: L && L.crop ? G().goodColor(L.crop) : null,
       };
     };
+    // knik tussen tractor en getrokken werktuig
+    const relAngle = (m, impl) => impl && impl.ia != null ? Math.atan2(Math.sin(impl.ia - m.angle), Math.cos(impl.ia - m.angle)) : 0;
     for (const m of state.machines) {
       if (m.busy || m.attached) continue;
       const impl = m.impl ? G().machine(m.impl) : null;
-      SP().machine(ctx, m.type, m.x, m.y, m.angle, Object.assign({ implType: impl && impl.type, lowered: false, wheel: 0, t: time }, loadOpts(m, impl)));
+      SP().machine(ctx, m.type, m.x, m.y, m.angle, Object.assign({ implType: impl && impl.type, implRel: relAngle(m, impl), lowered: false, wheel: 0, t: time }, loadOpts(m, impl)));
     }
     // werknemers: onderweg, aan het werk of op de terugweg
     const drawCrew = (uids, pos, working, type) => {
@@ -1098,7 +1100,7 @@ window.AT = window.AT || {};
       const r = AT.vehicle.rig();
       if (r) {
         SP().machine(ctx, r.main.type, p.x, p.y, p.angle, Object.assign({
-          implType: r.impl && r.impl.type, lowered: p.lowered, wheel: p.dist || 0, steer: p.steer || 0, t: time,
+          implType: r.impl && r.impl.type, implRel: relAngle({ angle: p.angle }, r.impl), lowered: p.lowered, wheel: p.dist || 0, steer: p.steer || 0, t: time,
           lights, beacon: (p.lowered || p.unloading) && (time * 2) % 1 < 0.5,
           auger: p.unloading && r.mainDef.kind === 'harvester', tipping: p.unloading && r.mainDef.kind === 'tractor',
         }, loadOpts(r.main, r.impl)));
@@ -1300,14 +1302,14 @@ window.AT = window.AT || {};
     const lines = [];
     if (info.mode === 'drive') {
       lines.push([info.name, '#fff', '700 14px']);
-      lines.push([`${info.kmh} km/u`, '#ffe08a', '700 20px']);
+      lines.push([`${info.kmh} km/u${info.cruise ? `   ⏩ cruise ${info.cruise}` : ''}`, '#ffe08a', '700 20px']);
       if (info.tool) lines.push([`${info.tool}: ${info.lowered ? 'OMLAAG (aan het werk)' : 'omhoog'}`, info.lowered ? '#9be15d' : '#ddd', '600 13px']);
       if (info.crop) lines.push([`Zaaigoed: ${info.crop}  (C = wisselen)`, '#ddd', '600 13px']);
       if (info.extra) lines.push([info.extra, '#ddd', '600 13px']);
       if (info.load) lines.push([info.load, info.loadFrac > 0.95 ? '#ffb38a' : '#ffe08a', '700 13px']);
       if (info.fuel) lines.push([info.fuel, info.fuelLow ? '#ffb38a' : '#ddd', '600 13px']);
       const k = a => AT.keys.name(a);
-      lines.push([`${k('up')}${k('left')}${k('down')}${k('right')} rijden · ${k('sprint')} sneller · ${k('tool')} werktuig · ${k('hitch')} koppelen · ${k('unload')} lossen · ${k('refuel')} tanken · ${k('enter')} uitstappen`, '#bbb', '12px']);
+      lines.push([`${k('up')}${k('left')}${k('down')}${k('right')} rijden · ${k('sprint')} sneller · ${k('tool')} werktuig · ${k('hitch')} koppelen · ${k('unload')} lossen · ${k('refuel')} tanken · ${k('cruise')} cruise control · ${k('enter')} uitstappen`, '#bbb', '12px']);
     } else {
       lines.push(['Te voet', '#fff', '700 14px']);
       const k = a => AT.keys.name(a);

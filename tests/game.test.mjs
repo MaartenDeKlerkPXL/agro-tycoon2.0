@@ -257,3 +257,42 @@ test('dieseltank: 5× groter dan vroeger (60 uur rijden)', () => {
   const m = AT.state.machines[0], d = AT.data.machines[m.type];
   assert.equal(AT.game.fuelCap(m), d.fuelPerHour * 60);
 });
+
+test('eigen spullen verkopen: minder terug dan betaald', () => {
+  const { AT } = loadGame();
+  const G = AT.game, F = AT.farm, s = AT.state;
+  s.money = 1e6;
+  // veld
+  const m0 = s.money, v = G.fieldSellValue(2);
+  assert.ok(v < G.fieldPrice(2));
+  G.sellField(2);
+  assert.equal(G.field(2).owned, false);
+  assert.equal(s.money - m0, v);
+  // versleten machine brengt minder op
+  const m = s.machines[0], fresh = G.machineValue(m);
+  G.addWear(m, 200);
+  assert.ok(G.machineValue(m) < fresh);
+  // stal: eerst dieren weg
+  F.buyBuilding('pigs'); F.buyAnimals('pigs', 2);
+  F.sellBuilding('pigs');
+  assert.ok(s.animals.pigs.owned, 'met dieren erin niet verkopen');
+  F.sellAnimals('pigs', 99); F.sellBuilding('pigs');
+  assert.equal(s.animals.pigs.owned, false);
+  // fabriek en kas
+  F.buyFactory('mill'); const m1 = s.money; F.sellFactory('mill');
+  assert.equal(s.money - m1, AT.data.factories.mill.price / 2);
+  F.buyGreenhouse(0); F.buyGhUpgrade('lot0', 'drip'); F.sellGreenhouse('lot0');
+  assert.equal(F.allGreenhouses()[0].g.owned, false);
+});
+
+test('aanhanger: knikt mee in een bocht', () => {
+  const { AT } = loadGame();
+  const im = { ia: 0, hx: 0, hy: 0 };
+  // geen vehicle.js in de testomgeving: alleen de pose van een getrokken aanhanger
+  const t = AT.state.machines.find(m => AT.data.machines[m.type].kind === 'tractor');
+  const tr = AT.state.machines.find(m => AT.data.machines[m.type].kind === 'trailer');
+  t.impl = tr.uid; tr.attached = t.uid; tr.ia = t.angle + 0.5;
+  const pose = AT.game.trailerPose(tr);
+  assert.ok(Math.abs(pose.angle - (t.angle + 0.5)) < 1e-9, 'aanhanger heeft een eigen hoek');
+  assert.ok(im);
+});

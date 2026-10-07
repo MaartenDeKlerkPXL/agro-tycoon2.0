@@ -168,7 +168,20 @@ Doel: een singleplayer farming tycoon voor in de desktopbrowser.
 - [x] Toetsen zelf instellen (pijltjes werken altijd)
 
 ## 🛠️ Techniek
-- [x] Unit tests (`npm test`, 13 tests, draaien ook bij elke deploy) en een vaste speltest in de browser (`npm run test:browser`)
+- [x] Unit tests (`npm test`, 21 tests, draaien ook bij elke deploy) en een vaste speltest in de browser (`npm run test:browser`)
 - [x] Opslag behouden bij updates (oude saves worden omgezet, met reservekopie)
 - [x] Balans-spreadsheet (`npm run balans` → docs/BALANS.md + CSV's); kuilvoer en olie daarmee rechtgetrokken
 - [x] ES-modules + Vite (`npm run dev` / `npm run build`); GitHub Pages bouwt met Vite
+
+## 🐔 Fase 9: Meer bedrijf en rijplezier
+- [x] Kippen: eieren in de legnesten, rapen met H bij het kippenhok of laten rapen, eierband (automatisch); minder leg in de winter
+- [x] Schapen: wol groeit op de rug, scheren met H in de wei of een scheerder inhuren (ook automatisch); grazen in de wei buiten de winter
+- [x] Kassen uitbreiden: 7 gewassen (tomaten, sla, komkommers, paprika, aardbeien, kruiden, tulpen), groeilampen, warmtekrachtkoppeling, druppelirrigatie, teelt in lagen; zelf extra kassen bouwen
+- [x] Landbouwbeurs in november bij de haven: korting op alle machines, beursaanbiedingen, extra korting als je langsgaat
+- [x] Shift = 50 km/u in elk voertuig (op de weg); bomen houden je niet meer tegen
+- [x] Cruise control (R)
+- [x] Dieseltank 5× groter (maaidorsers 3× daarbovenop), waarschuwing als je nog ±1,5 keer de kaart over kunt
+- [x] GPS-kopakker: keert pas als het werktuig de rand bereikt, 10% overlap, ook de laatste smalle strook → het hele veld wordt bewerkt
+- [x] Aanhangers en getrokken werktuigen knikken mee in de bocht
+- [x] Eigen spullen verkopen: velden, stallen, fabrieken, kassen, boomgaard/wijngaard, bos (minder dan je betaalde); versleten machines brengen minder op
+- [x] Logbalk weg: meldingen verschijnen even rechtsboven op de kaart, alles staat in het 📜 logboek

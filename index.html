@@ -22,6 +22,7 @@
       <button data-speed="20" title="20× zo snel (toets 3)">20×</button>
       <button data-speed="60" title="60×: 1 seconde = 1 uur (toets 4)">60×</button>
     </div>
+    <button class="icon-btn" data-open="log" title="Logboek: wat er allemaal gebeurd is">📜</button>
     <button id="sound-btn" class="icon-btn" data-open="sound" title="Geluid (M = dempen)">🔊</button>
     <button class="icon-btn" data-open="settings" title="Instellingen: opslaan, daglengte, toetsen, uitleg">⚙️</button>
   </header>
@@ -29,8 +30,7 @@
   <main class="layout">
     <section class="map-wrap">
       <div class="banner-row"><div id="goal" class="goal-banner" title="Klik voor alle doelen"></div><div id="forecast" class="forecast"></div></div>
-      <div class="canvas-box"><canvas id="map" aria-label="Kaart van de boerderij"></canvas></div>
-      <div id="log" class="log" aria-live="polite"></div>
+      <div class="canvas-box"><canvas id="map" aria-label="Kaart van de boerderij"></canvas><div id="notes" class="notes" aria-live="polite"></div></div>
     </section>
 
     <aside class="panel">

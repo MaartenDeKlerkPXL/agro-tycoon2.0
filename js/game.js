@@ -260,7 +260,7 @@ window.AT = window.AT || {};
   function trailerPose(m) {
     const d = machineDef(m);
     let hx = m.x, hy = m.y, a = m.angle;
-    if (m.attached) { const t = machine(m.attached); const h = hitchPoint(t); hx = h.x; hy = h.y; a = t.angle; }
+    if (m.attached) { const t = machine(m.attached); const h = hitchPoint(t); hx = h.x; hy = h.y; a = m.ia != null ? m.ia : t.angle; }
     const cx = Math.cos(a), cy = Math.sin(a);
     return {
       angle: a,
@@ -928,7 +928,7 @@ window.AT = window.AT || {};
     if (t.impl) {
       const im = machine(t.impl);
       const h = hitchPoint(t);
-      Object.assign(im, { x: h.x, y: h.y, angle: t.angle, attached: null, busy: null });
+      Object.assign(im, { x: h.x, y: h.y, angle: im.ia != null ? im.ia : t.angle, attached: null, busy: null, ia: null, hx: null, hy: null });
       t.impl = null;
       p.lowered = false;
       log(`${machineDef(im).name} afgekoppeld.`);
@@ -972,7 +972,8 @@ window.AT = window.AT || {};
   }
 
   // ---------- diesel, slijtage, reparatie, huur en GPS ----------
-  const fuelCap = m => { const d = machineDef(m); return d.fuelPerHour ? (d.fuelTank || Math.round(d.fuelPerHour * D.tankHours)) : 0; };
+  // maaidorsers en andere zelfrijdende oogstmachines hebben een 3× zo grote tank
+  const fuelCap = m => { const d = machineDef(m); return d.fuelPerHour ? (d.fuelTank || Math.round(d.fuelPerHour * D.tankHours * (D.tankMult[d.kind] || 1))) : 0; };
   function fuelOf(m) { if (m.fuel == null) m.fuel = fuelCap(m); return m.fuel; }
   function addWear(m, hours) {
     if (!m) return;
@@ -1029,8 +1030,9 @@ window.AT = window.AT || {};
     if (b.type === 'silo' && siloUsed() > siloCapacity() - d.capacity) { log('Haal eerst graan uit de silo: het past anders niet meer.', 'warn'); return; }
     if (b.type === 'warehouse' && palletsUsed() > warehouseCapacity() - d.pallets) { log('De opslagloods is te vol om een loods af te breken.', 'warn'); return; }
     s.buildings = s.buildings.filter(x => x !== b);
-    earn(d.price * 0.5, false, 'gebouwen');
-    log(`${d.name} afgebroken (${AT.fmtMoney(d.price * 0.5)} terug).`, 'money');
+    const value = b.type === 'greenhouse' && b.gh && AT.farm ? AT.farm.ghValue(b.gh) : Math.round(d.price * 0.5);
+    earn(value, false, 'gebouwen');
+    log(`${d.name} afgebroken (${AT.fmtMoney(value)} terug).`, 'money');
     AT.emit('built');
     AT.emit('change');
   }
@@ -1283,6 +1285,22 @@ window.AT = window.AT || {};
     AT.emit('change');
   }
 
+  // ---------- eigen spullen verkopen (altijd minder dan je betaalde) ----------
+  const fieldSellValue = id => Math.round(fieldPrice(id) * D.resale.field);
+  function sellField(id) {
+    const f = field(id);
+    if (!f || !f.owned || f.leased || f.job) return;
+    const value = fieldSellValue(id);
+    f.owned = false; f.irrigated = false;
+    if (f.auto) f.auto.on = false;
+    S().queue = (S().queue || []).filter(q => q.fieldId !== id);
+    earn(value, false, 'land verkocht');
+    log(`Veld ${id} verkocht voor ${AT.fmtMoney(value)}. Wat er op het veld stond, ben je kwijt.`, 'money');
+    AT.emit('change');
+  }
+  // wat een machine nog opbrengt: 60% van de nieuwprijs, minder als hij versleten is
+  const machineValue = m => Math.round(machineDef(m).price * D.resale.machine * (1 - D.resale.wearLoss * (m.wear || 0)) * (m.broken ? 0.8 : 1));
+
   // ---------- oogstverzekering ----------
   function toggleInsurance() {
     const ins = S().insurance;
@@ -1377,7 +1395,7 @@ window.AT = window.AT || {};
     const s = S();
     const m = s.machines.find(x => x.uid === uid);
     if (!m || m.busy || m.rented) return;
-    const value = Math.round(machineDef(m).price * 0.6);
+    const value = machineValue(m);
     if (m.impl) { const im = machine(m.impl); const h = hitchPoint(m); Object.assign(im, { x: h.x, y: h.y, angle: m.angle, attached: null }); }
     if (m.attached) machine(m.attached).impl = null;
     s.machines = s.machines.filter(x => x.uid !== uid);
@@ -1695,6 +1713,11 @@ window.AT = window.AT || {};
     state.map = D.mapId;
     // bestaande spellers hoeven de uitleg niet meer te zien
     if (!saved.tutorial) state.tutorial = { step: 0, done: !!(saved.stats && saved.stats.harvestedHa > 0) };
+    // vanaf versie 14 zijn de dieseltanks groter: houd hetzelfde percentage vol
+    if ((saved.version || 0) < 14) for (const m of state.machines) {
+      const d = D.machines[m.type];
+      if (m.fuel != null && d && d.fuelPerHour && !d.fuelTank) m.fuel = Math.min(fuelCap(m), m.fuel / Math.round(d.fuelPerHour * 12) * fuelCap(m));
+    }
     fillDefaults(state, base);
     state.version = D.version;
     if (upgraded) state.log.unshift({ day: Math.floor(state.time / 24) + 1, hour: Math.floor(state.time % 24), text: `Het spel is bijgewerkt (versie ${saved.version || '?'} → ${D.version}). Je voortgang is bewaard.`, type: 'goal' });
@@ -1780,6 +1803,7 @@ window.AT = window.AT || {};
     price, stock, take, addGood, sellGood, yieldFactor, canSowNow, spend, earn, hayDryness, TEDDED, PLANTER_NAMES,
     accepts, sellAt, saturate, warehouseCapacity, palletsUsed, warehouseRoom, upgradeWarehouse,
     refreshOffers, acceptContract, deliverContract, fillContracts, maxLoan, borrow, repay, assetsValue, ledgerToday,
+    fieldSellValue, sellField, machineValue,
     tick, startJob, sell, buyField, buyMachine, sellMachine, upgradeSilo, enterVehicle, exitVehicle,
     toggleHitch, nearestImplement, nearestVehicle, hitchPoint, machine, HITCH, getLoad, loadCap, trailerPose,
     save, load, reset, newGame, serialize, listSlots, saveSlot, loadSlot, deleteSlot, exportSave, importSave, slotInfo, bestRig, missingFor, canPull, workCell, cellAt, summary, mainCrop,

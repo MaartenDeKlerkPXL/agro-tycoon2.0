@@ -18,6 +18,7 @@ window.AT = window.AT || {};
     ['action', 'Boom kappen / plukken', 'KeyH'],
     ['refuel', 'Tanken', 'KeyT'],
     ['gps', 'GPS aan/uit', 'KeyG'],
+    ['cruise', 'Cruise control aan/uit', 'KeyR'],
     ['chaser', 'Chauffeur met kipper', 'KeyK'],
     ['pause', 'Pauze', 'KeyP'],
     ['mute', 'Geluid dempen', 'KeyM'],

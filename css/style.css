@@ -97,18 +97,13 @@ body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; m
   padding: 8px 12px;
   font-weight: 600;
 }
-.log {
-  background: rgba(0,0,0,.35);
-  color: #e8e4d8;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  height: 110px;
-  flex: none;
-  overflow-y: auto;
-}
-.log > div { padding: 2px 0; }
-.log .muted { color: #9a9585; margin-right: 6px; font-variant-numeric: tabular-nums; }
+/* meldingen over de kaart (de logbalk is weg) */
+.notes { position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; pointer-events: none; z-index: 5; width: min(420px, 45%); }
+.note { background: rgba(20,20,16,.82); border-radius: 8px; padding: 6px 12px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.3); transition: opacity .5s, transform .5s; }
+.note.out { opacity: 0; transform: translateY(-8px); }
+.logbook { max-height: 65vh; overflow-y: auto; font-size: 13px; background: rgba(0,0,0,.35); color: #e8e4d8; border-radius: 8px; padding: 8px 12px; }
+.logbook > div { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.logbook .muted { color: #9a9585; margin-right: 6px; font-variant-numeric: tabular-nums; }
 .log-good { color: #b9e89a; }
 .log-warn { color: #ffb38a; }
 .log-money { color: #ffe08a; }
@@ -326,3 +321,5 @@ label.check input { margin-top: 4px; }
 .card.fair .btn { align-self: flex-start; }
 .fair-price { font-size: 11px; color: #e0a43a; text-align: center; white-space: nowrap; }
 .fair-price s { opacity: 0.7; }
+.btn.small.danger { margin-top: 0; }
+.sell-row { margin-top: 10px; }

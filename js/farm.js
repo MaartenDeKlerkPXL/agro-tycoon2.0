@@ -148,6 +148,67 @@ window.AT = window.AT || {};
     AT.emit('change');
   }
 
+  // ---------- gebouwen en percelen verkopen ----------
+  // stal: eerst de dieren verkopen; je krijgt de helft van de bouw- en uitbreidingskosten terug
+  function barnValue(key) {
+    const d = D.animals[key], a = animal(key);
+    let spent = d.buildPrice;
+    for (let l = 0; l < (a.level || 0); l++) spent += Math.round(d.buildPrice * 0.7 * (l + 1));
+    if (d.nest && a.eggBelt) spent += d.nest.beltPrice;
+    return Math.round(spent * D.resale.building);
+  }
+  function sellBuilding(key) {
+    const d = D.animals[key], a = animal(key);
+    if (!a.owned) return;
+    if (a.count > 0) { G().log(`Verkoop eerst je ${d.name.toLowerCase()}.`, 'warn'); return; }
+    const value = barnValue(key);
+    Object.assign(a, { owned: false, level: 0, trough: {}, nest: 0, eggBelt: false, fleece: 0, fleeceB: 0, shorn: 0, workerFeed: false });
+    G().earn(value, false, 'gebouwen verkocht');
+    G().log(`${d.building} verkocht voor ${AT.fmtMoney(value)}.`, 'money');
+    AT.emit('change');
+  }
+  const factoryValue = key => Math.round(D.factories[key].price * D.resale.building);
+  function sellFactory(key) {
+    const d = D.factories[key], f = S().factories[key];
+    if (!f.owned) return;
+    const value = factoryValue(key);
+    Object.assign(f, { owned: false, on: false, buffer: {}, progress: 0, status: '', running: false });
+    G().earn(value, false, 'gebouwen verkocht');
+    G().log(`${d.name} verkocht voor ${AT.fmtMoney(value)}.`, 'money');
+    AT.emit('change');
+  }
+  const ghValue = g => Math.round((D.greenhouse.price + Object.keys(g.up || {}).filter(k => g.up[k]).reduce((t, k) => t + D.greenhouse.upgrades[k].price, 0)) * D.resale.building);
+  function sellGreenhouse(id) {
+    const x = ghById(id);
+    if (!x || !x.g.owned) return;
+    if (x.lot == null) { G().demolish(id); return; }   // zelf gebouwd: afbreken
+    const value = ghValue(x.g);
+    greenhouses()[x.lot] = { owned: false, crop: 'tomatoes', status: '' };
+    G().earn(value, false, 'gebouwen verkocht');
+    G().log(`${x.name} verkocht voor ${AT.fmtMoney(value)}.`, 'money');
+    AT.emit('change');
+  }
+  const plantationValue = key => Math.round(D.plantations[key].price * D.resale.plantation);
+  function sellPlantation(key) {
+    const d = D.plantations[key], pl = plantation(key);
+    if (!pl.owned) return;
+    const value = plantationValue(key);
+    pl.owned = false;
+    G().earn(value, false, 'land verkocht');
+    G().log(`${d.name} verkocht voor ${AT.fmtMoney(value)}.`, 'money');
+    AT.emit('change');
+  }
+  const woodlotValue = () => Math.round(D.woodlot.price * D.resale.plantation);
+  function sellWoodlot() {
+    const w = woodlot();
+    if (!w.owned) return;
+    const value = woodlotValue();
+    w.owned = false;
+    G().earn(value, false, 'land verkocht');
+    G().log(`Bosperceel verkocht voor ${AT.fmtMoney(value)}.`, 'money');
+    AT.emit('change');
+  }
+
   function toggleAutoFeed(key) { const a = animal(key); a.autoFeed = !a.autoFeed; AT.emit('change'); }
 
   // voerbak vullen vanuit een aanhanger; geeft terug hoeveel erin ging
@@ -615,5 +676,5 @@ window.AT = window.AT || {};
     updateWoodlot(dtHours);
   }
 
-  AT.farm = { collectEggs, buyEggBelt, nestCap, shear, shearAll, toggleAutoShear, woolReady, avgFleece, harvestMachine, factoryPit, factoryAccepts, deliverToFactory, penGate, buffer, animal, capacity, troughRect, troughTons, expandBarn, expandCost, toggleAutoFeed, fillTrough, callVet, vetCost, plantation, buyPlantation, pick, pickAll, nearestRipe, ripeCount, update, greenhouses, allGreenhouses, ghRates, buyGhUpgrade, buyGreenhouse, setGreenhouseCrop, woodlot, buyWoodlot, cutTree, nearestTree, cutAll, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName, recipes };
+  AT.farm = { barnValue, sellBuilding, factoryValue, sellFactory, ghValue, sellGreenhouse, plantationValue, sellPlantation, woodlotValue, sellWoodlot, collectEggs, buyEggBelt, nestCap, shear, shearAll, toggleAutoShear, woolReady, avgFleece, harvestMachine, factoryPit, factoryAccepts, deliverToFactory, penGate, buffer, animal, capacity, troughRect, troughTons, expandBarn, expandCost, toggleAutoFeed, fillTrough, callVet, vetCost, plantation, buyPlantation, pick, pickAll, nearestRipe, ripeCount, update, greenhouses, allGreenhouses, ghRates, buyGhUpgrade, buyGreenhouse, setGreenhouseCrop, woodlot, buyWoodlot, cutTree, nearestTree, cutAll, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName, recipes };
 })();

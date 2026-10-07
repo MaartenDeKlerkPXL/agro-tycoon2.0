@@ -36,7 +36,7 @@ window.AT = window.AT || {};
 
   function update(dt, dtHours) {
     const p = AT.state.player;
-    if (p.mode === 'foot') updateFoot(p, dt);
+    if (p.mode === 'foot') { p.cruise = 0; updateFoot(p, dt); }
     else updateDrive(p, dt, dtHours);
     G().checkFairVisit(p.x, p.y);
     if (warnTime > 0) warnTime -= dt;
@@ -159,7 +159,12 @@ window.AT = window.AT || {};
 
     // gas/rem: zware machines trekken rustig op
     const accel = shift && !working ? 13 : 9;
-    if (throttle !== 0) {
+    // cruise control: houdt de snelheid vast; remmen zet hem uit, gas geven maakt hem hoger
+    if (p.cruise && throttle < 0) { p.cruise = 0; warn('Cruise control uit.'); }
+    if (p.cruise && throttle === 0 && !dead) {
+      const target = Math.min(p.cruise * PX, maxSpeed);
+      p.speed = p.speed < target ? Math.min(target, p.speed + accel * dt) : Math.max(target, p.speed - 14 * dt);
+    } else if (throttle !== 0) {
       const braking = Math.sign(throttle) !== Math.sign(p.speed) && Math.abs(p.speed) > 1;
       p.speed += throttle * accel * (braking ? 2.2 : 1) * dt;
     } else {
@@ -169,6 +174,7 @@ window.AT = window.AT || {};
     // boven de topsnelheid (bijv. Shift losgelaten) rustig afremmen in plaats van abrupt
     if (p.speed > maxSpeed) p.speed = Math.max(maxSpeed, p.speed - 20 * dt);
     p.speed = Math.max(-maxSpeed * 0.4, p.speed);
+    if (p.cruise && throttle > 0) p.cruise = Math.max(p.cruise, Math.round(p.speed * KMH));
     p.throttle = throttle;
 
     // sturen (wielen draaien zichtbaar mee)
@@ -184,6 +190,7 @@ window.AT = window.AT || {};
     // kopakker-automaat: GPS aan + werktuig omlaag = aan het eind van het veld zelf keren naar de volgende baan
     if (p.autosteer && !p.headland) startHeadland(p, r);
     if (p.headland && steerIn) { p.lowered = p.headland.wasLowered; p.headland = null; }   // zelf sturen = automaat uit
+    if (steerIn) { p.hlLock = null; p.toolField = null; }
     const step = p.speed * dt;
     if (p.headland) driveHeadland(p, dt);
     else {
@@ -195,6 +202,7 @@ window.AT = window.AT || {};
 
     // machine staat waar jij rijdt
     Object.assign(r.main, { x: p.x, y: p.y, angle: p.angle });
+    articulate(r);
 
     // diesel en slijtage
     if (Math.abs(p.speed) > 1) {
@@ -269,21 +277,53 @@ window.AT = window.AT || {};
     if (pickAcc > 0 && pickMsgT > 4) { G().log(`${r.mainDef.name}: +${AT.fmtAmount(pickAcc, d.product)} ${G().goodName(d.product)}.`, 'good'); pickAcc = 0; pickMsgT = 0; }
   }
 
+  // ---------- getrokken werktuigen draaien mee ----------
+  // aanhangers en getrokken werktuigen volgen de trekhaak (als een echte aanhanger); aangebouwde werktuigen zitten vast
+  const ARTIC = ['trailer', 'mixer', 'manure', 'baler'];
+  function articulate(r) {
+    const im = r.impl;
+    if (!im) return;
+    if (!ARTIC.includes(r.toolDef.kind)) { im.ia = null; return; }
+    const h = G().hitchPoint(r.main);
+    const L = Math.max(6, (r.toolDef.length || 10) * 0.75 + 3);   // trekhaak → as
+    if (im.ia == null || im.hx == null) { im.ia = r.main.angle; im.hx = h.x; im.hy = h.y; return; }
+    // de as blijft staan waar hij was; de trekhaak trekt hem mee
+    const axX = im.hx - Math.cos(im.ia) * L, axY = im.hy - Math.sin(im.ia) * L;
+    let a = Math.atan2(h.y - axY, h.x - axX);
+    // niet verder dan 80° knikken (scharen)
+    let rel = Math.atan2(Math.sin(a - r.main.angle), Math.cos(a - r.main.angle));
+    const max = 80 * Math.PI / 180;
+    if (Math.abs(rel) > max) { rel = Math.sign(rel) * max; a = r.main.angle + rel; }
+    im.ia = a; im.hx = h.x; im.hy = h.y;
+  }
+
   // ---------- kopakker-automaat ----------
   const inside = (pt, f) => pt.x > f.x && pt.x < f.x + f.w && pt.y > f.y && pt.y < f.y + f.h;
   function startHeadland(p, r) {
     if (!r.toolDef || r.toolDef.kind === 'trailer' || !p.lowered || p.speed < 1) return;
-    const f = D.fields.find(fd => inside(p, fd));
-    if (!f) return;
-    if (p.hlField !== f.id) { p.hlField = f.id; p.hlSide = 0; }
     const ax = Math.round(p.angle / (Math.PI / 2)) * (Math.PI / 2);
     const dx = Math.cos(ax), dy = Math.sin(ax), px = -dy, py = dx;   // px/py = rechts van de rijrichting
-    if (inside({ x: p.x + dx * 10, y: p.y + dy * 10 }, f)) return;    // nog niet bij de kopakker
-    const W = Math.max(8, r.toolDef.width || 16);
-    const ok = side => inside({ x: p.x + px * side * W - dx * 6, y: p.y + py * side * W - dy * 6 }, f);
+    // pas keren als het werktuig zelf (niet de neus van de tractor) over de rand is: zo blijft er geen strook liggen
+    const tp = toolPose(p, r);
+    // zolang het werktuig op een veld staat: doorrijden en onthouden welk veld
+    // na de eerste bocht blijft de automaat bij dat veld (een buurveld vlak ernaast telt niet mee)
+    const fields = p.hlLock ? D.fields.filter(fd => fd.id === p.hlLock) : D.fields.filter(fd => G().field(fd.id).owned);
+    const cur = fields.find(fd => inside({ x: tp.x + dx * 2, y: tp.y + dy * 2 }, fd));
+    if (cur) { p.toolField = cur.id; return; }
+    // het werktuig is net over de rand van het veld waar het aan het werk was
+    const f = p.toolField && D.fields.find(fd => fd.id === p.toolField);
+    p.toolField = null;
+    if (!f || !inside({ x: tp.x - dx * 12, y: tp.y - dy * 12 }, f)) return;
+    if (p.hlField !== f.id) { p.hlField = f.id; p.hlSide = 0; }
+    const tw = Math.max(8, r.toolDef.width || 16);
+    const W = tw * 0.9;   // 10% overlap tussen de banen: geen naden
+    // ligt er naast ons nog iets? (ook een smalle laatste strook telt mee)
+    const ok = side => [0.35, 0.7, 1].some(k => inside({ x: tp.x + px * side * W * k - dx * 8, y: tp.y + py * side * W * k - dy * 8 }, f));
     let side = p.hlSide ? -p.hlSide : (ok(1) ? 1 : -1);
     if (!ok(side)) side = -side;
-    if (!ok(side)) { warn('Einde van het veld: alle banen gedaan.'); return; }
+    if (!ok(side)) { if (p.hlDoneField !== f.id) { p.hlDoneField = f.id; warn('Einde van het veld: alle banen gedaan.'); } return; }
+    p.hlDoneField = null;
+    p.hlLock = f.id;
     const cx = p.x + px * side * W / 2, cy = p.y + py * side * W / 2;
     p.headland = { cx, cy, r: W / 2, a0: Math.atan2(p.y - cy, p.x - cx), side, t: 0, end: ax + Math.PI, wasLowered: p.lowered };
     p.lowered = false;   // werktuig omhoog in de bocht
@@ -477,12 +517,22 @@ window.AT = window.AT || {};
   }
 
   // Bewerk alle cellen onder het werktuig (achter de tractor, of het maaibord vóór de maaidorser)
+  // waar werkt het werktuig: midden van de werklijn en de richting (een getrokken werktuig draait mee)
+  function toolPose(p, r) {
+    const offset = r.toolDef.kind === 'harvester' ? 15 : r.toolDef.kind === 'manure' ? -31 : -17;
+    if (r.impl && r.impl.ia != null && ARTIC.includes(r.toolDef.kind)) {
+      const h = G().hitchPoint(r.main), a = r.impl.ia, d = offset - G().HITCH;
+      return { x: h.x + Math.cos(a) * d, y: h.y + Math.sin(a) * d, angle: a, offset };
+    }
+    return { x: p.x + Math.cos(p.angle) * offset, y: p.y + Math.sin(p.angle) * offset, angle: p.angle, offset };
+  }
+
   function workUnderTool(p, r) {
     if (r.toolDef.kind === 'fruitharvester') return pickFruit(p, r);
     const op = OP[r.toolDef.kind];
-    const cos = Math.cos(p.angle), sin = Math.sin(p.angle);
-    const offset = r.toolDef.kind === 'harvester' ? 15 : r.toolDef.kind === 'manure' ? -31 : -17;
-    const cx = p.x + cos * offset, cy = p.y + sin * offset;
+    const tp = toolPose(p, r);
+    const cos = Math.cos(tp.angle), sin = Math.sin(tp.angle);
+    const cx = tp.x, cy = tp.y;
     const half = r.toolDef.width / 2;
     const dir = Math.abs(cos) > Math.abs(sin) ? 1 : 0; // 1 = rijen liggen horizontaal
     let notOwned = false;
@@ -628,6 +678,7 @@ window.AT = window.AT || {};
       mode: 'drive',
       name: r.mainDef.name + (r.impl ? ' + ' + D.machines[r.impl.type].name : ''),
       kmh: Math.round(Math.abs(p.speed) * KMH),
+      cruise: p.cruise || 0,
       tool: toolName,
       lowered: p.lowered,
       crop: r.toolDef && r.toolDef.kind === 'seeder' ? D.crops[p.crop].name + (G().canSowNow(p.crop) ? '' : ' (niet in dit seizoen!)') : null,
@@ -657,12 +708,17 @@ window.AT = window.AT || {};
     if (K(e, 'gps') && p.mode === 'drive') {
       const r = rig();
       if (!r.main.gps) warn('Deze machine heeft geen GPS. Koop het in de Garage.');
-      else { p.autosteer = !p.autosteer; p.headland = null; p.hlSide = 0; G().log(p.autosteer ? 'GPS aan: laat het stuur los en hij rijdt kaarsrecht. Met het werktuig omlaag keert hij aan het eind van het veld zelf naar de volgende baan.' : 'GPS uit.'); }
+      else { p.autosteer = !p.autosteer; p.headland = null; p.hlSide = 0; p.hlLock = null; p.toolField = null; G().log(p.autosteer ? 'GPS aan: laat het stuur los en hij rijdt kaarsrecht. Met het werktuig omlaag keert hij aan het eind van het veld zelf naar de volgende baan.' : 'GPS uit.'); }
     }
     if (K(e, 'refuel') && p.mode === 'drive') {
       const r = rig();
       if (!G().nearPump(p.x, p.y)) warn('Rij naar een dieselpomp (op het erf of bij een eigen werkplaats) om te tanken.');
       else if (!G().refuel(r.main)) warn('De tank is al vol.');
+    }
+    if (K(e, 'cruise') && p.mode === 'drive') {
+      if (p.cruise) { p.cruise = 0; warn('Cruise control uit.'); }
+      else if (p.speed < 0) warn('Cruise control werkt alleen vooruit.');
+      else { p.cruise = Math.max(5, Math.round(p.speed * KMH)); warn(`Cruise control aan: ${p.cruise} km/u (${kn('up')} = sneller, ${kn('down')} = uit)`); }
     }
     if (K(e, 'chaser')) { const res = AT.staff.toggleChaser(); if (typeof res === 'string') warn(res); }
     if (K(e, 'action') && p.mode === 'foot' && AT.farm.nearestRipe(p.x, p.y)) {
@@ -712,5 +768,5 @@ window.AT = window.AT || {};
 
   AT.on('change', () => { const p = AT.state.player; if (p.mode !== 'drive' && p.unloading) { p.unloading = false; finishSale(); } });
 
-  AT.vehicle = { update, rig, toggleTool, cycleCrop, hudInfo, pressed, KMH, loadSource, toggleUnload, blocked, surface, warn };
+  AT.vehicle = { toolPose, ARTIC, update, rig, toggleTool, cycleCrop, hudInfo, pressed, KMH, loadSource, toggleUnload, blocked, surface, warn };
 })();

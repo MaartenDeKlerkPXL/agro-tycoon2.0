@@ -264,7 +264,13 @@ window.AT = window.AT || {};
 
   function tractor(ctx, d, o) {
     const c = d.color;
-    if (o.implDef) implement(ctx, o.implDef, -11.5, Object.assign({}, o, { load: o.implLoad }));
+    if (o.implDef) {
+      // getrokken werktuig draait om de trekhaak
+      ctx.save();
+      if (o.implRel) { ctx.translate(-12.5, 0); ctx.rotate(o.implRel); ctx.translate(12.5, 0); }
+      implement(ctx, o.implDef, -11.5, Object.assign({}, o, { load: o.implLoad }));
+      ctx.restore();
+    }
     ctx.fillStyle = '#2d2d2d'; ctx.fillRect(-12.5, -0.8, 3, 1.6);
     // wielen (of rupsen)
     if (d.tracks) {
@@ -416,7 +422,15 @@ window.AT = window.AT || {};
   function machine(ctx, type, x, y, angle, o = {}) {
     const d = D.machines[type];
     const implDef = o.implType ? D.machines[o.implType] : null;
-    shadow(ctx, d, implDef, x, y, angle, o.lowered === false && (implDef || d.kind === 'harvester') ? 1.2 : 0);
+    const lift = o.lowered === false && (implDef || d.kind === 'harvester') ? 1.2 : 0;
+    if (implDef && o.implRel && d.kind === 'tractor') {
+      // getrokken werktuig met een knik: schaduw van tractor en werktuig apart
+      shadow(ctx, d, null, x, y, angle, lift);
+      const f = footprint(d, implDef), hx = x + Math.cos(angle) * -12.5, hy = y + Math.sin(angle) * -12.5;
+      ctx.save(); ctx.translate(hx + 2.5 + lift, hy + 3.5 + lift); ctx.rotate(angle + o.implRel);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; rr(ctx, f.x0 + 12.5, -implDef.width / 2, -(f.x0 + 12.5), implDef.width, 1.5); ctx.fill();
+      ctx.restore();
+    } else shadow(ctx, d, implDef, x, y, angle, lift);
     ctx.save();
     ctx.translate(x, y); ctx.rotate(angle);
     const opts = Object.assign({ wheel: 0, steer: 0, t: 0, lowered: true }, o, { implDef });
