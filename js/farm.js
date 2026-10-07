@@ -17,8 +17,84 @@ window.AT = window.AT || {};
     if (!a.trough) a.trough = {};
     if (a.autoFeed == null) a.autoFeed = true;
     if (a.birthAcc == null) a.birthAcc = 0;
+    const d = D.animals[key];
+    // kippen: eieren in de legnesten; oudere saves met een kippenhok krijgen de eierband erbij (zoals vroeger)
+    if (d.nest) { if (a.nest == null) a.nest = 0; if (a.eggBelt == null) a.eggBelt = !!a.owned; }
+    // schapen: wol op de rug. fleece = vacht van de ongeschoren groep, shorn = al geschoren deze ronde (vacht fleeceB)
+    if (d.fleece) { if (a.fleece == null) a.fleece = a.owned ? 0.5 : 0; if (a.fleeceB == null) a.fleeceB = 0; if (a.shorn == null) a.shorn = 0; if (a.autoShear == null) a.autoShear = false; fixFlock(a); }
     return a;
   }
+  const nestCap = key => D.animals[key].nest.cap * D.barnLevels[animal(key).level || 0];
+  // nieuwe dieren (geboren of gekocht) komen bij de geschoren groep, met hun eigen vacht
+  function addFlock(a, n, fleece) {
+    if (n <= 0) return;
+    a.fleeceB = (a.fleeceB * a.shorn + fleece * n) / (a.shorn + n);
+    a.shorn += n;
+  }
+  function fixFlock(a) {
+    a.shorn = Math.max(0, Math.min(a.shorn, a.count));
+    if (a.count && a.shorn >= a.count) { a.fleece = a.fleeceB; a.fleeceB = 0; a.shorn = 0; }
+  }
+  const avgFleece = key => { const a = animal(key); return a.count ? (a.fleece * (a.count - a.shorn) + a.fleeceB * a.shorn) / a.count : 0; };
+  // hoeveel wol er nu te scheren valt
+  function woolReady(key) {
+    const d = D.animals[key].fleece, a = animal(key);
+    return a.fleece >= d.minShear ? (a.count - a.shorn) * d.perAnimal * a.fleece : 0;
+  }
+
+  // ---------- eieren ----------
+  function collectEggs(key, paid) {
+    const d = D.animals[key], a = animal(key);
+    if (!d.nest || !a.owned) return 0;
+    let n = Math.floor(Math.min(a.nest, G().warehouseRoom(d.nest.good)));
+    if (paid) n = Math.min(n, Math.floor(S().money / d.nest.collectCost));
+    if (n <= 0) return 0;
+    if (paid) G().spend(n * d.nest.collectCost, 'loonwerk');
+    const added = G().addGood(d.nest.good, n);
+    a.nest -= added;
+    a.produced[d.nest.good] = (a.produced[d.nest.good] || 0) + added;
+    S().stats.eggsCollected = (S().stats.eggsCollected || 0) + added;
+    AT.emit('change');
+    return added;
+  }
+  function buyEggBelt(key) {
+    const d = D.animals[key], a = animal(key);
+    if (!d.nest || a.eggBelt || !a.owned) return;
+    if (S().money < d.nest.beltPrice) { G().log('Niet genoeg geld voor een eierband.', 'warn'); return; }
+    G().spend(d.nest.beltPrice, 'gebouwen');
+    a.eggBelt = true;
+    if (a.nest >= 1) collectEggs(key, false);
+    G().log('Eierband geplaatst: de eieren rollen nu vanzelf naar de opslagloods.', 'money');
+    AT.emit('change');
+  }
+
+  // ---------- scheren ----------
+  // n schapen scheren (uit de ongeschoren groep); geeft terug hoeveel wol (kg)
+  function shear(key, n, paid) {
+    const d = D.animals[key], f = d.fleece, a = animal(key);
+    if (!f || !a.owned || !a.count) return 0;
+    if (a.fleece < f.minShear) return 0;
+    let k = Math.min(n, a.count - a.shorn);
+    const per = f.perAnimal * a.fleece;
+    k = Math.min(k, Math.floor(G().warehouseRoom(f.good) / per));
+    if (paid) k = Math.min(k, Math.floor(S().money / f.shearCost));
+    if (k <= 0) return 0;
+    if (paid) G().spend(k * f.shearCost, 'loonwerk');
+    const wool = G().addGood(f.good, k * per);
+    a.produced[f.good] = (a.produced[f.good] || 0) + wool;
+    addFlock(a, k, 0);
+    fixFlock(a);
+    S().stats.sheared = (S().stats.sheared || 0) + k;
+    AT.emit('change');
+    return wool;
+  }
+  function shearAll(key, quiet) {
+    const d = D.animals[key], a = animal(key);
+    const n = a.count - a.shorn, wool = shear(key, n, true);
+    if (!quiet || wool) G().log(wool ? `De scheerder heeft je ${d.name.toLowerCase()} geschoren: +${AT.fmtAmount(wool, d.fleece.good)} wol.` : 'Niets te scheren: de vacht is nog te kort, de loods is vol of je hebt geen geld.', wool ? 'good' : 'warn');
+    return wool;
+  }
+  function toggleAutoShear(key) { const a = animal(key); a.autoShear = !a.autoShear; AT.emit('change'); }
   const capacity = key => D.animals[key].capacity * D.barnLevels[animal(key).level || 0];
   const troughRect = key => { const B = D.animals[key].barn; return { x: B.x + B.w + 8, y: B.y + 10, w: 34, h: 6 }; };
   const troughTons = key => Object.values(animal(key).trough).reduce((s, v) => s + v, 0);
@@ -53,7 +129,9 @@ window.AT = window.AT || {};
     const cost = n * d.price;
     if (S().money < cost) { G().log(`Niet genoeg geld voor ${n} ${d.name.toLowerCase()}.`, 'warn'); return; }
     G().spend(cost, 'dieren');
+    if (d.fleece) addFlock(a, n, 0.3);
     a.count += n;
+    if (d.fleece) fixFlock(a);
     G().log(`${n} ${n === 1 ? d.one : d.name.toLowerCase()} gekocht voor ${AT.fmtMoney(cost)}.`, 'money');
     AT.emit('change');
   }
@@ -64,6 +142,7 @@ window.AT = window.AT || {};
     if (n <= 0) return;
     const value = n * d.sellPrice * (0.5 + 0.5 * a.health);   // zieke dieren brengen minder op
     a.count -= n;
+    if (d.fleece) fixFlock(a);
     G().earn(value, true, 'dieren');
     G().log(`${n} ${n === 1 ? d.one : d.name.toLowerCase()} verkocht voor ${AT.fmtMoney(value)}.`, 'money');
     AT.emit('change');
@@ -115,9 +194,11 @@ window.AT = window.AT || {};
       const d = D.animals[key], a = animal(key);
       if (!a.owned || a.count === 0) continue;
       // 1) uit de voerbak, 2) automatisch uit silo/loods (met voerdienst)
-      let need = a.count * d.feedPerDay * dayFrac;
-      const wanted = need;
-      let quality = 0;
+      const wanted = a.count * d.feedPerDay * dayFrac;
+      // grazers halen buiten de winter een deel uit de wei
+      const grazed = d.graze && AT.weather.season() !== 3 ? wanted * d.graze : 0;
+      let need = wanted - grazed;
+      let quality = grazed;
       for (const k of d.feeds) {
         const got = Math.min(need, a.trough[k] || 0);
         if (got > 0) { a.trough[k] -= got; need -= got; quality += got * (D.feedBonus[k] || 1); }
@@ -157,7 +238,7 @@ window.AT = window.AT || {};
       // erg zieke dieren gaan dood
       if (a.health < 0.2) {
         a.deathAcc = (a.deathAcc || 0) + a.count * 0.08 * dayFrac;
-        if (a.deathAcc >= 1) { const n = Math.min(a.count, Math.floor(a.deathAcc)); a.deathAcc -= n; a.count -= n; G().log(`${n} ${n === 1 ? d.one : d.name.toLowerCase()} gestorven door ziekte!`, 'warn'); AT.emit('change'); }
+        if (a.deathAcc >= 1) { const n = Math.min(a.count, Math.floor(a.deathAcc)); a.deathAcc -= n; a.count -= n; if (d.fleece) fixFlock(a); G().log(`${n} ${n === 1 ? d.one : d.name.toLowerCase()} gestorven door ziekte!`, 'warn'); AT.emit('change'); }
       }
       // jongen: gezonde, goed gevoerde dieren krijgen jongen als er plek is
       if (a.count >= 2 && a.count < capacity(key)) {
@@ -166,7 +247,9 @@ window.AT = window.AT || {};
           const n = Math.min(Math.floor(a.birthAcc), capacity(key) - a.count);
           a.birthAcc -= Math.floor(a.birthAcc);
           if (n > 0) {
+            if (d.fleece) addFlock(a, n, 0);
             a.count += n;
+            if (d.fleece) fixFlock(a);
             S().stats.births = (S().stats.births || 0) + n;
             a.bornToday = (a.bornToday || 0) + n;
             AT.emit('change');
@@ -176,10 +259,33 @@ window.AT = window.AT || {};
       // productie: gevoerd × voerkwaliteit × gezondheid
       const health = 0.4 + 0.6 * a.health;
       for (const [p, perDay] of Object.entries(d.produce)) {
-        const amount = a.count * perDay * dayFrac * fedNow * quality * health;
+        let amount = a.count * perDay * dayFrac * fedNow * quality * health;
+        // eieren: in de winter leggen kippen minder, en zonder eierband blijven ze in de legnesten liggen
+        if (d.nest && p === d.nest.good) {
+          if (AT.weather.season() === 3) amount *= d.nest.winterLay;
+          if (!a.eggBelt) {
+            const room = nestCap(key) - a.nest;
+            a.nest += Math.max(0, Math.min(room, amount));
+            if (amount > room && !a.nestWarned) { a.nestWarned = true; G().log('De legnesten in het kippenhok zijn vol! Raap de eieren (H bij het kippenhok), laat ze rapen of koop een eierband.', 'warn'); }
+            if (a.nest < nestCap(key) * 0.8) a.nestWarned = false;
+            continue;
+          }
+        }
         const added = G().addGood(p, amount);
         a.produced[p] = (a.produced[p] || 0) + added;
         if (added < amount - 1e-9) warnFull();
+      }
+      // wol groeit op de rug; een volle vacht in de zomer is te warm
+      if (d.fleece) {
+        const grow = dayFrac / d.fleece.growDays * fedNow * health;
+        a.fleece = Math.min(1, a.fleece + grow);
+        a.fleeceB = Math.min(1, a.fleeceB + grow);
+        if (AT.weather.season() === 1 && a.fleece > 0.85 && a.count > a.shorn) {
+          a.health = Math.max(0, a.health - 0.03 * dayFrac * (a.count - a.shorn) / a.count);
+          if (!a.heatWarned) { a.heatWarned = true; G().log(`Je ${d.name.toLowerCase()} hebben het warm met hun dikke vacht. Scheer ze (H in de wei) of huur een scheerder in.`, 'warn'); }
+        }
+        if (a.fleece < 0.5) a.heatWarned = false;
+        if (a.autoShear && a.fleece >= 0.95 && a.count > a.shorn) shearAll(key, true);
       }
     }
     if (feeAcc >= 5) { G().spend(feeAcc, 'voer'); feeAcc = 0; }
@@ -285,26 +391,69 @@ window.AT = window.AT || {};
     while (s.greenhouses.length < D.greenhouse.lots.length) s.greenhouses.push({ owned: false, crop: 'tomatoes', status: '' });
     return s.greenhouses;
   }
+  function ghState(g) { if (!g.up) g.up = {}; if (g.ramp == null) g.ramp = 1; return g; }
+  // alle kassen: de vaste bouwplekken plus de kassen die je zelf ergens hebt gebouwd
+  function allGreenhouses() {
+    const list = greenhouses().map((g, i) => ({ g: ghState(g), rect: D.greenhouse.lots[i], id: 'lot' + i, lot: i }));
+    const bd = D.buildables.greenhouse;
+    for (const b of S().buildings || []) {
+      if (b.type !== 'greenhouse') continue;
+      if (!b.gh) b.gh = { owned: true, crop: 'tomatoes', status: '' };
+      list.push({ g: ghState(b.gh), rect: { x: b.x, y: b.y, w: bd.w, h: bd.h }, id: b.id });
+    }
+    list.forEach((x, k) => { x.name = `Kas ${k + 1}`; });
+    return list;
+  }
+  const ghById = id => allGreenhouses().find(x => x.id === id);
   function buyGreenhouse(i) {
     const g = greenhouses()[i];
     if (g.owned) return;
     if (S().money < D.greenhouse.price) { G().log('Niet genoeg geld voor een kas.', 'warn'); return; }
     G().spend(D.greenhouse.price, 'gebouwen');
     g.owned = true;
-    G().log('Kas gebouwd! Hier groeien het hele jaar groenten.', 'money');
+    G().log('Kas gebouwd! Hier groeit het hele jaar door. Kies wat erin moet (tab Bedrijf).', 'money');
     AT.emit('change');
   }
-  function setGreenhouseCrop(i, crop) { greenhouses()[i].crop = crop; AT.emit('change'); }
+  // omschakelen: nieuwe planten kopen en een dag aanloop
+  function setGreenhouseCrop(id, crop) {
+    const x = ghById(id);
+    if (!x || x.g.crop === crop || !D.greenhouse.crops[crop]) return;
+    if (S().money < D.greenhouse.plantCost) { G().log('Niet genoeg geld voor nieuwe planten.', 'warn'); return; }
+    G().spend(D.greenhouse.plantCost, 'zaaigoed');
+    x.g.crop = crop; x.g.ramp = 0;
+    G().log(`${x.name}: omgeschakeld naar ${G().goodName(crop)} (${AT.fmtMoney(D.greenhouse.plantCost)} nieuwe planten). Over een dag draait hij weer op volle kracht.`, 'money');
+    AT.emit('change');
+  }
+  function buyGhUpgrade(id, key) {
+    const x = ghById(id), u = D.greenhouse.upgrades[key];
+    if (!x || !u || x.g.up[key]) return;
+    if (S().money < u.price) { G().log(`Niet genoeg geld voor ${u.name.toLowerCase()}.`, 'warn'); return; }
+    G().spend(u.price, 'gebouwen');
+    x.g.up[key] = true;
+    S().stats.ghUpgrades = (S().stats.ghUpgrades || 0) + 1;
+    G().log(`${x.name}: ${u.name} geplaatst (${u.desc}).`, 'money');
+    AT.emit('change');
+  }
+  // productie per dag en stookkosten per dag van één kas, nu
+  function ghRates(g, se = AT.weather.season()) {
+    const c = D.greenhouse.crops[g.crop], U = D.greenhouse.upgrades, up = g.up || {};
+    const light = up.led ? U.led.grow : se === 3 ? D.greenhouse.winterLight : 1;
+    const perDay = c.perDay * light * (up.drip ? U.drip.grow : 1) * (up.layers ? U.layers.grow : 1) * (g.ramp == null ? 1 : g.ramp);
+    const energy = D.greenhouse.energyPerDay[se] * c.heat * (up.chp ? U.chp.heatCut : 1) * (up.layers ? U.layers.heat : 1) + (up.led ? U.led.power : 0);
+    return { perDay, energy };
+  }
   function updateGreenhouses(dtHours) {
     const se = AT.weather.season();
-    for (const g of greenhouses()) {
+    for (const { g } of allGreenhouses()) {
       if (!g.owned) continue;
-      const energy = D.greenhouse.energyPerDay[se] / 24 * dtHours;
+      g.ramp = Math.min(1, g.ramp + dtHours / 24);
+      const r = ghRates(g, se), energy = r.energy / 24 * dtHours;
       if (S().money < energy) { g.status = 'geen geld voor stookkosten'; continue; }
       G().spend(energy, 'energie');
-      const amount = D.greenhouse.crops[g.crop].perDay / 24 * dtHours;
+      const amount = r.perDay / 24 * dtHours;
       const added = G().addGood(g.crop, amount);
-      g.status = added < amount - 1e-9 ? 'opslagloods vol' : se === 3 ? 'groeit (verwarmd)' : 'groeit';
+      g.made = (g.made || 0) + added;
+      g.status = added < amount - 1e-9 ? 'opslagloods vol' : g.ramp < 1 ? 'nieuwe planten groeien aan' : se === 3 ? (g.up.led ? 'groeit (verwarmd, met lampen)' : 'groeit (verwarmd, weinig licht)') : 'groeit';
       if (added < amount - 1e-9) warnFull();
     }
   }
@@ -466,5 +615,5 @@ window.AT = window.AT || {};
     updateWoodlot(dtHours);
   }
 
-  AT.farm = { harvestMachine, factoryPit, factoryAccepts, deliverToFactory, penGate, buffer, animal, capacity, troughRect, troughTons, expandBarn, expandCost, toggleAutoFeed, fillTrough, callVet, vetCost, plantation, buyPlantation, pick, pickAll, nearestRipe, ripeCount, update, greenhouses, buyGreenhouse, setGreenhouseCrop, woodlot, buyWoodlot, cutTree, nearestTree, cutAll, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName, recipes };
+  AT.farm = { collectEggs, buyEggBelt, nestCap, shear, shearAll, toggleAutoShear, woolReady, avgFleece, harvestMachine, factoryPit, factoryAccepts, deliverToFactory, penGate, buffer, animal, capacity, troughRect, troughTons, expandBarn, expandCost, toggleAutoFeed, fillTrough, callVet, vetCost, plantation, buyPlantation, pick, pickAll, nearestRipe, ripeCount, update, greenhouses, allGreenhouses, ghRates, buyGhUpgrade, buyGreenhouse, setGreenhouseCrop, woodlot, buyWoodlot, cutTree, nearestTree, cutAll, buyBuilding, buyAnimals, sellAnimals, feedInfo, buyFactory, toggleFactory, missingInputs, goodName, recipes };
 })();

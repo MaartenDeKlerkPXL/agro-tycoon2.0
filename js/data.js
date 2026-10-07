@@ -4,7 +4,7 @@
 window.AT = window.AT || {};
 
 AT.data = {
-  version: 13,
+  version: 14,
 
   // Wereld in pixels (1 px ≈ 1 meter). Velden zijn opgebouwd uit cellen van CELL px.
   world: { w: 3500, h: 1900 },   // met de Oostpolder (velden 20–26) achter de haven
@@ -92,10 +92,27 @@ AT.data = {
   },
 
   // kassen: hele jaar groenten, in de winter hogere stookkosten
+  // heat = hoeveel stookkosten het gewas vraagt; omschakelen kost nieuwe planten (plantCost) en een dag aanloop
   greenhouse: {
     price: 45000,
-    crops: { tomatoes: { perDay: 300 }, lettuce: { perDay: 500 } },
+    crops: {
+      tomatoes:     { perDay: 300, heat: 1 },
+      lettuce:      { perDay: 500, heat: 0.7 },
+      cucumbers:    { perDay: 520, heat: 1 },
+      peppers:      { perDay: 200, heat: 1.1 },
+      strawberries: { perDay: 110, heat: 1.2 },
+      herbs:        { perDay: 260, heat: 0.8 },
+      tulips:       { perDay: 650, heat: 0.6 },
+    },
+    plantCost: 600,
     energyPerDay: [40, 30, 60, 160],   // per seizoen
+    winterLight: 0.7,                  // zonder groeilampen groeit het in de winter minder
+    upgrades: {
+      led:  { name: 'Groeilampen (LED)', price: 15000, desc: '+20% productie en geen winterdip · +€35/dag stroom', grow: 1.2, power: 35 },
+      chp:  { name: 'Warmtekrachtkoppeling', price: 20000, desc: 'stookkosten −50%', heatCut: 0.5 },
+      drip: { name: 'Druppelirrigatie + klimaatcomputer', price: 8000, desc: '+15% productie', grow: 1.15 },
+      layers: { name: 'Teelt in lagen', price: 25000, desc: 'stellingen met meerdere lagen: +50% productie, +30% stookkosten', grow: 1.5, heat: 1.3 },
+    },
     lots: [{ x: 1016, y: 1612, w: 200, h: 124 }, { x: 1016, y: 1748, w: 200, h: 124 }],
   },
   // boomgaard en wijngaard: vruchten groeien in de zomer, oogsten in de oogstmaanden
@@ -108,6 +125,13 @@ AT.data = {
   },
   // bosperceel: bomen groeien, kappen geeft hout (te voet: H bij een boom)
   woodlot: { price: 40000, area: { x: 2075, y: 1762, w: 305, h: 126 }, growDays: 8, woodPerTree: 2.5, cutCost: 15 },
+
+  // landbouwbeurs: elk jaar in november op de kade bij de haven. Alle machines goedkoper, een paar
+  // beursaanbiedingen met flinke korting, en extra korting als je zelf langsgaat (lopen of rijden)
+  fair: {
+    month: 8, discount: 0.1, deals: 4, dealMin: 0.2, dealMax: 0.3, visitBonus: 0.05,
+    area: { x: 2454, y: 1406, w: 96, h: 138 },
+  },
 
   // ---------- seizoenen & weer ----------
   daysPerSeason: 6,   // = 3 maanden van 2 dagen
@@ -165,6 +189,11 @@ AT.data = {
     planks: { name: 'Planken', unit: 'm³', basePrice: 260, decimals: 1, perPallet: 2 },
     tomatoes: { name: 'Tomaten', unit: 'kg', basePrice: 1.6, decimals: 0, perPallet: 500, cheapMonth: 4 },
     lettuce:  { name: 'Sla',     unit: 'krop', basePrice: 0.8, decimals: 0, perPallet: 1000, cheapMonth: 3 },
+    cucumbers: { name: 'Komkommers', unit: 'st', basePrice: 0.62, decimals: 0, perPallet: 1200, cheapMonth: 4 },
+    peppers:  { name: 'Paprika',  unit: 'kg', basePrice: 2.4, decimals: 0, perPallet: 600, cheapMonth: 5 },
+    strawberries: { name: 'Aardbeien', unit: 'kg', basePrice: 4.4, decimals: 0, perPallet: 400, cheapMonth: 3 },
+    herbs:    { name: 'Kruiden',  unit: 'potjes', basePrice: 1.6, decimals: 0, perPallet: 1200, cheapMonth: 4 },
+    tulips:   { name: 'Tulpen',   unit: 'stelen', basePrice: 0.55, decimals: 0, perPallet: 2500, cheapMonth: 1 },
     apples:   { name: 'Appels',  unit: 'kg', basePrice: 0.45, decimals: 0, perPallet: 1000, cheapMonth: 6, color: '#c0392b' },
     grapes:   { name: 'Druiven', unit: 'kg', basePrice: 0.9,  decimals: 0, perPallet: 1000, cheapMonth: 7, color: '#6c3483' },
     silage:   { name: 'Kuilvoer', unit: 't', basePrice: 180, decimals: 1, perPallet: 2, color: '#7a8f3a' },
@@ -187,12 +216,17 @@ AT.data = {
       name: 'Kippen', one: 'kip', young: 'kuikens', building: 'Kippenhok', buildPrice: 8000, capacity: 200, price: 10, sellPrice: 7,
       feedPerDay: 0.0006, feeds: ['feedmix', 'wheat', 'corn', 'oats', 'soy', 'barley'], produce: { eggs: 1.5 },
       births: 0.06, trough: 2,
+      // eieren komen in de legnesten; rapen met H bij het kippenhok, laten rapen, of een eierband (automatisch)
+      nest: { good: 'eggs', cap: 600, collectCost: 0.03, beltPrice: 6000, winterLay: 0.7 },
       pen: { x: 470, y: 1608, w: 240, h: 272 }, barn: { x: 482, y: 1620, w: 84, h: 56 },
     },
     sheep: {
       name: 'Schapen', one: 'schaap', young: 'lammetjes', building: 'Schaapskooi', buildPrice: 12000, capacity: 40, price: 150, sellPrice: 120,
-      feedPerDay: 0.006, feeds: ['feedmix', 'silage', 'hay', 'oats', 'barley', 'wheat', 'corn'], produce: { wool: 1, manure: 0.01 },
+      feedPerDay: 0.006, feeds: ['feedmix', 'silage', 'hay', 'oats', 'barley', 'wheat', 'corn'], produce: { manure: 0.01 },
       births: 0.04, trough: 3,
+      // wol groeit op de schapen (vol in growDays dagen); scheren met H in de wei of een scheerder inhuren
+      fleece: { good: 'wool', perAnimal: 12, growDays: 12, minShear: 0.25, shearCost: 4, perPress: 5 },
+      graze: 0.6,   // buiten de winter halen ze 60% van hun eten uit de wei
       pen: { x: 732, y: 1608, w: 268, h: 272 }, barn: { x: 744, y: 1620, w: 110, h: 70 },
     },
     pigs: {
@@ -293,7 +327,9 @@ AT.data = {
   },
 
   fuelPrice: 1.6,          // € per liter diesel
-  // dieselpomp op het erf (T = tanken); tankinhoud = fuelTank of 12 uur rijden
+  // dieselpomp op het erf (T = tanken); tankinhoud = fuelTank of tankHours uur rijden
+  tankHours: 60,
+  fuelWarnCrossings: 1.5,   // waarschuwing als je nog maar ±1,5 keer de kaart over kunt rijden
   fuelPump: { x: 318, y: 758, r: 7 },
   fuelService: 150,        // tankservice die naar je toe komt
   // slijtage per uur gebruik; boven 90% kan een machine kapotgaan. Repareren in de Garage.
@@ -324,7 +360,8 @@ AT.data = {
   // snelheden in km/u; zo veel pixels per seconde is 1 km/u op de kaart
   kmhToPx: 1.15,
   walkSpeed: 9, runSpeed: 13,
-  shiftBoost: 1.25,          // Shift in een voertuig = 25% sneller
+  shiftBoost: 1.25,          // Shift met het werktuig omlaag = 25% sneller
+  shiftSpeed: 50,            // Shift zonder werktuig omlaag: elk voertuig rijdt 50 km/u (op de weg)
 
   // personeel
   staff: { max: 8, refreshCost: 250, jobsPerLevel: 4, maxLevel: 5 },
@@ -382,6 +419,7 @@ AT.data = {
     silo:      { name: 'Extra silo',             price: 30000, w: 34, h: 34, capacity: 250, desc: '+250 t opslag, met eigen stortput' },
     warehouse: { name: 'Extra opslagloods',      price: 45000, w: 92, h: 60, pallets: 150, desc: '+150 pallets voor producten' },
     shed:      { name: 'Werkplaats + dieselpomp', price: 35000, w: 80, h: 50, desc: 'tanken (T) en repareren zonder voorrijkosten, ook ver van het erf' },
+    greenhouse: { name: 'Kas',                   price: 45000, w: 140, h: 90, desc: 'nog een kas, waar je maar wilt: het hele jaar groenten, fruit of bloemen' },
   },
 
   // Silo-niveaus: capaciteit in ton en prijs om naar dat niveau te gaan

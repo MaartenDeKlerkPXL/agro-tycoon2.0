@@ -9,7 +9,7 @@ window.AT = window.AT || {};
     ['down', 'Achteruit / omlaag', 'KeyS'],
     ['left', 'Links', 'KeyA'],
     ['right', 'Rechts', 'KeyD'],
-    ['sprint', 'Een stukje sneller', 'ShiftLeft'],
+    ['sprint', 'Sneller (voertuig 50 km/u)', 'ShiftLeft'],
     ['enter', 'In-/uitstappen', 'KeyE'],
     ['hitch', 'Werktuig koppelen', 'KeyF'],
     ['tool', 'Werktuig omlaag/omhoog', 'Space'],

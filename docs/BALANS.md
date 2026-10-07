@@ -1,6 +1,6 @@
 # Balans van Agro Tycoon 2.0
 
-Automatisch berekend uit `js/data.js` met `npm run balans` (spelversie 13). Basisprijzen, zonder seizoen, marktschommeling, bodem of bemesting.
+Automatisch berekend uit `js/data.js` met `npm run balans` (spelversie 14). Basisprijzen, zonder seizoen, marktschommeling, bodem of bemesting.
 Een speldag = 24 speluren; een maand = 2 dagen. Diesel €1.6/L, loonwerker €20/u. De CSV-bestanden staan in `docs/balans/` (openen in Excel of Google Sheets).
 
 ## Gewassen (gesorteerd op winst per groeidag)
@@ -94,3 +94,15 @@ Een speldag = 24 speluren; een maand = 2 dagen. Diesel €1.6/L, loonwerker €2
 |---|---|---|---|---|---|---|---|---|---|
 | Boomgaard | 60000 | 80 | aug sep okt | 96000 kg appels | 43200 | 3200 | 960 | 40000 | 1.5 |
 | Wijngaard | 70000 | 442 | sep okt | 39780 kg druiven | 35802 | 1768 | 530 | 34034 | 2.1 |
+
+## Kassen (per kas)
+
+| Gewas | Per dag | Prijs € | Waarde €/dag (zomer) | Stoken €/dag (gem.) | Winst €/dag (jaargem.) | Met alle upgrades €/dag | Terugverdientijd kas (dagen) |
+|---|---|---|---|---|---|---|---|
+| Tomaten | 300 kg | 1.6 | 480 | 73 | 372 | 911 | 121.1 |
+| Sla | 500 krop | 0.8 | 400 | 51 | 319 | 760 | 141 |
+| Komkommers | 520 st | 0.62 | 322 | 73 | 226 | 585 | 199.4 |
+| Paprika | 200 kg | 2.4 | 480 | 80 | 364 | 907 | 123.5 |
+| Aardbeien | 110 kg | 4.4 | 484 | 87 | 361 | 910 | 124.8 |
+| Kruiden | 260 potjes | 1.6 | 416 | 58 | 327 | 788 | 137.7 |
+| Tulpen | 650 stelen | 0.55 | 358 | 44 | 287 | 677 | 156.7 |

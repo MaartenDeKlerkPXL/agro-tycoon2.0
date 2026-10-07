@@ -158,3 +158,102 @@ test('slijtage en reparatie', () => {
   G.repair(m.uid);
   assert.equal(m.wear, 0);
 });
+
+test('kippen: eieren in de legnesten, rapen en eierband', () => {
+  const { AT } = loadGame();
+  const F = AT.farm, s = AT.state;
+  s.money = 1e6;
+  F.buyBuilding('chickens'); F.buyAnimals('chickens', 100);
+  F.fillTrough('chickens', 'wheat', 2);
+  assert.equal(s.animals.chickens.eggBelt, false, 'nieuw kippenhok heeft geen eierband');
+  for (let h = 0; h < 24; h++) F.update(1);
+  const nest = s.animals.chickens.nest;
+  assert.ok(nest > 50, 'eieren liggen in de nesten');
+  assert.ok(AT.game.stock('eggs') < 1, 'nog niet in de loods');
+  const n = F.collectEggs('chickens', false);
+  assert.ok(n > 50 && AT.game.stock('eggs') >= n - 1e-6, 'geraapt naar de loods');
+  F.buyEggBelt('chickens');
+  for (let h = 0; h < 12; h++) F.update(1);
+  assert.ok(AT.game.stock('eggs') > n, 'eierband brengt eieren vanzelf naar de loods');
+});
+
+test('oude save: kippenhok krijgt de eierband, schapen een halve vacht', () => {
+  const { AT } = loadGame();
+  const s = AT.state;
+  s.animals.chickens = { owned: true, count: 50, fed: 1, produced: {} };
+  s.animals.sheep = { owned: true, count: 10, fed: 1, produced: {} };
+  assert.equal(AT.farm.animal('chickens').eggBelt, true);
+  assert.equal(AT.farm.animal('sheep').fleece, 0.5);
+});
+
+test('schapen: wol groeit, scheren met de hand en door een scheerder', () => {
+  const { AT } = loadGame();
+  const F = AT.farm, s = AT.state, a = () => s.animals.sheep;
+  s.money = 1e6;
+  F.buyBuilding('sheep'); F.buyAnimals('sheep', 20);
+  for (let h = 0; h < 24 * 8; h++) { F.fillTrough('sheep', 'oats', 1); F.update(1); }
+  assert.ok(F.avgFleece('sheep') > 0.6, 'vacht groeit');
+  const ready = F.woolReady('sheep');
+  const shorn0 = a().shorn;
+  const wool = F.shear('sheep', 5, false);
+  assert.ok(wool > 0 && a().shorn === shorn0 + 5, '5 schapen geschoren');
+  F.shearAll('sheep');
+  assert.equal(a().shorn, 0, 'na de hele kudde begint een nieuwe ronde');
+  assert.ok(AT.game.stock('wool') > ready * 0.95, 'alle wol in de loods');
+  assert.ok(a().fleece < 0.2, 'vacht is kort');
+  assert.equal(F.shear('sheep', 5, false), 0, 'te korte vacht kun je niet scheren');
+});
+
+test('kassen: omschakelen, upgrades en zelf bouwen', () => {
+  const { AT } = loadGame();
+  const F = AT.farm, G = AT.game, D = AT.data, s = AT.state;
+  s.money = 1e6;
+  F.buyGreenhouse(0);
+  const gh = () => F.allGreenhouses()[0];
+  const base = F.ghRates(gh().g, 0).perDay;
+  F.setGreenhouseCrop('lot0', 'strawberries');
+  assert.equal(gh().g.crop, 'strawberries');
+  assert.equal(gh().g.ramp, 0, 'nieuwe planten moeten aangroeien');
+  for (let h = 0; h < 30; h++) F.update(1);
+  assert.equal(gh().g.ramp, 1);
+  assert.ok(G.stock('strawberries') > 0);
+  const before = F.ghRates(gh().g, 3);
+  F.buyGhUpgrade('lot0', 'led'); F.buyGhUpgrade('lot0', 'chp');
+  const after = F.ghRates(gh().g, 3);
+  assert.ok(after.perDay > before.perDay * 1.6, 'groeilampen: geen winterdip');
+  assert.ok(after.energy < before.energy, 'warmtekrachtkoppeling bespaart');
+  assert.ok(base > 0);
+  // een kas zelf bouwen
+  let spot = null;
+  for (let y = 20; y < D.world.h - 100 && !spot; y += 10) for (let x = 20; x < D.world.w - 150 && !spot; x += 10) if (!G.placeProblem('greenhouse', x, y)) spot = { x, y };
+  assert.ok(spot && G.placeBuilding('greenhouse', spot.x, spot.y));
+  assert.equal(F.allGreenhouses().filter(x => x.g.owned).length, 2);
+});
+
+test('landbouwbeurs: korting op machines, extra bij een bezoek', () => {
+  const { AT } = loadGame();
+  const G = AT.game, D = AT.data, s = AT.state;
+  assert.equal(G.machinePrice('tractor_medium'), D.machines.tractor_medium.price, 'buiten de beurs de gewone prijs');
+  s.time = D.fair.month * D.daysPerMonth * 24 + 1;
+  G.updateFair();
+  assert.ok(G.fairActive());
+  const p1 = G.machinePrice('tractor_medium');
+  assert.ok(p1 <= D.machines.tractor_medium.price * (1 - D.fair.discount) + 10);
+  G.checkFairVisit(D.fair.area.x + 10, D.fair.area.y + 10);
+  assert.ok(G.fair().visited);
+  assert.ok(G.machinePrice('tractor_medium') < p1, 'bezoekers krijgen extra korting');
+  s.money = 1e6;
+  const m0 = s.money;
+  G.buyMachine('tractor_medium');
+  assert.equal(m0 - s.money, G.machinePrice('tractor_medium'));
+  assert.equal(s.stats.fairBuys, 1);
+  s.time += D.daysPerMonth * 24;
+  G.updateFair();
+  assert.ok(!G.fairActive(), 'na november is de beurs voorbij');
+});
+
+test('dieseltank: 5× groter dan vroeger (60 uur rijden)', () => {
+  const { AT } = loadGame();
+  const m = AT.state.machines[0], d = AT.data.machines[m.type];
+  assert.equal(AT.game.fuelCap(m), d.fuelPerHour * 60);
+});

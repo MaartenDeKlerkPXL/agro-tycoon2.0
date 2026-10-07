@@ -36,6 +36,10 @@ window.AT = window.AT || {};
     ['night_harvest', '🌙', 'Nachtwerk', 'Oogst zelf midden in de nacht.', s => !!s.stats.nightHarvest],
     ['snow_driver', '❄️', 'Sneeuwschuiver', 'Rij door een dik pak sneeuw.', s => !!s.stats.snowDrive],
     ['chaser', '🤝', 'Teamwerk', 'Laat 100 t overladen in een meerijdende kipper.', s => (s.stats.chaserTons || 0) >= 100],
+    ['eggs', '🥚', 'Eierboer', 'Laat je kippen 10.000 eieren leggen.', s => ((s.animals.chickens && s.animals.chickens.produced && s.animals.chickens.produced.eggs) || 0) >= 10000],
+    ['shear_100', '✂️', 'Schapenscheerder', 'Scheer 100 schapen.', s => (s.stats.sheared || 0) >= 100],
+    ['greenhouses_4', '🌷', 'Glastuinbouwer', 'Heb 4 kassen.', s => AT.farm.allGreenhouses().filter(x => x.g.owned).length >= 4],
+    ['fair_buy', '🎪', 'Beurskoopje', 'Koop een machine op de landbouwbeurs.', s => (s.stats.fairBuys || 0) >= 1],
     ['year_1', '📅', 'Eerste jaar', 'Speel een volledig jaar (24 dagen).', s => s.time >= 24 * 24],
     ['hard_mode', '🔥', 'Doorzetter', 'Verdien €250.000 op Moeilijk.', s => s.difficulty === 'hard' && s.stats.earned >= 250000],
   ].map(([id, icon, name, desc, check]) => ({ id, icon, name, desc, check }));

@@ -592,7 +592,7 @@ window.AT = window.AT || {};
   }
 
   // ---------- dieren (bovenaanzicht) ----------
-  function animal(ctx, type, x, y, angle, step) {
+  function animal(ctx, type, x, y, angle, step, fluff = 0.6) {
     ctx.save();
     ctx.translate(x, y); ctx.rotate(angle);
     if (type === 'cows') {
@@ -606,9 +606,10 @@ window.AT = window.AT || {};
       ctx.fillStyle = '#d8d0c0'; ctx.fillRect(4.6, -1.8, 0.6, 0.6); ctx.fillRect(4.6, 1.2, 0.6, 0.6);
       ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(-6.2, Math.sin(step) * 0.8); ctx.stroke();
     } else if (type === 'sheep') {
-      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(1, 1.5, 3.4, 2.4, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ece9df';
-      for (const [bx, by] of [[-1.5, -1], [-1.5, 1], [0.5, -1.2], [0.5, 1.2], [1.8, 0], [-0.5, 0]]) circle(ctx, bx, by, 1.5);
+      const k = 0.65 + 0.55 * fluff;   // dikte van de vacht
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(1, 1.5, 3.4 * k, 2.4 * k, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = fluff < 0.2 ? '#e3d6cc' : '#ece9df';
+      for (const [bx, by] of [[-1.5, -1], [-1.5, 1], [0.5, -1.2], [0.5, 1.2], [1.8, 0], [-0.5, 0]]) circle(ctx, bx * k, by * k, 1.5 * k);
       ctx.fillStyle = '#2c2a28'; ctx.beginPath(); ctx.ellipse(3.3, 0, 1.1, 0.9, 0, 0, Math.PI * 2); ctx.fill();
     } else if (type === 'pigs') {
       ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(1, 1.5, 3.8, 2.3, 0, 0, Math.PI * 2); ctx.fill();
@@ -781,22 +782,92 @@ window.AT = window.AT || {};
     ctx.fillText('GRAANHANDEL', lot.x + 11, lot.y + 72.5);
   }
 
-  function greenhouse(ctx, r, crop, t) {
+  // hoe elk kasgewas eruitziet: bodem, rijen en vruchten/bloemen
+  const GH_LOOK = {
+    tomatoes:     { bg: '#4f9a3a', row: '#3d7a35', dots: ['#e74c3c'] },
+    lettuce:      { bg: '#7ccf5a', row: '#a6e07f', dots: [] },
+    cucumbers:    { bg: '#4a8f36', row: '#2f6b2a', dots: ['#1e5a20'], long: true },
+    peppers:      { bg: '#4a8f36', row: '#2f6b2a', dots: ['#e74c3c', '#f1c40f', '#e67e22'] },
+    strawberries: { bg: '#5b9a43', row: '#3f7f35', dots: ['#d62839', '#f4f1ea'], low: true },
+    herbs:        { bg: '#6a5a44', row: '#6aa84f', dots: ['#9ccc65'], low: true },
+    tulips:       { bg: '#5a8f3c', row: '#4a7f33', dots: ['#e74c3c', '#f1c40f', '#e84393', '#8e44ad'], stripes: true },
+  };
+  function greenhouse(ctx, r, crop, t, up = null, dark = false) {
+    const L = GH_LOOK[crop] || GH_LOOK.tomatoes;
     ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(r.x + 5, r.y + 6, r.w, r.h);
-    ctx.fillStyle = crop === 'lettuce' ? '#7ccf5a' : '#4f9a3a'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = L.bg; ctx.fillRect(r.x, r.y, r.w, r.h);
     // plantenrijen
-    for (let y = r.y + 6; y < r.y + r.h - 4; y += 8) {
-      ctx.fillStyle = crop === 'lettuce' ? '#a6e07f' : '#3d7a35'; ctx.fillRect(r.x + 4, y, r.w - 8, 4);
-      if (crop !== 'lettuce') { ctx.fillStyle = '#e74c3c'; for (let x = r.x + 8; x < r.x + r.w - 6; x += 9) ctx.fillRect(x, y + 1, 1.6, 1.6); }
+    let rowN = 0;
+    for (let y = r.y + 6; y < r.y + r.h - 4; y += 8, rowN++) {
+      if (L.stripes) {
+        // tulpen: elke rij een eigen kleur
+        ctx.fillStyle = L.dots[rowN % L.dots.length]; ctx.fillRect(r.x + 4, y, r.w - 8, 4);
+        continue;
+      }
+      ctx.fillStyle = L.row; ctx.fillRect(r.x + 4, y + (L.low ? 1 : 0), r.w - 8, L.low ? 3 : 4);
+      L.dots.forEach((c, k) => {
+        ctx.fillStyle = c;
+        for (let x = r.x + 8 + k * 3; x < r.x + r.w - 6; x += 9 + L.dots.length) ctx.fillRect(x, y + 1, L.long ? 3.2 : 1.6, L.long ? 1.2 : 1.6);
+      });
     }
     // glas
     ctx.fillStyle = 'rgba(210,235,250,0.45)'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    // groeilampen: roze gloed (vooral 's nachts goed te zien)
+    if (up && up.led) { ctx.fillStyle = dark ? 'rgba(255,90,200,0.42)' : 'rgba(255,120,210,0.12)'; ctx.fillRect(r.x, r.y, r.w, r.h); }
     ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 0.8;
     for (let x = r.x; x <= r.x + r.w; x += 12) { ctx.beginPath(); ctx.moveTo(x, r.y); ctx.lineTo(x, r.y + r.h); ctx.stroke(); }
     for (let y = r.y; y <= r.y + r.h; y += 31) { ctx.beginPath(); ctx.moveTo(r.x, y); ctx.lineTo(r.x + r.w, y); ctx.stroke(); }
     const shine = ((t * 0.15) % 1) * (r.w + 60) - 30;
     ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(r.x + Math.max(0, shine), r.y, Math.min(24, r.w - Math.max(0, shine)), r.h);
     ctx.strokeStyle = '#9aa7ad'; ctx.lineWidth = 1.5; ctx.strokeRect(r.x, r.y, r.w, r.h);
+    // warmtekrachtkoppeling: ketelhuisje met schoorsteen en wat stoom
+    if (up && up.chp) {
+      const bx = r.x + r.w - 22, by = r.y - 14;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(bx + 3, by + 3, 20, 12);
+      ctx.fillStyle = '#7f8c8d'; ctx.fillRect(bx, by, 20, 12);
+      ctx.fillStyle = '#566573'; ctx.fillRect(bx + 14, by - 8, 4, 10);
+      for (let k = 0; k < 3; k++) {
+        const ph = (t * 0.6 + k / 3) % 1;
+        ctx.fillStyle = `rgba(235,235,235,${(0.5 * (1 - ph)).toFixed(2)})`;
+        circle(ctx, bx + 16 + ph * 6, by - 10 - ph * 14, 2 + ph * 3);
+      }
+    }
+    // druppelirrigatie: blauwe leiding langs de kas
+    if (up && up.drip) { ctx.fillStyle = '#2e86c1'; ctx.fillRect(r.x + 2, r.y + r.h - 3, r.w - 4, 1.4); }
+  }
+
+  // landbouwbeurs: twee gestreepte tenten, een rij nieuwe machines en wapperende vlaggetjes
+  function fair(ctx, r, t) {
+    ctx.fillStyle = '#b9b3a4'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    const tent = (x, y, w, h, c) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x + 4, y + 5, w, h);
+      for (let k = 0; k < w; k += 8) { ctx.fillStyle = (k / 8) % 2 ? '#fdfdfd' : c; ctx.fillRect(x + k, y, Math.min(8, w - k), h); }
+      ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(x, y + h / 2, w, h / 2);
+      ctx.strokeStyle = '#7f7f7f'; ctx.lineWidth = 0.8; ctx.strokeRect(x, y, w, h);
+    };
+    tent(r.x + 6, r.y + 8, 52, 34, '#c0392b');
+    tent(r.x + 6, r.y + 52, 40, 28, '#2471a3');
+    // nieuwe machines te kijk
+    const cols = ['#2e7d32', '#1565c0', '#e67e22', '#c0392b'];
+    for (let k = 0; k < 4; k++) {
+      const x = r.x + 62 + (k % 2) * 16, y = r.y + 12 + Math.floor(k / 2) * 30;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x + 2, y + 2, 10, 18);
+      ctx.fillStyle = cols[k]; rr(ctx, x, y, 10, 18, 2); ctx.fill();
+      ctx.fillStyle = '#222'; ctx.fillRect(x - 1.5, y + 2, 2, 5); ctx.fillRect(x + 9.5, y + 2, 2, 5); ctx.fillRect(x - 2, y + 11, 3, 7); ctx.fillRect(x + 9, y + 11, 3, 7);
+      ctx.fillStyle = 'rgba(200,230,255,0.8)'; ctx.fillRect(x + 2, y + 9, 6, 4);
+    }
+    // bezoekers
+    for (let k = 0; k < 9; k++) {
+      const px = r.x + 12 + ((k * 37 + t * 6 * (k % 2 ? 1 : -1)) % (r.w - 24) + (r.w - 24)) % (r.w - 24), py = r.y + 92 + (k % 3) * 14;
+      ctx.fillStyle = ['#e74c3c', '#2980b9', '#f1c40f', '#27ae60', '#8e44ad'][k % 5]; circle(ctx, px, py, 2);
+    }
+    // vlaggenlijn
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(r.x + 2, r.y + 2); ctx.lineTo(r.x + r.w - 2, r.y + 2); ctx.stroke();
+    for (let x = r.x + 6; x < r.x + r.w - 4; x += 7) {
+      ctx.fillStyle = ['#e74c3c', '#f1c40f', '#3498db', '#2ecc71'][Math.round(x / 7) % 4];
+      const sw = Math.sin(t * 4 + x) * 0.8;
+      ctx.beginPath(); ctx.moveTo(x, r.y + 2); ctx.lineTo(x + 4, r.y + 2); ctx.lineTo(x + 2 + sw, r.y + 7); ctx.closePath(); ctx.fill();
+    }
   }
 
   function logPile(ctx, x, y) {
@@ -849,5 +920,5 @@ window.AT = window.AT || {};
     ctx.fillStyle = 'rgba(160,140,100,0.25)'; ctx.fillRect(r.x, r.y, r.w, r.h);
   }
 
-  AT.sprites = { fuelPump, bale, machine, thumb, house, hall, silo, tree, treeShadow, treeSprite, animal, barn, fence, trough, factory, buildingLot, pit, trader, greenhouse, sellPoint, dock, shade, mix, rr, circle };
+  AT.sprites = { fuelPump, bale, machine, thumb, house, hall, silo, tree, treeShadow, treeSprite, animal, barn, fence, trough, factory, buildingLot, pit, trader, greenhouse, fair, sellPoint, dock, shade, mix, rr, circle };
 })();

@@ -38,6 +38,7 @@ window.AT = window.AT || {};
     const p = AT.state.player;
     if (p.mode === 'foot') updateFoot(p, dt);
     else updateDrive(p, dt, dtHours);
+    G().checkFairVisit(p.x, p.y);
     if (warnTime > 0) warnTime -= dt;
   }
 
@@ -72,11 +73,8 @@ window.AT = window.AT || {};
       const r = d.lot;
       rects.push({ x: r.x + 10, y: r.y + 10, w: r.w * 0.58, h: r.h - 20 });
     }
-    AT.farm.greenhouses().forEach((gh, i) => { if (gh.owned) { const l = D.greenhouse.lots[i]; rects.push({ x: l.x + 6, y: l.y + 6, w: l.w - 12, h: l.h - 12 }); } });
-    // bomen: alleen de stam
-    for (const tr of (AT.render && AT.render.trees ? AT.render.trees() : [])) circles.push({ x: tr.x, y: tr.y, r: Math.max(2, tr.R * 0.28) });
-    for (const tr of AT.farm.woodlot().trees) if (tr.growth > 0.4) circles.push({ x: tr.x, y: tr.y, r: 2.5 });
-    for (const key of Object.keys(D.plantations)) if (key === 'orchard') for (const pl of AT.farm.plantation(key).plants) circles.push({ x: pl.x, y: pl.y, r: 2.2 });
+    AT.farm.allGreenhouses().forEach(({ g, rect: l, lot }) => { if (g.owned && lot != null) rects.push({ x: l.x + 6, y: l.y + 6, w: l.w - 12, h: l.h - 12 }); });
+    // bomen houden je niet tegen: je rijdt en loopt er gewoon doorheen
     // raster zodat we alleen obstakels in de buurt testen
     const grid = new Map(), C = 64;
     const add = (o, x0, y0, x1, y1) => {
@@ -144,8 +142,9 @@ window.AT = window.AT || {};
     // een volle aanhanger maakt je trager
     const src = loadSource(r);
     const heavy = src && r.mainDef.kind === 'tractor' ? 1 - 0.25 * (src.load.tons / src.cap) : 1;
-    // Shift = een stukje sneller (25%)
-    const boost = held('sprint') ? D.shiftBoost : 1;
+    // Shift = 50 km/u met elk voertuig (op de weg); met het werktuig omlaag 25% sneller werken
+    const shift = held('sprint');
+    const boost = shift && working ? D.shiftBoost : 1;
     // ondergrond: niet-werkend over akkers en gras gaat langzamer (rupsen hebben er minder last van)
     const surf = surface(p.x, p.y), tracks = !!r.mainDef.tracks;
     let ground = D.surfaceSpeed[surf];
@@ -153,13 +152,13 @@ window.AT = window.AT || {};
     if (r.mainDef.kind === 'truck' && surf !== 'road') ground *= 0.75;
     const fuelLeft = G().fuelOf(r.main);
     const dead = fuelLeft <= 0 || r.main.broken;
-    const maxSpeed = dead ? 0 : (working ? r.toolDef.workSpeed : r.mainDef.speed * ground) * PX * heavy * boost * G().wearSpeed(r.main);
+    const maxSpeed = dead ? 0 : (working ? r.toolDef.workSpeed * boost * heavy * G().wearSpeed(r.main) : shift ? D.shiftSpeed * ground : r.mainDef.speed * ground * heavy * G().wearSpeed(r.main)) * PX;
     const throttle = (held('up') ? 1 : 0) - (held('down') ? 1 : 0);
     const steerIn = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
     if (throttle || steerIn) AT.input.moved = 1;
 
     // gas/rem: zware machines trekken rustig op
-    const accel = 9;
+    const accel = shift && !working ? 13 : 9;
     if (throttle !== 0) {
       const braking = Math.sign(throttle) !== Math.sign(p.speed) && Math.abs(p.speed) > 1;
       p.speed += throttle * accel * (braking ? 2.2 : 1) * dt;
@@ -207,9 +206,14 @@ window.AT = window.AT || {};
         G().log(`${r.mainDef.name} is kapot! Laat hem repareren in de Garage (een monteur komt ook naar je toe).`, 'warn');
         AT.emit('change');
       }
-      const cap = G().fuelCap(r.main);
-      if (cap && r.main.fuel < cap * 0.1 && !r.main.lowWarned) { r.main.lowWarned = true; G().log(`Bijna geen diesel meer in de ${r.mainDef.name}! Tank bij de dieselpomp op het erf (T).`, 'warn'); }
-      if (cap && r.main.fuel > cap * 0.2) r.main.lowWarned = false;
+      const cap = G().fuelCap(r.main), reserve = fuelReserve(r);
+      if (cap && r.main.fuel < reserve && !r.main.lowWarned) {
+        r.main.lowWarned = true;
+        G().log(`Tanken! De ${r.mainDef.name} heeft nog diesel voor ±${AT.fmtNum(r.main.fuel / (reserve / D.fuelWarnCrossings), 1)} keer de kaart over. Rij naar een dieselpomp (T).`, 'warn');
+        warn('Bijna tijd om te tanken!');
+        AT.emit('sfx', 'warn');
+      }
+      if (cap && r.main.fuel > reserve * 1.3) r.main.lowWarned = false;
     }
     if (dead && throttle) warn(r.main.broken ? 'Deze machine is kapot. Laat hem repareren in de Garage.' : 'De tank is leeg! Bel de tankservice in de Garage of loop naar de dieselpomp.');
     if (working && p.speed > 3) {
@@ -556,15 +560,41 @@ window.AT = window.AT || {};
     AT.emit('change');
   }
 
+  // bij het kippenhok (eieren rapen) of in de schapenwei (scheren)?
+  function animalSpot(x, y) {
+    for (const [key, d] of Object.entries(D.animals)) {
+      const a = AT.state.animals[key];
+      if (!a || !a.owned) continue;
+      const B = d.barn, P = d.pen;
+      if (d.nest && Math.hypot(Math.max(B.x - x, 0, x - B.x - B.w), Math.max(B.y - y, 0, y - B.y - B.h)) < 30) return { key, kind: 'eggs' };
+      if (d.fleece && a.count && x > P.x && x < P.x + P.w && y > P.y - 12 && y < P.y + P.h) return { key, kind: 'shear' };
+    }
+    return null;
+  }
+  function animalPrompt(spot) {
+    const a = AT.farm.animal(spot.key);
+    if (spot.kind === 'eggs') return a.eggBelt ? 'Eierband: de eieren gaan vanzelf naar de loods' : `${kn('action')} = eieren rapen (${Math.floor(a.nest)} in de nesten)`;
+    return AT.farm.woolReady(spot.key) > 0 ? `${kn('action')} = scheren (${a.count - a.shorn} schapen met ${Math.round(a.fleece * 100)}% vacht)` : `Vacht nog te kort om te scheren (${Math.round(a.fleece * 100)}%)`;
+  }
+
+  // diesel voor ±1,5 keer de kaart over (bij de huidige spelsnelheid: verbruik gaat per speluur)
+  function fuelReserve(r) {
+    const s = AT.state, kmh = Math.max(15, r.mainDef.speed);
+    const secs = D.world.w / (kmh * PX);
+    const hours = secs * D.hoursPerSecond * (s.speed || 1) * ((s.settings && s.settings.timeScale) || 1);
+    return D.fuelWarnCrossings * hours * r.mainDef.fuelPerHour * G().wearFuel(r.main);
+  }
+
   // ---------- hints voor de HUD ----------
   function hudInfo() {
     const p = AT.state.player;
     if (p.mode === 'foot') {
       const v = G().nearestVehicle(p.x, p.y);
       const tree = AT.farm.nearestTree(p.x, p.y);
+      const spot = animalSpot(p.x, p.y);
       return {
         mode: 'foot',
-        prompt: v ? `${kn('enter')} = instappen in ${D.machines[v.type].name}` : AT.farm.nearestRipe(p.x, p.y) ? `${kn('action')} = plukken (${D.plantations[AT.farm.nearestRipe(p.x, p.y).key].plant})` : tree ? `${kn('action')} = boom kappen` : '',
+        prompt: v ? `${kn('enter')} = instappen in ${D.machines[v.type].name}` : AT.farm.nearestRipe(p.x, p.y) ? `${kn('action')} = plukken (${D.plantations[AT.farm.nearestRipe(p.x, p.y).key].plant})` : spot ? animalPrompt(spot) : tree ? `${kn('action')} = boom kappen` : '',
         warn: warnTime > 0 ? warnText : '',
       };
     }
@@ -607,7 +637,7 @@ window.AT = window.AT || {};
       extra: r.toolDef && r.toolDef.kind === 'manure' ? `Mest: ${AT.fmtTons(AT.state.goods.manure)}` : r.toolDef && r.toolDef.kind === 'spreader' ? `Kunstmest: ${AT.fmtMoney(D.fertCostPerHa)}/ha`
         : r.toolDef && r.toolDef.kind === 'lime' ? `Kalk: ${AT.fmtMoney(D.limeCostPerHa)}/ha` : r.toolDef && r.toolDef.kind === 'sprayer' ? `Spuiten: ${AT.fmtMoney(D.sprayCostPerHa)}/ha (alleen groeiend gewas)` : null,
       fuel: cap ? `Diesel: ${Math.round(fuel)} / ${cap} L${wear > 0.05 ? ` · slijtage ${Math.round(wear * 100)}%` : ''}${r.main.gps ? ` · GPS ${p.autosteer ? (p.headland ? 'keert…' : 'AAN + kopakker') : 'uit'} (${kn('gps')})` : ''}` : null,
-      fuelLow: cap && fuel < cap * 0.15 || wear > 0.85 || r.main.broken,
+      fuelLow: cap && fuel < Math.min(cap * 0.5, fuelReserve(r)) || wear > 0.85 || r.main.broken,
       prompt,
       warn: warnTime > 0 ? warnText : '',
     };
@@ -640,6 +670,21 @@ window.AT = window.AT || {};
       const got = AT.farm.pick(hit.key, hit.plant, false);
       if (got > 0) { AT.emit('sfx', 'pick'); G().log(`Geplukt: +${AT.fmtAmount(got, D.plantations[hit.key].product)} ${G().goodName(D.plantations[hit.key].product)}.`, 'good'); }
       else warn('De opslagloods is vol.');
+    } else if (K(e, 'action') && p.mode === 'foot' && animalSpot(p.x, p.y)) {
+      const spot = animalSpot(p.x, p.y), d = D.animals[spot.key], a = AT.farm.animal(spot.key);
+      if (spot.kind === 'eggs') {
+        if (a.eggBelt) warn('Met de eierband gaan de eieren vanzelf naar de opslagloods.');
+        else if (a.nest < 1) warn('Er liggen nog geen eieren in de legnesten.');
+        else {
+          const n = AT.farm.collectEggs(spot.key, false);
+          if (n > 0) { AT.emit('sfx', 'pick'); G().log(`Eieren geraapt: +${AT.fmtNum(n)} eieren.`, 'good'); }
+          else warn('De opslagloods is vol.');
+        }
+      } else {
+        const wool = AT.farm.shear(spot.key, d.fleece.perPress, false);
+        if (wool > 0) { AT.emit('sfx', 'pick'); G().log(`${d.fleece.perPress > 1 ? 'Schapen' : 'Schaap'} geschoren: +${AT.fmtAmount(wool, d.fleece.good)} wol${a.shorn ? ` (nog ${a.count - a.shorn} te gaan)` : ' · allemaal geschoren!'}.`, 'good'); }
+        else warn(a.fleece < d.fleece.minShear ? 'De vacht is nog te kort om te scheren.' : 'De opslagloods is vol.');
+      }
     } else if (K(e, 'action') && p.mode === 'foot') {
       const t = AT.farm.nearestTree(p.x, p.y);
       if (!t) warn(AT.farm.woodlot().owned ? 'Loop naar een volgroeide boom in je bosperceel.' : 'Koop eerst het bosperceel (tab Bedrijf).');

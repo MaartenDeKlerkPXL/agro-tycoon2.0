@@ -20,7 +20,7 @@ Sinds de overstap naar ES-modules + Vite werkt `index.html` dubbelklikken niet m
 | Toets | Actie |
 |---|---|
 | WASD / pijltjes | Lopen of rijden |
-| Shift | Een stukje sneller (lopen én rijden) |
+| Shift | Sneller lopen; in elk voertuig 50 km/u (op de weg, met het werktuig omlaag 25% sneller werken) |
 | E | In-/uitstappen (loop vlak naar de machine) |
 | F | Werktuig aan-/afkoppelen (rij achteruit tegen het werktuig) |
 | Spatie | Werktuig omlaag/omhoog (ploeg, zaaimachine, maaibord) |

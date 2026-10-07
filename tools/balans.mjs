@@ -65,7 +65,7 @@ const factories = Object.entries(D.factories).flatMap(([k, f]) => [{ in: f.in, o
 
 // ---------- dieren ----------
 const animals = Object.entries(D.animals).map(([k, a]) => {
-  const prod = Object.entries(a.produce).reduce((s, [g, n]) => s + n * price(g), 0);
+  const prod = Object.entries(a.produce).reduce((s, [g, n]) => s + n * price(g), 0) + (a.fleece ? a.fleece.perAnimal / a.fleece.growDays * price(a.fleece.good) : 0);
   const cheapest = a.feeds.filter(g => price(g) > 0).sort((x, y) => price(x) - price(y))[0];
   const feed = a.feedPerDay * price(cheapest);
   const young = a.births * a.sellPrice;
@@ -89,8 +89,22 @@ const plantations = Object.entries(D.plantations).map(([k, p]) => {
   };
 });
 
+// ---------- kassen ----------
+const GH = D.greenhouse, avgEnergy = GH.energyPerDay.reduce((a, b) => a + b, 0) / 4;
+const greenhouses = Object.entries(GH.crops).map(([k, c]) => {
+  const yearAvg = (3 + GH.winterLight) / 4;   // zonder lampen: winter minder licht
+  const value = c.perDay * price(k), energy = avgEnergy * c.heat;
+  const full = c.perDay * GH.upgrades.led.grow * GH.upgrades.drip.grow * GH.upgrades.layers.grow * price(k);
+  const fullEnergy = avgEnergy * c.heat * GH.upgrades.chp.heatCut * GH.upgrades.layers.heat + GH.upgrades.led.power;
+  return {
+    Gewas: name(k), 'Per dag': `${c.perDay} ${D.products[k].unit}`, 'Prijs €': price(k), 'Waarde €/dag (zomer)': r(value), 'Stoken €/dag (gem.)': r(energy),
+    'Winst €/dag (jaargem.)': r(value * yearAvg - energy), 'Met alle upgrades €/dag': r(full - fullEnergy),
+    'Terugverdientijd kas (dagen)': r(GH.price / Math.max(1, value * yearAvg - energy), 1),
+  };
+});
+
 // ---------- schrijven ----------
-const sheets = { gewassen: crops, machines, tractoren: tractors, fabrieken: factories, dieren: animals, fruit: plantations };
+const sheets = { gewassen: crops, machines, tractoren: tractors, fabrieken: factories, dieren: animals, fruit: plantations, kassen: greenhouses };
 const outDir = root + 'docs/balans/';
 mkdirSync(outDir, { recursive: true });
 const cell = v => { const s = typeof v === 'number' ? String(v).replace('.', ',') : String(v ?? ''); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -101,7 +115,7 @@ for (const [n, rows] of Object.entries(sheets)) {
 const md = ['# Balans van Agro Tycoon 2.0', '',
   `Automatisch berekend uit \`js/data.js\` met \`npm run balans\` (spelversie ${D.version}). Basisprijzen, zonder seizoen, marktschommeling, bodem of bemesting.`,
   `Een speldag = 24 speluren; een maand = ${D.daysPerMonth} dagen. Diesel €${D.fuelPrice}/L, loonwerker €${D.workerWagePerHour}/u. De CSV-bestanden staan in \`docs/balans/\` (openen in Excel of Google Sheets).`, ''];
-const titles = { gewassen: 'Gewassen (gesorteerd op winst per groeidag)', machines: 'Werktuigen en oogstmachines', tractoren: 'Tractoren', fabrieken: 'Fabrieken', dieren: 'Dieren', fruit: 'Boomgaard en wijngaard' };
+const titles = { gewassen: 'Gewassen (gesorteerd op winst per groeidag)', machines: 'Werktuigen en oogstmachines', tractoren: 'Tractoren', fabrieken: 'Fabrieken', dieren: 'Dieren', fruit: 'Boomgaard en wijngaard', kassen: 'Kassen (per kas)' };
 for (const [n, rows] of Object.entries(sheets)) {
   const head = Object.keys(rows[0]);
   md.push(`## ${titles[n]}`, '', '| ' + head.join(' | ') + ' |', '|' + head.map(() => '---').join('|') + '|', ...rows.map(row => '| ' + head.map(h => String(row[h] ?? '').replace(/\|/g, '/')).join(' | ') + ' |'), '');

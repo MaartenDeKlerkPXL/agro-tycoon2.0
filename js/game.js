@@ -972,7 +972,7 @@ window.AT = window.AT || {};
   }
 
   // ---------- diesel, slijtage, reparatie, huur en GPS ----------
-  const fuelCap = m => { const d = machineDef(m); return d.fuelPerHour ? (d.fuelTank || Math.round(d.fuelPerHour * 12)) : 0; };
+  const fuelCap = m => { const d = machineDef(m); return d.fuelPerHour ? (d.fuelTank || Math.round(d.fuelPerHour * D.tankHours)) : 0; };
   function fuelOf(m) { if (m.fuel == null) m.fuel = fuelCap(m); return m.fuel; }
   function addWear(m, hours) {
     if (!m) return;
@@ -1125,9 +1125,11 @@ window.AT = window.AT || {};
     // producten alleen als je ze kunt maken
     const prods = new Set();
     if (s.machines.some(m => machineDef(m).kind === 'baler')) prods.add('hay');
-    for (const [k, a] of Object.entries(D.animals)) if (s.animals[k].owned) Object.keys(a.produce).forEach(p => p !== 'manure' && prods.add(p));
+    for (const [k, a] of Object.entries(D.animals)) if (s.animals[k].owned) [...Object.keys(a.produce), ...(a.fleece ? [a.fleece.good] : [])].forEach(p => p !== 'manure' && prods.add(p));
     for (const [k, f] of Object.entries(D.factories)) if (s.factories[k].owned) Object.keys(f.out).forEach(p => prods.add(p));
-    (s.greenhouses || []).forEach(g => g.owned && prods.add(g.crop));
+    if (AT.farm) AT.farm.allGreenhouses().forEach(({ g }) => g.owned && prods.add(g.crop));
+    // ook wat je nog op voorraad hebt (bijv. na het omschakelen van een kas)
+    for (const k of Object.keys(D.products)) if (k !== 'manure' && stock(k) > 0.5) prods.add(k);
     if (s.woodlot && s.woodlot.owned) prods.add('wood');
     for (const [k, pl] of Object.entries(D.plantations)) if (s.plantations && s.plantations[k] && s.plantations[k].owned) prods.add(pl.product);
     return { crops, prods: [...prods] };
@@ -1305,14 +1307,69 @@ window.AT = window.AT || {};
     log(`Verzekering keert ${AT.fmtMoney(value)} uit voor de ${what} op Veld ${f.id}.`, 'money');
   }
 
+  // ---------- landbouwbeurs ----------
+  function fair() {
+    const s = S();
+    if (!s.fair) s.fair = { year: 0, deals: {}, visited: false, active: false };
+    return s.fair;
+  }
+  const fairActive = () => !!fair().active;
+  // korting op een machine (0..1)
+  function fairDiscount(type) {
+    const f = fair();
+    if (!f.active || !D.machines[type]) return 0;
+    return Math.max(D.fair.discount, f.deals[type] || 0) + (f.visited ? D.fair.visitBonus : 0);
+  }
+  const machinePrice = type => Math.round(D.machines[type].price * (1 - fairDiscount(type)) / 10) * 10;
+  // dagen tot de volgende beurs (0 = nu bezig)
+  function daysToFair() {
+    const m = AT.weather.month(), d = AT.weather.dayInMonth();
+    if (fairActive()) return 0;
+    const months = (D.fair.month - m + 12) % 12 || 12;
+    return months * D.daysPerMonth - (d - 1);
+  }
+  function startFair() {
+    const f = fair(), keys = Object.keys(D.machines).filter(k => !D.machines[k].old);
+    f.deals = {};
+    for (let i = 0; i < D.fair.deals && keys.length; i++) {
+      const k = keys.splice(Math.floor(Math.random() * keys.length), 1)[0];
+      f.deals[k] = Math.round((D.fair.dealMin + Math.random() * (D.fair.dealMax - D.fair.dealMin)) * 20) / 20;
+    }
+    f.active = true; f.visited = false; f.year = AT.weather.year();
+    const top = Object.entries(f.deals).map(([k, v]) => `${D.machines[k].name} −${Math.round(v * 100)}%`).join(', ');
+    log(`🎪 De landbouwbeurs is open (op de kade bij de haven)! Alle machines ${Math.round(D.fair.discount * 100)}% goedkoper. Beursaanbiedingen: ${top}. Ga zelf langs voor nog eens ${Math.round(D.fair.visitBonus * 100)}% extra.`, 'goal');
+    AT.emit('sfx', 'goal');
+  }
+  function updateFair() {
+    const f = fair(), m = AT.weather.month(), y = AT.weather.year();
+    if (m === D.fair.month && !f.active && f.year !== y) startFair();
+    else if (m !== D.fair.month && f.active) { f.active = false; f.deals = {}; log('De landbouwbeurs is voorbij. Volgend jaar in november weer!'); }
+    else if (!f.active && (D.fair.month - m + 12) % 12 === 1 && AT.weather.dayInMonth() === 1) log(`🎪 Over ${D.daysPerMonth} dagen begint de landbouwbeurs bij de haven: korting op alle machines. Spaar maar vast!`);
+  }
+  // langs geweest op het beursterrein?
+  function checkFairVisit(x, y) {
+    const f = fair(), A = D.fair.area, L = D.sellPoints.harbor.lot;
+    if (!f.active || f.visited) return;
+    const inA = (r, m) => x > r.x - m && x < r.x + r.w + m && y > r.y - m && y < r.y + r.h + m;
+    if (inA(A, 20) || inA(L, 0)) {
+      f.visited = true;
+      S().stats.fairVisits = (S().stats.fairVisits || 0) + 1;
+      log(`🎪 Welkom op de landbouwbeurs! Als bezoeker krijg je ${Math.round(D.fair.visitBonus * 100)}% extra korting in de Winkel.`, 'good');
+      AT.emit('sfx', 'goal');
+      AT.emit('change');
+    }
+  }
+
   function buyMachine(type) {
     const d = D.machines[type];
     if (!d) return;
-    if (S().money < d.price) { log(`Niet genoeg geld voor ${d.name}.`, 'warn'); return; }
-    spend(d.price, 'machines');
+    const cost = machinePrice(type);
+    if (S().money < cost) { log(`Niet genoeg geld voor ${d.name}.`, 'warn'); return; }
+    spend(cost, 'machines');
+    if (cost < d.price) { const st = S().stats; st.fairBuys = (st.fairBuys || 0) + 1; st.fairSaved = (st.fairSaved || 0) + d.price - cost; }
     const sl = freeSlot();
     S().machines.push({ uid: newUid(), type, busy: null, x: sl.x, y: sl.y, angle: 0, impl: null, attached: null });
-    log(`${d.name} gekocht! Hij staat op de parkeerplaats bij de schuur.`, 'money');
+    log(`${d.name} gekocht${cost < d.price ? ` met beurskorting (${AT.fmtMoney(d.price - cost)} bespaard)` : ''}! Hij staat op de parkeerplaats bij de schuur.`, 'money');
     AT.emit('change');
   }
 
@@ -1478,6 +1535,7 @@ window.AT = window.AT || {};
       if (rented.length) spend(rented.reduce((a, m) => a + rentPrice(m.type), 0), 'huur');
       if (s.insurance && s.insurance.crops) spend(insurancePremium(), 'verzekering');
       checkContracts();
+      updateFair();
       save();
       AT.emit('newday');
     }
@@ -1716,6 +1774,7 @@ window.AT = window.AT || {};
   AT.game = {
     placeBuilding, placeProblem, demolish, footprint, fuelPumps, nearPump, siloPits, builtOf,
     dropBale, collectBales, goodDef, goodName, goodColor, leaseField, endLease, leaseRent, toggleInsurance, insurancePremium, insuredDamage,
+    fair, fairActive, fairDiscount, machinePrice, daysToFair, startFair, updateFair, checkFairVisit,
     STONE, ROLLED, fuelCap, fuelOf, addWear, wearSpeed, wearFuel, repairCost, repair, refuel, rentPrice, rentMachine, returnMachine, buyGps, atYard, taskKinds,
     ST, CROP_KEYS, FERT, MANURE, LIME, SPRAYED, COMPACT, isImplement, IMPL_NAMES, phFactor, compactAt, wetGround, buyIrrigation, fieldDefaults,
     price, stock, take, addGood, sellGood, yieldFactor, canSowNow, spend, earn, hayDryness, TEDDED, PLANTER_NAMES,

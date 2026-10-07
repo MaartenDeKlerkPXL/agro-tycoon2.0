@@ -402,16 +402,33 @@ window.AT = window.AT || {};
       SP().trough(ctx, tr.x, tr.y, tr.w, full > 0.02, full);
       const list = herd(key);
       if (!state.paused) updateHerd(key, list, dt);
-      for (const an of list) SP().animal(ctx, key, an.x, an.y, an.a, an.step);
+      if (d.fleece) {
+        // geschoren schapen zijn dun, ongeschoren worden steeds wolliger
+        const am = AT.farm.animal(key), nShorn = Math.round(list.length * (am.count ? am.shorn / am.count : 0));
+        list.forEach((an, i) => SP().animal(ctx, key, an.x, an.y, an.a, an.step, i < nShorn ? am.fleeceB : am.fleece));
+      } else for (const an of list) SP().animal(ctx, key, an.x, an.y, an.a, an.step);
+      // eieren in de legnesten (zonder eierband)
+      if (d.nest) {
+        const am = AT.farm.animal(key);
+        if (!am.eggBelt && am.nest >= 1) {
+          const n = Math.min(14, Math.ceil(am.nest / AT.farm.nestCap(key) * 14));
+          ctx.fillStyle = '#8a6a3c'; ctx.fillRect(d.barn.x + 6, d.barn.y + d.barn.h + 3, 30, 9);
+          for (let i = 0; i < n; i++) {
+            ctx.fillStyle = i % 3 === 0 ? '#e9c9a0' : '#fbf6ec';
+            ctx.beginPath(); ctx.ellipse(d.barn.x + 9 + (i % 7) * 4, d.barn.y + d.barn.h + 5.5 + Math.floor(i / 7) * 3.5, 1.5, 1.9, 0, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+      }
     }
     SP().trader(ctx, D.trader.lot, D.trader.pit, time);
     for (const [id, sp] of Object.entries(D.sellPoints)) if (sp.lot) SP().sellPoint(ctx, id, sp, time);
+    if (G().fairActive()) SP().fair(ctx, D.fair.area, time);
     SP().dock(ctx, D.dock);
     SP().fuelPump(ctx, D.fuelPump.x, D.fuelPump.y);
     // kassen
-    AT.farm.greenhouses().forEach((gh, i) => {
-      const lot = D.greenhouse.lots[i];
-      if (gh.owned) SP().greenhouse(ctx, lot, gh.crop, time); else SP().buildingLot(ctx, lot);
+    AT.farm.allGreenhouses().forEach(({ g, rect, lot }) => {
+      if (lot == null) return;   // zelf gebouwde kassen tekent drawBuilt
+      if (g.owned) SP().greenhouse(ctx, rect, g.crop, time, g.up, lightsOn()); else SP().buildingLot(ctx, rect);
     });
     // bosperceel
     const wl = AT.farm.woodlot(), se = treeSeason();
@@ -475,18 +492,19 @@ window.AT = window.AT || {};
 
   // zelf gebouwde gebouwen + spookbeeld tijdens het plaatsen
   function drawBuildings(state) {
-    for (const b of state.buildings || []) drawBuilt(b.type, b.x, b.y, 1);
+    for (const b of state.buildings || []) drawBuilt(b.type, b.x, b.y, b);
     const pl = view.placing;
     if (pl && pl.x != null) {
       const ok = !G().placeProblem(pl.type, pl.x, pl.y);
-      ctx.globalAlpha = 0.6; drawBuilt(pl.type, pl.x, pl.y, 0.6); ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.6; drawBuilt(pl.type, pl.x, pl.y, null); ctx.globalAlpha = 1;
       const fp = G().footprint(pl.type, pl.x, pl.y);
       ctx.strokeStyle = ok ? 'rgba(80,220,80,0.95)' : 'rgba(230,60,40,0.95)'; ctx.lineWidth = 2 / cam.zoom; ctx.setLineDash([5 / cam.zoom, 4 / cam.zoom]);
       ctx.strokeRect(fp.x - 2, fp.y - 2, fp.w + fp.pw + 4, fp.h + 4); ctx.setLineDash([]);
     }
   }
-  function drawBuilt(type, x, y) {
+  function drawBuilt(type, x, y, b) {
     const d = D.buildables[type];
+    if (type === 'greenhouse') { const g = b && b.gh; SP().greenhouse(ctx, { x, y, w: d.w, h: d.h }, g ? g.crop : 'tomatoes', time, g ? g.up : null, lightsOn()); return; }
     if (type === 'silo') {
       SP().pit(ctx, { x: x - 10, y: y + d.h + 6, w: d.w + 20, h: 14 });
       const fill = G().siloCapacity() ? G().siloUsed() / G().siloCapacity() : 0;
@@ -519,15 +537,16 @@ window.AT = window.AT || {};
         const txt = !a.owned ? `${d.building} · bouw ${AT.fmtMoney(d.buildPrice)}` : `${d.building} · ${a.count}/${AT.farm.capacity(k)}${a.count && a.fed < 0.5 ? ' · honger!' : ''}${a.sick ? ' · ziek!' : ''}`;
         return { r: d.pen, txt, bg: !a.owned ? 'rgba(45,106,45,0.92)' : bad ? 'rgba(170,60,30,0.92)' : 'rgba(0,0,0,0.55)' };
       }),
+      ...(G().fairActive() ? [{ r: { x: D.fair.area.x - 10, y: D.fair.area.y - 30, w: D.fair.area.w + 20, h: D.fair.area.h + 30 }, txt: `🎪 Landbouwbeurs${G().fair().visited ? ' ✓' : ' · kom langs!'}`, bg: 'rgba(200,120,20,0.95)' }] : []),
       { r: D.trader.lot, txt: `Graanhandel · ${AT.fmtMoney(G().cropPrice('wheat'))}/t tarwe`, bg: 'rgba(63,110,140,0.92)' },
       ...Object.entries(D.sellPoints).filter(([, sp]) => sp.lot).map(([, sp]) => ({ r: sp.lot, txt: sp.name, bg: 'rgba(63,110,140,0.92)' })),
       { r: { x: D.dock.x - 20, y: D.dock.y - 40, w: D.dock.w + 40, h: 54 }, txt: 'Laadperron (vrachtwagen)', bg: 'rgba(0,0,0,0.55)', small: true },
       { r: { x: D.fuelPump.x - 30, y: D.fuelPump.y - 30, w: 60, h: 44 }, txt: 'Diesel (T)', bg: 'rgba(192,57,43,0.9)', small: true },
-      ...(state.buildings || []).map(b => { const d = D.buildables[b.type]; return { r: { x: b.x - 10, y: b.y - 6, w: d.w + 30, h: d.h + 30 }, txt: d.name, bg: 'rgba(0,0,0,0.55)', small: true }; }),
+      ...(state.buildings || []).filter(b => b.type !== 'greenhouse').map(b => { const d = D.buildables[b.type]; return { r: { x: b.x - 10, y: b.y - 6, w: d.w + 30, h: d.h + 30 }, txt: d.name, bg: 'rgba(0,0,0,0.55)', small: true }; }),
       ...Object.keys(D.factories).filter(k => state.factories[k].owned && AT.farm.recipes(k).some(r => Object.keys(r.in).some(g => AT.farm.factoryAccepts(k, g)))).map(k => {
         const p = AT.farm.factoryPit(k); return { r: { x: p.x - 10, y: p.y - 30, w: p.w + 20, h: 44 }, txt: 'Stortplaats (U)', bg: 'rgba(0,0,0,0.55)', small: true };
       }),
-      ...AT.farm.greenhouses().map((gh, i) => ({ r: D.greenhouse.lots[i], txt: gh.owned ? `Kas: ${D.products[gh.crop].name.toLowerCase()} · ${gh.status || ''}` : `Kas · bouw ${AT.fmtMoney(D.greenhouse.price)}`, bg: gh.owned ? 'rgba(0,0,0,0.55)' : 'rgba(45,106,45,0.92)' })),
+      ...AT.farm.allGreenhouses().map(({ g, rect }) => ({ r: rect, txt: g.owned ? `Kas: ${D.products[g.crop].name.toLowerCase()} · ${g.status || ''}` : `Kas · bouw ${AT.fmtMoney(D.greenhouse.price)}`, bg: g.owned ? 'rgba(0,0,0,0.55)' : 'rgba(45,106,45,0.92)' })),
       (() => { const wl = AT.farm.woodlot(); const ready = wl.trees.filter(t => t.growth >= 0.95).length;
         return { r: D.woodlot.area, txt: wl.owned ? `Bosperceel · ${ready} bomen kapklaar` : `Bosperceel · koop ${AT.fmtMoney(D.woodlot.price)}`, bg: wl.owned ? 'rgba(0,0,0,0.55)' : 'rgba(45,106,45,0.92)' }; })(),
       { r: { x: D.siloPit.x - 20, y: D.siloPit.y - 40, w: D.siloPit.w + 40, h: 60 }, txt: 'Stortput silo / opslag', bg: 'rgba(0,0,0,0.55)', small: true },

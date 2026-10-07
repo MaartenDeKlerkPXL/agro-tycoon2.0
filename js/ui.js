@@ -281,7 +281,7 @@ window.AT = window.AT || {};
         ${r.mainDef.kind === 'harvester' ? `<button class="btn small ${AT.staff.playerChaser() ? '' : 'primary'}" data-action="chaser">${AT.staff.playerChaser() ? `Chauffeur naar huis (${AT.keys.name('chaser')})` : `🚜 Chauffeur met kipper (${AT.keys.name('chaser')})`}</button>` : ''}</div></div>`;
     }
     html += `<div class="card howto"><b>Zo werkt het</b><ul>
-      <li><b>WASD</b>: lopen of rijden · <b>Shift</b>: een stukje sneller</li>
+      <li><b>WASD</b>: lopen of rijden · <b>Shift</b>: sneller lopen · in een voertuig 50 km/u</li>
       <li><b>E</b>: in- of uitstappen (loop tot vlak bij de machine)</li>
       <li><b>F</b>: werktuig aan- of afkoppelen (rij achteruit tegen ploeg, zaaimachine of strooier)</li>
       <li><b>Spatie</b>: werktuig omlaag/omhoog · <b>C</b>: zaaigoed wisselen</li>
@@ -352,6 +352,16 @@ window.AT = window.AT || {};
   function renderShop(s) {
     let html = `<h2>Winkel</h2>`;
     html += `<p class="muted">Kopen of huren: huren kost ${Math.round(D.rentPerDay * 100 * 10) / 10}% van de prijs per dag. Breng een gehuurde machine terug in de Garage.</p>`;
+    const fr = G().fair();
+    if (fr.active) {
+      html += `<div class="card fair"><b>🎪 Landbouwbeurs: nu ${Math.round(D.fair.discount * 100)}% korting op alle machines!</b>
+        <div>Beursaanbiedingen: ${Object.entries(fr.deals).map(([k, v]) => `<b>${esc(D.machines[k].name)}</b> −${Math.round(v * 100)}%`).join(' · ')}</div>
+        <div class="muted">${fr.visited ? `✓ Je bent langs geweest: nog eens ${Math.round(D.fair.visitBonus * 100)}% extra korting.` : `Ga zelf naar de beurs op de kade bij de haven voor nog eens ${Math.round(D.fair.visitBonus * 100)}% extra korting.`} De beurs duurt tot het eind van november.</div>
+        <button class="btn small" data-action="look-fair">Zoek de beurs</button></div>`;
+    } else {
+      const dd = G().daysToFair();
+      html += `<div class="muted">🎪 Volgende landbouwbeurs (november, bij de haven): over ${dd} ${dd === 1 ? 'dag' : 'dagen'}. Dan zijn alle machines minstens ${Math.round(D.fair.discount * 100)}% goedkoper.</div>`;
+    }
     const groups = [['tractor', 'Tractoren'], ['trailer', 'Aanhangers'], ['truck', 'Vrachtwagens'], ['plow', 'Grondbewerking'], ['cultivator', ''], ['roller', ''], ['stonepicker', ''], ['seeder', 'Zaaimachines'], ['spreader', 'Bemesting en bodem'], ['manure', ''], ['lime', ''], ['sprayer', 'Gewasbescherming'], ['mower', 'Grasland'], ['tedder', ''], ['baler', ''], ['harvester', 'Oogstmachines'], ['fruitharvester', 'Fruit en druiven'], ['mixer', 'Dieren']];
     for (const [kind, title] of groups) {
       if (title) html += `<h3>${title}</h3>`;
@@ -360,7 +370,7 @@ window.AT = window.AT || {};
         const owned = s.machines.filter(m => m.type === key).length;
         html += `<div class="card row">${thumbImg(key)}
           <div class="grow"><b>${esc(d.name)}</b>${owned ? ` <span class="badge">${owned}×</span>` : ''}<div class="muted">${machineSpecs(d)}</div></div>
-          <div class="col"><button class="btn small primary" data-action="buyMachine" data-type="${key}" ${s.money < d.price ? 'disabled' : ''}>${AT.fmtMoney(d.price)}</button>
+          <div class="col">${G().fairDiscount(key) ? `<span class="fair-price"><s>${AT.fmtMoney(d.price)}</s> −${Math.round(G().fairDiscount(key) * 100)}%</span>` : ''}<button class="btn small primary" data-action="buyMachine" data-type="${key}" ${s.money < G().machinePrice(key) ? 'disabled' : ''}>${AT.fmtMoney(G().machinePrice(key))}</button>
           <button class="btn small" data-action="rentMachine" data-type="${key}" ${s.money < G().rentPrice(key) ? 'disabled' : ''} title="Huren per dag">Huur ${AT.fmtMoney(G().rentPrice(key))}/d</button></div></div>`;
       }
     }
@@ -621,11 +631,35 @@ window.AT = window.AT || {};
   // ---------- Bedrijf: dieren & fabrieken ----------
   const recipe = obj => Object.entries(obj).map(([k, v]) => `${AT.fmtAmount(v, k)} ${AT.farm.goodName(k)}`).join(' + ');
 
+  // kippen: legnesten en eierband · schapen: vacht en scheren
+  function animalExtra(key, d, a, s) {
+    if (d.nest) {
+      const cap = AT.farm.nestCap(key), n = Math.floor(a.nest), pct = Math.min(100, a.nest / cap * 100);
+      if (a.eggBelt) return `<div class="muted">🥚 Eierband: de eieren rollen vanzelf naar de opslagloods.${AT.weather.season() === 3 ? ' In de winter leggen de kippen minder.' : ''}</div>`;
+      return `<div class="row"><span class="grow">🥚 Legnesten${a.nestWarned ? ' · <b class="warn">vol!</b>' : ''}</span><span>${AT.fmtNum(n)} / ${AT.fmtNum(cap)} eieren</span></div>
+        <div class="bar thin"><div class="fill" style="width:${pct}%;background:${pct > 90 ? '#d9534f' : '#e9d8a6'}"></div></div>
+        <div class="row wrap"><button class="btn small" data-action="collectEggs" data-key="${key}" ${n ? '' : 'disabled'}>Laat rapen (${AT.fmtMoney(n * d.nest.collectCost)})</button>
+          <button class="btn small primary" data-action="eggBelt" data-key="${key}" ${s.money < d.nest.beltPrice ? 'disabled' : ''}>Eierband ${AT.fmtMoney(d.nest.beltPrice)} (automatisch)</button></div>
+        <div class="muted">Zelf rapen is gratis: loop naar het kippenhok en druk ${AT.keys.name('action')}. Zijn de nesten vol, dan gaan eieren verloren.</div>`;
+    }
+    if (d.fleece) {
+      const f = d.fleece, avg = AT.farm.avgFleece(key), ready = AT.farm.woolReady(key), left = a.count - a.shorn;
+      return `<div class="row"><span class="grow">🐑 Vacht${a.fleece > 0.85 && AT.weather.season() === 1 ? ' · <b class="warn">te warm!</b>' : ''}</span><span>${Math.round(avg * 100)}%</span></div>
+        <div class="bar thin"><div class="fill" style="width:${Math.round(avg * 100)}%;background:#ece9df"></div></div>
+        <div class="muted">${ready ? `Klaar om te scheren: ${left} schapen, ±${AT.fmtNum(ready)} kg wol` : `Vacht nog te kort (minstens ${Math.round(f.minShear * 100)}%)`}${a.shorn ? ` · ${a.shorn} al geschoren` : ''}. Een volle vacht groeit in ${f.growDays} dagen.</div>
+        <div class="row wrap"><button class="btn small primary" data-action="shearAll" data-key="${key}" ${ready && s.money >= f.shearCost ? '' : 'disabled'}>Scheerder (${AT.fmtMoney(f.shearCost * left)})</button>
+          <label class="row small"><input type="checkbox" data-ashear="${key}" ${a.autoShear ? 'checked' : ''}> automatisch laten scheren als de vacht vol is</label></div>
+        <div class="muted">Zelf scheren is gratis: loop de wei in en druk ${AT.keys.name('action')} (${f.perPress} schapen per keer).</div>`;
+    }
+    return '';
+  }
+
   function renderFarm(s) {
     let html = `<h2>Bedrijf</h2><p class="muted">Dieren eten uit hun voerbak of automatisch uit je silo/loods. Fabrieken maken van je oogst iets dat meer waard is.</p><h3>Dieren</h3>`;
     for (const [key, d] of Object.entries(D.animals)) {
       const a = AT.farm.animal(key), cap = AT.farm.capacity(key);
-      const prod = Object.entries(d.produce).map(([k, v]) => `${D.products[k].unit === 't' && v < 0.1 ? AT.fmtNum(v * 1000) + ' kg' : AT.fmtAmount(v, k)} ${AT.farm.goodName(k)}`).join(', ');
+      const prod = [...(d.fleece ? [`±${AT.fmtNum(d.fleece.perAnimal / d.fleece.growDays)} kg wol (scheren)`] : []),
+        ...Object.entries(d.produce).map(([k, v]) => `${D.products[k].unit === 't' && v < 0.1 ? AT.fmtNum(v * 1000) + ' kg' : AT.fmtAmount(v, k)} ${AT.farm.goodName(k)}`)].join(', ');
       if (!a.owned) {
         html += `<div class="card"><div class="row"><b class="grow">${d.building}</b>
           <button class="btn small primary" data-action="buyBuilding" data-key="${key}" ${s.money < d.buildPrice ? 'disabled' : ''}>Bouw ${AT.fmtMoney(d.buildPrice)}</button></div>
@@ -657,7 +691,8 @@ window.AT = window.AT || {};
           <button class="btn small ${a.sick || a.health < 0.7 ? 'primary' : ''}" data-action="vet" data-key="${key}" ${a.count && s.money >= AT.farm.vetCost(key) ? '' : 'disabled'}>Dierenarts ${AT.fmtMoney(AT.farm.vetCost(key))}</button>
           ${nextLevel ? `<button class="btn small" data-action="expandBarn" data-key="${key}" ${s.money < AT.farm.expandCost(key) ? 'disabled' : ''}>Stal uitbreiden → ${d.capacity * D.barnLevels[a.level + 1]} (${AT.fmtMoney(AT.farm.expandCost(key))})</button>` : ''}
         </div>
-        <div class="muted">Jongen: gezonde, goed gevoerde dieren krijgen ${d.young} als er plek is. Mengvoer en kuilvoer geven meer productie.</div></div>`;
+        ${animalExtra(key, d, a, s)}
+        <div class="muted">Jongen: gezonde, goed gevoerde dieren krijgen ${d.young} als er plek is. Mengvoer en kuilvoer geven meer productie.${d.graze ? ` Buiten de winter grazen ze: ${Math.round(d.graze * 100)}% minder voer nodig.` : ''}</div></div>`;
     }
     html += `<h3>Fabrieken</h3>`;
     for (const [key, d] of Object.entries(D.factories)) {
@@ -677,15 +712,22 @@ window.AT = window.AT || {};
         ${AT.farm.recipes(key).some(r => Object.keys(r.in).some(g => AT.farm.factoryAccepts(key, g))) ? `<div class="muted">Stortplaats: ${Object.entries(AT.farm.buffer(key)).filter(([, v]) => v > 0.01).map(([k, v]) => `${AT.fmtTons(v)} ${G().goodName(k)}`).join(', ') || 'leeg'} · breng oogst met een kipper (U) voor ${Math.round((D.factoryBonus - 1) * 100)}% meer product</div>` : ''}</div>`;
     }
     // kassen
-    html += `<h3>Kassen</h3>`;
-    AT.farm.greenhouses().forEach((g, i) => {
+    html += `<h3>Kassen</h3><p class="muted">Het hele jaar groenten, fruit of bloemen. Omschakelen kost ${AT.fmtMoney(D.greenhouse.plantCost)} aan nieuwe planten. Meer kassen? Bouw ze zelf op de kaart (onderaan, Zelf bouwen).</p>`;
+    AT.farm.allGreenhouses().forEach(({ g, id, name, lot, rect }) => {
       if (!g.owned) {
-        html += `<div class="card row"><div class="grow"><b>Kas ${i + 1}</b><div class="muted">Het hele jaar groenten · stookkosten hoger in de winter</div></div>
-          <button class="btn small primary" data-action="buyGreenhouse" data-i="${i}" ${s.money < D.greenhouse.price ? 'disabled' : ''}>Bouw ${AT.fmtMoney(D.greenhouse.price)}</button></div>`;
+        html += `<div class="card row"><div class="grow"><b>${name}</b><div class="muted">Bouwplek bij het dorp · stookkosten hoger in de winter</div></div>
+          <button class="btn small primary" data-action="buyGreenhouse" data-i="${lot}" ${s.money < D.greenhouse.price ? 'disabled' : ''}>Bouw ${AT.fmtMoney(D.greenhouse.price)}</button></div>`;
         return;
       }
-      html += `<div class="card"><div class="row"><b class="grow">Kas ${i + 1}</b><span class="muted">${esc(g.status || '')}</span></div>
-        <div class="row wrap">${Object.entries(D.greenhouse.crops).map(([k, c]) => `<button class="btn small ${g.crop === k ? 'primary' : ''}" data-action="ghCrop" data-i="${i}" data-crop="${k}">${D.products[k].name} (${c.perDay} ${D.products[k].unit}/dag)</button>`).join('')}</div></div>`;
+      const r = AT.farm.ghRates(g), p = D.products[g.crop];
+      const value = r.perDay * G().price(g.crop);
+      html += `<div class="card"><div class="row"><b class="grow">${name}: ${p.name.toLowerCase()}</b><span class="muted">${esc(g.status || '')}</span>
+          <button class="btn small" data-action="look-gh" data-x="${rect.x + rect.w / 2}" data-y="${rect.y + rect.h / 2}">Zoek</button></div>
+        <div class="muted">Nu ${AT.fmtNum(r.perDay)} ${p.unit}/dag (±${AT.fmtMoney(value)}) · stookkosten ${AT.fmtMoney(r.energy)}/dag${g.ramp < 1 ? ` · aanloop ${Math.round(g.ramp * 100)}%` : ''}</div>
+        <div class="row wrap">${Object.entries(D.greenhouse.crops).map(([k, c]) => `<button class="btn small ${g.crop === k ? 'primary' : ''}" data-action="ghCrop" data-gh="${id}" data-crop="${k}" title="±${AT.fmtMoney(c.perDay * G().price(k))}/dag">${D.products[k].name} (${c.perDay} ${D.products[k].unit}/dag)</button>`).join('')}</div>
+        <div class="row wrap">${Object.entries(D.greenhouse.upgrades).map(([k, u]) => g.up[k] ? `<span class="badge" title="${u.desc}">✓ ${u.name}</span>`
+          : `<button class="btn small" data-action="ghUp" data-gh="${id}" data-up="${k}" title="${u.desc}" ${s.money < u.price ? 'disabled' : ''}>${u.name} ${AT.fmtMoney(u.price)}</button>`).join('')}</div>
+        <div class="muted">${Object.values(D.greenhouse.upgrades).map(u => `${u.name}: ${u.desc}`).join(' · ')}</div></div>`;
     });
     // boomgaard en wijngaard
     html += `<h3>Boomgaard en wijngaard</h3>`;
@@ -802,6 +844,7 @@ window.AT = window.AT || {};
     let html = `<div class="modal-card"><div class="row"><h2 class="grow">📅 Zaai- en oogstkalender</h2><button class="btn small" data-close>Sluiten</button></div>
       <p class="muted">Een maand duurt ${D.daysPerMonth} dagen. Oogstmaanden gelden bij gemiddeld weer (regen = sneller, droogte = trager). In de winter groeit bijna niets, behalve winterharde gewassen.
       Het bedrag is de opbrengst per hectare als je in die maand oogst en meteen verkoopt (min zaaigoed, bij een gewone bodem). Bewaren tot een dure maand levert meer op (zie 📈 Prijskalender).</p>
+      <p>🎪 <b>${D.months[D.fair.month]}: landbouwbeurs</b> bij de haven, met korting op alle machines${G().fairActive() ? ' (nu bezig!)' : ` (over ${G().daysToFair()} dagen)`}.</p>
       <div class="cal-legend"><span><i class="sw sow"></i> zaaien</span><span><i class="sw harvest"></i> oogsten (€ per ha)</span><span><i class="sw both"></i> allebei</span></div>
       <table class="cal crop-cal"><thead><tr><th></th>${D.months.map((m, i) => `<th class="${i === now ? 'now' : ''} ${i >= 9 ? 'winter' : ''}">${m.slice(0, 3)}</th>`).join('')}<th>Op het veld</th><th>Per maand</th><th>Bijzonder</th></tr></thead><tbody>`;
     for (const [key, c] of Object.entries(D.crops)) {
@@ -1029,6 +1072,9 @@ window.AT = window.AT || {};
       case 'sellGood': G().sellGood(a.good); break;
       case 'buyBuilding': AT.farm.buyBuilding(a.key); break;
       case 'vet': AT.farm.callVet(a.key); break;
+      case 'collectEggs': { const n = AT.farm.collectEggs(a.key, true); G().log(n ? `${AT.fmtNum(n)} eieren geraapt (${AT.fmtMoney(n * D.animals[a.key].nest.collectCost)}).` : 'Niets geraapt: de loods is vol of je hebt geen geld.', n ? 'good' : 'warn'); break; }
+      case 'eggBelt': AT.farm.buyEggBelt(a.key); break;
+      case 'shearAll': AT.farm.shearAll(a.key); break;
       case 'feedRun': AT.staff.startFeedRun(a.key); break;
       case 'expandBarn': AT.farm.expandBarn(a.key); break;
       case 'buyAnimals': AT.farm.buyAnimals(a.key, Number(a.n)); break;
@@ -1045,13 +1091,16 @@ window.AT = window.AT || {};
       case 'borrow': G().borrow(Number(a.v)); break;
       case 'repay': G().repay(a.v ? Number(a.v) : undefined); break;
       case 'buyGreenhouse': AT.farm.buyGreenhouse(Number(a.i)); break;
-      case 'ghCrop': AT.farm.setGreenhouseCrop(Number(a.i), a.crop); break;
+      case 'ghCrop': AT.farm.setGreenhouseCrop(a.gh, a.crop); break;
+      case 'ghUp': AT.farm.buyGhUpgrade(a.gh, a.up); break;
       case 'buyWoodlot': AT.farm.buyWoodlot(); break;
       case 'cutAll': AT.farm.cutAll(); break;
       case 'buyPlantation': AT.farm.buyPlantation(a.key); break;
       case 'place': AT.render.view.placing = { type: a.type }; G().log(`Klik op de kaart waar de ${D.buildables[a.type].name.toLowerCase()} moet komen (Esc = annuleren).`); renderPanel(); break;
       case 'demolish': if (confirm('Dit gebouw afbreken? Je krijgt de helft van de prijs terug.')) G().demolish(a.b); break;
       case 'look-built': AT.render.centerOn(Number(a.x) + 30, Number(a.y) + 30); break;
+      case 'look-gh': AT.render.centerOn(Number(a.x), Number(a.y)); break;
+      case 'look-fair': { const r = D.fair.area; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
       case 'pickAll': AT.farm.pickAll(a.key); break;
       case 'collectBales': G().collectBales(a.id ? Number(a.id) : null); break;
       case 'look-plant': { const r = D.plantations[a.key].area; AT.render.centerOn(r.x + r.w / 2, r.y + r.h / 2); break; }
@@ -1164,6 +1213,7 @@ window.AT = window.AT || {};
       if (el.dataset.team === 'hour0' || el.dataset.team === 'hour1') { AT.state.staff.hours[el.dataset.team === 'hour0' ? 0 : 1] = Number(el.value); AT.emit('change'); }
       if (el.dataset.wfeed) { AT.farm.animal(el.dataset.wfeed).workerFeed = el.checked; AT.emit('change'); }
       if (el.dataset.afeed) AT.farm.toggleAutoFeed(el.dataset.afeed);
+      if (el.dataset.ashear) AT.farm.toggleAutoShear(el.dataset.ashear);
       el.blur();
     });
     document.querySelector('.tabs').addEventListener('click', e => {
